@@ -1,0 +1,27 @@
+from arrow_core.types import Schema, Field, DataType, UNKNOWN
+from arrow_core.column import Column
+
+struct RecordBatch:
+    schema: Schema
+    columns: List[Column[Any]]
+    nrows: Int
+
+    fn __init__(inout self, schema: Schema, columns: List[Column[Any]]):
+        self.schema = schema
+        self.columns = columns
+        self.nrows = 0
+        if columns.len() > 0:
+            self.nrows = columns[0].len()
+
+    fn select(self, names: List[String]) -> RecordBatch:
+        var cols = List[Column[Any]]()
+        var fields = List[Field]()
+        for c in self.columns:
+            if names.contains(c.name):
+                cols.append(c)
+                fields.append(Field(c.name, c.dtype))
+        return RecordBatch(Schema(fields), cols)
+
+    fn slice(self, start: Int, length: Int) -> RecordBatch:
+        # Placeholder: return the same batch (wire real slicing later)
+        return self
