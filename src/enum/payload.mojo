@@ -1,9 +1,20 @@
+# Module: momijo.enum.payload
+# Minimal enum utilities implemented in Mojo.
+# Project: momijo.enum
+# MIT License
+# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
+# Momijo Enum
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+
 #
-# Copyright (c) 2025 Morteza Taleblou (https://taleblou.ir/)
+# Copyright (c) 2025 Morteza Taleblou (https:#taleblou.ir/)
 # All rights reserved.
 #
-from .enum import EnumValue
+from momijo.enum import EnumValue
 
+# Does: utility function in enum module.
+# Inputs: bytes.
+# Returns: result value or status.
 fn pack_bytes_to_words(bytes: List[UInt8]) -> (List[UInt64], UInt64):
     var size_bytes = UInt64(len(bytes))
     var words = List[UInt64](4)
@@ -18,6 +29,9 @@ fn pack_bytes_to_words(bytes: List[UInt8]) -> (List[UInt64], UInt64):
             if w_idx >= 4: break
     return (words, size_bytes)
 
+# Does: utility function in enum module.
+# Inputs: v, size_bytes.
+# Returns: result value or status.
 fn unpack_words_to_bytes(v: EnumValue, size_bytes: UInt64) -> List[UInt8]:
     var out = List[UInt8](Int(size_bytes))
     var words = [v.w0, v.w1, v.w2, v.w3]
@@ -30,6 +44,9 @@ fn unpack_words_to_bytes(v: EnumValue, size_bytes: UInt64) -> List[UInt8]:
             idx += 1
     return out
 
+# Does: utility function in enum module.
+# Inputs: tag, bytes.
+# Returns: result value or status.
 fn enum_build_from_bytes(tag: UInt64, bytes: List[UInt8]) -> EnumValue:
     var (ws, sz) = pack_bytes_to_words(bytes)
     return EnumValue(tag=tag, w0=ws[0], w1=ws[1], w2=ws[2], w3=ws[3])
