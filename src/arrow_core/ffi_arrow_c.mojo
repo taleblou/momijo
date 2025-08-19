@@ -1,3 +1,6 @@
+# Momijo Arrow Core
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+
 # MIT License
 # Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
 # Website: https://taleblou.ir/
