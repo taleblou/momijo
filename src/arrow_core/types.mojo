@@ -9,7 +9,7 @@
 struct DataType:
     name: String
 
-    fn __init__(inout self, name: String):
+    fn __init__(out self, name: String):
         self.name = name
 
     fn __eq__(self, other: DataType) -> Bool:
@@ -33,7 +33,7 @@ struct Field:
 struct Schema:
     fields: List[Field]
 
-    fn __init__(inout self, fields: List[Field]):
+    fn __init__(out self, fields: List[Field]):
         self.fields = fields
 
     fn field_index(self, name: String) -> Int:
