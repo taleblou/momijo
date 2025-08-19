@@ -1,5 +1,6 @@
-# MIT License
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of arrow_core. See LICENSE at repository root.
+# Momijo Arrow Core
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+
+
+# Package marker. Submodules are imported explicitly, e.g.:
+# from momijo.arrow_core.bitmap import Bitmap
