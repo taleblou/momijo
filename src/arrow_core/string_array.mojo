@@ -8,16 +8,19 @@ from momijo.arrow_core.offsets import Offsets
 from momijo.arrow_core.bitmap import Bitmap, bitmap_set_valid
 
 # Minimal StringArray: track only element count via Offsets + validity via Bitmap.
+# Minimal string collection with validity tracking.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct StringArray:
     var offsets: Offsets
     var validity: Bitmap
-
-# Constructor: __init__(out self)
     fn __init__(out self):
         self.offsets = Offsets()
         self.validity = Bitmap(0, True)
 
-# Function push(mut self, s: String, valid: Bool = True)
+# Appends one string as a new element; tracks validity.
+# Inputs: a text value and an optional flag.
+# Returns: not applicable.
     fn push(mut self, s: String, valid: Bool = True):
         # Treat each pushed string as one logical element
         self.offsets.add_length(1)
@@ -26,7 +29,9 @@ struct StringArray:
         if not valid:
             bitmap_set_valid(self.validity, new_count - 1, False)
 
-# Function len(self) -> Int
+# Reports the number of logical elements.
+# Inputs: none.
+# Returns: the count of elements.
     fn len(self) -> Int:
         # offsets always starts with an initial 0, so number of elements is len-1
         return self.offsets.len() - 1
