@@ -1,9 +1,9 @@
-# Bitmap implementation compatible with Mojo's current syntax (no 'export' statements).
+# Holds validity flags as bits.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct Bitmap:
     var bytes: List[UInt8]
     var nbits: Int
-
-# Constructor: __init__(out self, nbits: Int, all_valid: Bool = True)
     fn __init__(out self, nbits: Int, all_valid: Bool = True):
         self.nbits = nbits
         var nbytes = (nbits + 7) // 8
@@ -24,13 +24,17 @@ struct Bitmap:
             if all_valid:
                 self.bytes[nbytes - 1] = self.bytes[nbytes - 1] & mask
 
-# Function is_valid(self, idx: Int) -> Bool
+# Checks whether a position is marked as valid.
+# Inputs: an index within the collection.
+# Returns: true if valid; false otherwise.
     fn is_valid(self, idx: Int) -> Bool:
         var byte_idx = idx // 8
         var bit = idx % 8
         return ((self.bytes[byte_idx] >> bit) & UInt8(1)) == UInt8(1)
 
-# Function count_valid(self) -> Int
+# Counts how many positions are marked as valid.
+# Inputs: none.
+# Returns: the number of valid positions.
     fn count_valid(self) -> Int:
         var nbytes = (self.nbits + 7) // 8
         var total = 0
@@ -47,7 +51,9 @@ struct Bitmap:
         return total
 
 
-# Function bitmap_set_valid(mut b: Bitmap, idx: Int, v: Bool)
+# Marks a single position as valid or invalid.
+# Inputs: a target collection, an index, and a flag.
+# Returns: not applicable.
 fn bitmap_set_valid(mut b: Bitmap, idx: Int, v: Bool):
     var byte_idx = idx // 8
     var bit = idx % 8
@@ -57,7 +63,9 @@ fn bitmap_set_valid(mut b: Bitmap, idx: Int, v: Bool):
         b.bytes[byte_idx] = b.bytes[byte_idx] & ~(UInt8(1) << bit)
 
 
-# Function bitmap_and(read a: Bitmap, read b: Bitmap, out result: Bitmap)
+# Bitwise AND of two bit collections.
+# Inputs: two bit collections of possibly different lengths.
+# Returns: a new bit collection.
 fn bitmap_and(read a: Bitmap, read b: Bitmap, out result: Bitmap):
     var nbits = a.nbits if a.nbits < b.nbits else b.nbits
     result = Bitmap(nbits, False)
@@ -67,7 +75,9 @@ fn bitmap_and(read a: Bitmap, read b: Bitmap, out result: Bitmap):
         result.bytes[i] = a.bytes[i] & b.bytes[i]
         i += 1
 
-# Function bitmap_or(read a: Bitmap, read b: Bitmap, out result: Bitmap)
+# Bitwise OR of two bit collections.
+# Inputs: two bit collections of possibly different lengths.
+# Returns: a new bit collection.
 fn bitmap_or(read a: Bitmap, read b: Bitmap, out result: Bitmap):
     var nbits = a.nbits if a.nbits > b.nbits else b.nbits
     result = Bitmap(nbits, False)
@@ -77,7 +87,9 @@ fn bitmap_or(read a: Bitmap, read b: Bitmap, out result: Bitmap):
         result.bytes[i] = a.bytes[i] | b.bytes[i]
         i += 1
 
-# Function bitmap_not(read a: Bitmap, out result: Bitmap)
+# Bitwise NOT of a bit collection.
+# Inputs: one bit collection.
+# Returns: a new bit collection.
 fn bitmap_not(read a: Bitmap, out result: Bitmap):
     result = Bitmap(a.nbits, False)
     var nbytes = (a.nbits + 7) // 8
