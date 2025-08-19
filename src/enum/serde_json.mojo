@@ -1,13 +1,27 @@
+# Module: momijo.enum.serde_json
+# Minimal enum utilities implemented in Mojo.
+# Project: momijo.enum
+# MIT License
+# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
+# Momijo Enum
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+
 #
-# Copyright (c) 2025 Morteza Taleblou (https://taleblou.ir/)
+# Copyright (c) 2025 Morteza Taleblou (https:#taleblou.ir/)
 # All rights reserved.
 #
-from .enum import EnumValue
+from momijo.enum import EnumValue
 
+# Does: utility function in enum module.
+# Inputs: v.
+# Returns: result value or status.
 fn enum_to_json(v: EnumValue) -> String:
     var out = String("{\"tag\":") + String(v.tag) + String(",\"words\":[") + String(v.w0) + String(",") + String(v.w1) + String(",") + String(v.w2) + String(",") + String(v.w3) + String("]}")
     return out
 
+# Does: utility function in enum module.
+# Inputs: s.
+# Returns: result value or status.
 fn enum_from_json(s: String) -> (Bool, EnumValue):
     var v = EnumValue(tag=0, w0=0, w1=0, w2=0, w3=0)
     var idx = 0
@@ -38,6 +52,9 @@ fn enum_from_json(s: String) -> (Bool, EnumValue):
     v.w0 = UInt64(arr[0]); v.w1 = UInt64(arr[1]); v.w2 = UInt64(arr[2]); v.w3 = UInt64(arr[3])
     return (True, v)
 
+# Does: utility function in enum module.
+# Inputs: v, nwords.
+# Returns: result value or status.
 fn enum_to_json_compact(v: EnumValue, nwords: Int) -> String:
     var out = String("{\"tag\":") + String(v.tag) + String(",\"words\":[")
     for i in range(0, nwords):
@@ -46,6 +63,9 @@ fn enum_to_json_compact(v: EnumValue, nwords: Int) -> String:
     out = out + String("]}")
     return out
 
+# Does: utility function in enum module.
+# Inputs: xs.
+# Returns: result value or status.
 fn enum_list_to_json(xs: List[EnumValue]) -> String:
     var out = String("[")
     for i in range(0, len(xs)):
