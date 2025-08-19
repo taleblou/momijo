@@ -1,38 +1,45 @@
-# MIT License
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of arrow_core. See LICENSE at repository root.
-
+# Cumulative offsets for variable-length data.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct Offsets:
     var data: List[Int]
-
-# Constructor: __init__(out self)
     fn __init__(out self):
         self.data = List[Int]()
         self.data.append(0)
 
-# Function append_offset(mut self, o: Int)
+# Appends a raw offset value.
+# Inputs: one value to append.
+# Returns: not applicable.
     fn append_offset(mut self, o: Int):
         self.data.append(o)
 
-# Function add_length(mut self, length: Int)
+# Appends the previous value plus a length.
+# Inputs: one length to add.
+# Returns: not applicable.
     fn add_length(mut self, length: Int):
         self.data.append(self.last() + length)
 
-# Function len(self) -> Int
+# Reports the number of logical elements.
+# Inputs: none.
+# Returns: the count of elements.
     fn len(self) -> Int:
         return len(self.data)
 
-# Function last(self) -> Int
+# Reports the last stored offset.
+# Inputs: none.
+# Returns: the last value.
     fn last(self) -> Int:
         return self.data[len(self.data) - 1]
 
-# Function at(self, i: Int) -> Int
+# Reads an offset at a position.
+# Inputs: a position inside the list.
+# Returns: the stored value.
     fn at(self, i: Int) -> Int:
         return self.data[i]
 
-# Function is_valid(self) -> Bool
+# Checks that offsets start at zero and never decrease.
+# Inputs: none.
+# Returns: true if valid; false otherwise.
     fn is_valid(self) -> Bool:
         if len(self.data) == 0:
             return False
