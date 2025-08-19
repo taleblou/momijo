@@ -1,38 +1,26 @@
-#
-# Copyright (c) 2025 Morteza Taleblou (https://taleblou.ir/)
-# All rights reserved.
-#
-from bit import pop_count
+# MIT License
+# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
+# Module: momijo.enum.flag
 
 struct FlagSet:
     var bits: UInt64
 
-fn flags_empty() -> FlagSet:
-    return FlagSet(bits=0)
+    fn __init__(out self, bits: UInt64 = UInt64(0)):
+        self.bits = bits
 
-fn flags_all(mask: UInt64) -> FlagSet:
-    return FlagSet(bits=mask)
+fn flags_new() -> FlagSet:
+    return FlagSet()
 
 fn flags_has(f: FlagSet, bit: UInt64) -> Bool:
-    return (f.bits & bit) == bit
+    return (f.bits & bit) != 0
 
-fn flags_set(inout f: FlagSet, bit: UInt64):
+fn flags_set(mut f: FlagSet, bit: UInt64):
     f.bits = f.bits | bit
 
-fn flags_clear(inout f: FlagSet, bit: UInt64):
-    f.bits = f.bits & (~bit)
-
-fn flags_toggle(inout f: FlagSet, bit: UInt64):
-    f.bits = f.bits ^ bit
-
 fn flags_count(f: FlagSet) -> Int:
-    return Int(pop_count(f.bits))
-
-fn flags_intersect(a: FlagSet, b: FlagSet) -> FlagSet:
-    return FlagSet(bits=(a.bits & b.bits))
-
-fn flags_union(a: FlagSet, b: FlagSet) -> FlagSet:
-    return FlagSet(bits=(a.bits | b.bits))
-
-fn flags_minus(a: FlagSet, b: FlagSet) -> FlagSet:
-    return FlagSet(bits=(a.bits & (~b.bits)))
+    var b = f.bits
+    var c = 0
+    while b != 0:
+        c += 1
+        b = b & (b - UInt64(1))
+    return c
