@@ -1,11 +1,20 @@
+# Module: momijo.enum.profile
+# Minimal enum utilities implemented in Mojo.
+# Project: momijo.enum
+# MIT License
+# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
+# Momijo Enum
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+
 #
-# Copyright (c) 2025 Morteza Taleblou (https://taleblou.ir/)
+# Copyright (c) 2025 Morteza Taleblou (https:#taleblou.ir/)
 # All rights reserved.
 #
 from .match import Matcher, Case, RangeCase, match_get_build_count
 from .jumptable import JT_U16, JT_U32, JT_U64
 from bit import pop_count
 
+# Data structure representing a concept in the enum library.
 struct MatcherProfile:
     var mode: UInt64
     var n_cases: Int
@@ -19,6 +28,9 @@ struct MatcherProfile:
     var fast_low8_bits: Int
     var builds_so_far: UInt64
 
+# Does: utility function in enum module.
+# Inputs: cases.
+# Returns: result value or status.
 fn _density_local(cases: List[Case]) -> (UInt64, UInt64, UInt64):
     if len(cases) == 0: return (0, 0, 0)
     var lo = cases[0].tag; var hi = cases[0].tag
@@ -30,6 +42,9 @@ fn _density_local(cases: List[Case]) -> (UInt64, UInt64, UInt64):
     var dens_times_100 = (span * 100) / UInt64(len(cases))
     return (dens_times_100, lo, hi)
 
+# Does: utility function in enum module.
+# Inputs: cases, ranges, m.
+# Returns: result value or status.
 fn collect_profile(cases: List[Case], ranges: List[RangeCase], m: Matcher) -> MatcherProfile:
     var (dens100, lo, hi) = _density_local(cases)
     var span = (hi - lo + 1) if len(cases) > 0 else 0
