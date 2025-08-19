@@ -11,11 +11,11 @@ struct Table:
     schema: Schema
     batches: List[RecordBatch]
 
-    fn __init__(inout self, schema: Schema):
+    fn __init__(out self, schema: Schema):
         self.schema = schema
         self.batches = List[RecordBatch]()
 
-    fn append_batch(inout self, b: RecordBatch):
+    fn append_batch(mut self, b: RecordBatch):
         self.batches.append(b)
 
     fn num_rows(self) -> Int:
