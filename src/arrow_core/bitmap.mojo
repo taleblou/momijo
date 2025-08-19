@@ -3,6 +3,7 @@ struct Bitmap:
     var bytes: List[UInt8]
     var nbits: Int
 
+# Constructor: __init__(out self, nbits: Int, all_valid: Bool = True)
     fn __init__(out self, nbits: Int, all_valid: Bool = True):
         self.nbits = nbits
         var nbytes = (nbits + 7) // 8
@@ -23,11 +24,13 @@ struct Bitmap:
             if all_valid:
                 self.bytes[nbytes - 1] = self.bytes[nbytes - 1] & mask
 
+# Function is_valid(self, idx: Int) -> Bool
     fn is_valid(self, idx: Int) -> Bool:
         var byte_idx = idx // 8
         var bit = idx % 8
         return ((self.bytes[byte_idx] >> bit) & UInt8(1)) == UInt8(1)
 
+# Function count_valid(self) -> Int
     fn count_valid(self) -> Int:
         var nbytes = (self.nbits + 7) // 8
         var total = 0
@@ -44,6 +47,7 @@ struct Bitmap:
         return total
 
 
+# Function bitmap_set_valid(mut b: Bitmap, idx: Int, v: Bool)
 fn bitmap_set_valid(mut b: Bitmap, idx: Int, v: Bool):
     var byte_idx = idx // 8
     var bit = idx % 8
@@ -53,6 +57,7 @@ fn bitmap_set_valid(mut b: Bitmap, idx: Int, v: Bool):
         b.bytes[byte_idx] = b.bytes[byte_idx] & ~(UInt8(1) << bit)
 
 
+# Function bitmap_and(read a: Bitmap, read b: Bitmap, out result: Bitmap)
 fn bitmap_and(read a: Bitmap, read b: Bitmap, out result: Bitmap):
     var nbits = a.nbits if a.nbits < b.nbits else b.nbits
     result = Bitmap(nbits, False)
@@ -62,6 +67,7 @@ fn bitmap_and(read a: Bitmap, read b: Bitmap, out result: Bitmap):
         result.bytes[i] = a.bytes[i] & b.bytes[i]
         i += 1
 
+# Function bitmap_or(read a: Bitmap, read b: Bitmap, out result: Bitmap)
 fn bitmap_or(read a: Bitmap, read b: Bitmap, out result: Bitmap):
     var nbits = a.nbits if a.nbits > b.nbits else b.nbits
     result = Bitmap(nbits, False)
@@ -71,6 +77,7 @@ fn bitmap_or(read a: Bitmap, read b: Bitmap, out result: Bitmap):
         result.bytes[i] = a.bytes[i] | b.bytes[i]
         i += 1
 
+# Function bitmap_not(read a: Bitmap, out result: Bitmap)
 fn bitmap_not(read a: Bitmap, out result: Bitmap):
     result = Bitmap(a.nbits, False)
     var nbytes = (a.nbits + 7) // 8
