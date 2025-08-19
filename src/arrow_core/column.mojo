@@ -12,7 +12,7 @@ struct Column[T]:
     dtype: DataType
     data: Array[T]
 
-    fn __init__(inout self, name: String, dtype: DataType = UNKNOWN, data: Array[T] = Array[T](0)):
+    fn __init__(out self, name: String, dtype: DataType = UNKNOWN, data: Array[T] = Array[T](0)):
         self.name = name
         self.dtype = dtype
         self.data = data
