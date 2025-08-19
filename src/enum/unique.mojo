@@ -1,5 +1,13 @@
+# Module: momijo.enum.unique
+# Minimal enum utilities implemented in Mojo.
+# Project: momijo.enum
+# MIT License
+# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
+# Momijo Enum
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+
 #
-# Copyright (c) 2025 Morteza Taleblou (https://taleblou.ir/)
+# Copyright (c) 2025 Morteza Taleblou (https:#taleblou.ir/)
 # All rights reserved.
 #
 fn ensure_unique_tags(tags: List[UInt64]) -> Bool:
@@ -10,6 +18,9 @@ fn ensure_unique_tags(tags: List[UInt64]) -> Bool:
                 return False
     return True
 
+# Does: utility function in enum module.
+# Inputs: names.
+# Returns: result value or status.
 fn ensure_unique_names(names: List[String]) -> Bool:
     var n = len(names)
     for i in range(0, n):
