@@ -7,17 +7,23 @@
 # minimal opaque handles for Arrow C Data Interface.
 from sys.ffi import UnsafePointer
 
+# Struct CArrowArrayHandle: auto-generated docs. Update as needed.
 struct CArrowArrayHandle:
     ptr: UnsafePointer[UInt8]
+# Constructor: __init__(out self, ptr: UnsafePointer[UInt8])
     fn __init__(out self, ptr: UnsafePointer[UInt8]):
         self.ptr = ptr
+# Function is_null(self) -> Bool
     fn is_null(self) -> Bool:
         return self.ptr.is_null()
 
+# Struct CArrowSchemaHandle: auto-generated docs. Update as needed.
 struct CArrowSchemaHandle:
     ptr: UnsafePointer[UInt8]
+# Constructor: __init__(out self, ptr: UnsafePointer[UInt8])
     fn __init__(out self, ptr: UnsafePointer[UInt8]):
         self.ptr = ptr
+# Function is_null(self) -> Bool
     fn is_null(self) -> Bool:
         return self.ptr.is_null()
 
