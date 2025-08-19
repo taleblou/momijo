@@ -1,5 +1,11 @@
-from arrow_core.record_batch import RecordBatch
-from arrow_core.types import Schema, Field, DataType
+# MIT License
+# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of arrow_core. See LICENSE at repository root.
+
+from momijo.arrow_core.record_batch import RecordBatch
+from momijo.arrow_core.types import Schema, Field, DataType
 
 struct Table:
     schema: Schema
