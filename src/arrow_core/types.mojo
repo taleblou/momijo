@@ -1,17 +1,10 @@
-# MIT License
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of arrow_core. See LICENSE at repository root.
-
-# Arrow-like typing for Mojo (simplified)
-
+# Defines a data structure.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct DataType:
     name: String
-
     fn __init__(out self, name: String):
         self.name = name
-
     fn __eq__(self, other: DataType) -> Bool:
         return self.name == other.name
 
@@ -25,17 +18,25 @@ var DATE64 = DataType("date64")
 var TIMESTAMP = DataType("timestamp")
 var UNKNOWN = DataType("unknown")
 
+# Defines a data structure.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct Field:
     name: String
     dtype: DataType
     nullable: Bool = True
 
+# Defines a data structure.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct Schema:
     fields: List[Field]
-
     fn __init__(out self, fields: List[Field]):
         self.fields = fields
 
+# Performs the operation described below.
+# Inputs: see the signature below.
+# Returns: see the signature below.
     fn field_index(self, name: String) -> Int:
         var i = 0
         for f in self.fields:
@@ -43,6 +44,9 @@ struct Schema:
             i += 1
         return -1
 
+# Performs the operation described below.
+# Inputs: see the signature below.
+# Returns: see the signature below.
     fn field_names(self) -> List[String]:
         var names = List[String]()
         for f in self.fields:
