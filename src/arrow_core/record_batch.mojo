@@ -7,11 +7,13 @@
 from momijo.arrow_core.types import Schema, Field, DataType, UNKNOWN
 from momijo.arrow_core.column import Column
 
+# Struct RecordBatch: auto-generated docs. Update as needed.
 struct RecordBatch:
     schema: Schema
     columns: List[Column[Any]]
     nrows: Int
 
+# Constructor: __init__(out self, schema: Schema, columns: List[Column[Any]])
     fn __init__(out self, schema: Schema, columns: List[Column[Any]]):
         self.schema = schema
         self.columns = columns
@@ -19,6 +21,7 @@ struct RecordBatch:
         if columns.len() > 0:
             self.nrows = columns[0].len()
 
+# Function select(self, names: List[String]) -> RecordBatch
     fn select(self, names: List[String]) -> RecordBatch:
         var cols = List[Column[Any]]()
         var fields = List[Field]()
@@ -28,6 +31,7 @@ struct RecordBatch:
                 fields.append(Field(c.name, c.dtype))
         return RecordBatch(Schema(fields), cols)
 
+# Function slice(self, start: Int, length: Int) -> RecordBatch
     fn slice(self, start: Int, length: Int) -> RecordBatch:
         # Placeholder: return the same batch (wire real slicing later)
         return self
