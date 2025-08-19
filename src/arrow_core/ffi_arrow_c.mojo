@@ -9,14 +9,14 @@ from sys.ffi import UnsafePointer
 
 struct CArrowArrayHandle:
     ptr: UnsafePointer[UInt8]
-    fn __init__(inout self, ptr: UnsafePointer[UInt8]):
+    fn __init__(out self, ptr: UnsafePointer[UInt8]):
         self.ptr = ptr
     fn is_null(self) -> Bool:
         return self.ptr.is_null()
 
 struct CArrowSchemaHandle:
     ptr: UnsafePointer[UInt8]
-    fn __init__(inout self, ptr: UnsafePointer[UInt8]):
+    fn __init__(out self, ptr: UnsafePointer[UInt8]):
         self.ptr = ptr
     fn is_null(self) -> Bool:
         return self.ptr.is_null()
