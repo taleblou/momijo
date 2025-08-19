@@ -1,26 +1,28 @@
-# MIT License
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of arrow_core. See LICENSE at repository root.
+# Momijo Arrow Core
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
 
-from momijo.arrow_core.array import Array
+
 from momijo.arrow_core.types import DataType, UNKNOWN
+from momijo.arrow_core.array import Array
 
-# Defines a data structure.
-# Inputs: created by constructor.
-# Returns: not applicable.
-struct Column[T]:
-    name: String
-    dtype: DataType
-    data: Array[T]
-    fn __init__(out self, name: String, dtype: DataType = UNKNOWN, data: Array[T] = Array[T](0)):
+struct Column[T: Copyable & Movable](Copyable, Movable, Sized):
+    var name: String
+    var dtype: DataType
+    var data: Array[T]
+
+    fn __init__(out self, name: String, data: Array[T], dtype: DataType = UNKNOWN()):
         self.name = name
-        self.dtype = dtype
         self.data = data
+        self.dtype = dtype
 
-# Reports the number of logical elements.
-# Inputs: none.
-# Returns: the count of elements.
+    fn __len__(self) -> Int:
+        return len(self.data)
+
     fn len(self) -> Int:
-        return self.data.len()
+        return len(self.data)
+
+    fn push(mut self, v: T, valid: Bool = True):
+        self.data.push(v, valid)
+
+    fn get(self, i: Int) -> T:
+        return self.data.get(i)
