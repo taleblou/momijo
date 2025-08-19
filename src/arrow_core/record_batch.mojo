@@ -1,41 +1,35 @@
-# MIT License
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of arrow_core. See LICENSE at repository root.
+# Momijo Arrow Core
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
 
-from momijo.arrow_core.types import Schema, Field, DataType, UNKNOWN
+
+from momijo.arrow_core.types import Schema
 from momijo.arrow_core.column import Column
 
-# Defines a data structure.
-# Inputs: created by constructor.
-# Returns: not applicable.
-struct RecordBatch:
-    schema: Schema
-    columns: List[Column[Any]]
-    nrows: Int
-    fn __init__(out self, schema: Schema, columns: List[Column[Any]]):
+struct RecordBatch(Copyable, Movable, Sized):
+    var schema: Schema
+    var columns: List[Column[Int]]
+    var nrows: Int
+
+    fn __init__(out self, schema: Schema):
         self.schema = schema
-        self.columns = columns
+        self.columns = List[Column[Int]]()
         self.nrows = 0
-        if columns.len() > 0:
-            self.nrows = columns[0].len()
 
-# Performs the operation described below.
-# Inputs: see the signature below.
-# Returns: see the signature below.
-    fn select(self, names: List[String]) -> RecordBatch:
-        var cols = List[Column[Any]]()
-        var fields = List[Field]()
-        for c in self.columns:
-            if names.contains(c.name):
-                cols.append(c)
-                fields.append(Field(c.name, c.dtype))
-        return RecordBatch(Schema(fields), cols)
+    fn __len__(self) -> Int:
+        return self.nrows
 
-# Performs the operation described below.
-# Inputs: see the signature below.
-# Returns: see the signature below.
-    fn slice(self, start: Int, length: Int) -> RecordBatch:
-        # Placeholder: return the same batch (wire real slicing later)
-        return self
+    fn add_column(mut self, c: Column[Int]):
+        if len(self.columns) == 0:
+            self.nrows = c.len()
+            self.columns.append(c)
+            return
+        # If lengths mismatch, clamp to min to avoid exceptions.
+        if c.len() != self.nrows:
+            self.nrows = c.len() if c.len() < self.nrows else self.nrows
+        self.columns.append(c)
+
+    fn num_columns(self) -> Int:
+        return len(self.columns)
+
+    fn column(self, idx: Int) -> Column[Int]:
+        return self.columns[idx]
