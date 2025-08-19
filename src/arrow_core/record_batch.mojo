@@ -12,7 +12,7 @@ struct RecordBatch:
     columns: List[Column[Any]]
     nrows: Int
 
-    fn __init__(inout self, schema: Schema, columns: List[Column[Any]]):
+    fn __init__(out self, schema: Schema, columns: List[Column[Any]]):
         self.schema = schema
         self.columns = columns
         self.nrows = 0
