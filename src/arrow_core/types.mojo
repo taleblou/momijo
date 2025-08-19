@@ -1,3 +1,9 @@
+# MIT License
+# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of arrow_core. See LICENSE at repository root.
+
 # Arrow-like typing for Mojo (simplified)
 
 struct DataType:
@@ -9,15 +15,15 @@ struct DataType:
     fn __eq__(self, other: DataType) -> Bool:
         return self.name == other.name
 
-let INT32 = DataType("int32")
-let INT64 = DataType("int64")
-let FLOAT32 = DataType("float32")
-let FLOAT64 = DataType("float64")
-let BOOL = DataType("bool")
-let STRING = DataType("string")
-let DATE64 = DataType("date64")
-let TIMESTAMP = DataType("timestamp")
-let UNKNOWN = DataType("unknown")
+var INT32 = DataType("int32")
+var INT64 = DataType("int64")
+var FLOAT32 = DataType("float32")
+var FLOAT64 = DataType("float64")
+var BOOL = DataType("bool")
+var STRING = DataType("string")
+var DATE64 = DataType("date64")
+var TIMESTAMP = DataType("timestamp")
+var UNKNOWN = DataType("unknown")
 
 struct Field:
     name: String
@@ -38,7 +44,7 @@ struct Schema:
         return -1
 
     fn field_names(self) -> List[String]:
-        let names = List[String]()
+        var names = List[String]()
         for f in self.fields:
             names.append(f.name)
         return names
