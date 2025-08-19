@@ -1,9 +1,20 @@
+# Module: momijo.enum.diagnostics
+# Minimal enum utilities implemented in Mojo.
+# Project: momijo.enum
+# MIT License
+# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
+# Momijo Enum
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+
 #
-# Copyright (c) 2025 Morteza Taleblou (https://taleblou.ir/)
+# Copyright (c) 2025 Morteza Taleblou (https:#taleblou.ir/)
 # All rights reserved.
 #
 from .match import Case, RangeCase
 
+# Does: utility function in enum module.
+# Inputs: cases.
+# Returns: result value or status.
 fn find_duplicate_cases(cases: List[Case]) -> List[UInt64]:
     var out = List[UInt64](0)
     for i in range(0, len(cases)):
@@ -12,6 +23,9 @@ fn find_duplicate_cases(cases: List[Case]) -> List[UInt64]:
                 out.append(cases[i].tag)
     return out
 
+# Does: utility function in enum module.
+# Inputs: ranges.
+# Returns: result value or status.
 fn find_overlapping_ranges(ranges: List[RangeCase]) -> List[(UInt64, UInt64)]:
     var out = List[(UInt64, UInt64)](0)
     for i in range(0, len(ranges)):
@@ -26,6 +40,9 @@ fn find_overlapping_ranges(ranges: List[RangeCase]) -> List[(UInt64, UInt64)]:
                 out.append((UInt64(i), UInt64(j)))
     return out
 
+# Does: utility function in enum module.
+# Inputs: cases, ranges.
+# Returns: result value or status.
 fn find_shadowed_cases(cases: List[Case], ranges: List[RangeCase]) -> List[UInt64]:
     var out = List[UInt64](0)
     for i in range(0, len(cases)):
@@ -39,6 +56,9 @@ fn find_shadowed_cases(cases: List[Case], ranges: List[RangeCase]) -> List[UInt6
         if shadow: out.append(t)
     return out
 
+# Does: utility function in enum module.
+# Inputs: cases, ranges, u_lo, u_hi.
+# Returns: result value or status.
 fn coverage_holes(cases: List[Case], ranges: List[RangeCase], u_lo: UInt64, u_hi: UInt64) -> List[UInt64]:
     var out = List[UInt64](0)
     for t in range(Int(u_lo), Int(u_hi)+1):
@@ -56,6 +76,9 @@ fn coverage_holes(cases: List[Case], ranges: List[RangeCase], u_lo: UInt64, u_hi
             out.append(UInt64(t))
     return out
 
+# Does: utility function in enum module.
+# Inputs: cases, ranges, u_lo, u_hi.
+# Returns: result value or status.
 fn assert_exhaustive_or_warn(cases: List[Case], ranges: List[RangeCase], u_lo: UInt64, u_hi: UInt64) -> Bool:
     var holes = coverage_holes(cases, ranges, u_lo, u_hi)
     if len(holes) == 0:
@@ -63,6 +86,9 @@ fn assert_exhaustive_or_warn(cases: List[Case], ranges: List[RangeCase], u_lo: U
     print(String("[enumx] Non-exhaustive match; missing tags: ") + String(holes))
     return False
 
+# Does: utility function in enum module.
+# Inputs: cases.
+# Returns: result value or status.
 fn assert_no_duplicates_or_warn(cases: List[Case]) -> Bool:
     var dups = find_duplicate_cases(cases)
     if len(dups) == 0: return True
