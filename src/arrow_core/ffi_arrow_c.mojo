@@ -7,32 +7,44 @@
 # minimal opaque handles for Arrow C Data Interface.
 from sys.ffi import UnsafePointer
 
-# Struct CArrowArrayHandle: auto-generated docs. Update as needed.
+# Defines a data structure.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct CArrowArrayHandle:
     ptr: UnsafePointer[UInt8]
-# Constructor: __init__(out self, ptr: UnsafePointer[UInt8])
     fn __init__(out self, ptr: UnsafePointer[UInt8]):
         self.ptr = ptr
-# Function is_null(self) -> Bool
+# Performs the operation described below.
+# Inputs: see the signature below.
+# Returns: see the signature below.
     fn is_null(self) -> Bool:
         return self.ptr.is_null()
 
-# Struct CArrowSchemaHandle: auto-generated docs. Update as needed.
+# Defines a data structure.
+# Inputs: created by constructor.
+# Returns: not applicable.
 struct CArrowSchemaHandle:
     ptr: UnsafePointer[UInt8]
-# Constructor: __init__(out self, ptr: UnsafePointer[UInt8])
     fn __init__(out self, ptr: UnsafePointer[UInt8]):
         self.ptr = ptr
-# Function is_null(self) -> Bool
+# Performs the operation described below.
+# Inputs: see the signature below.
+# Returns: see the signature below.
     fn is_null(self) -> Bool:
         return self.ptr.is_null()
 
 # wrap a raw address as array handle. Inputs: addr (address). Output: array handle
+# Performs the operation described below.
+# Inputs: see the signature below.
+# Returns: see the signature below.
 fn import_array_from_address(addr: UInt64) -> CArrowArrayHandle:
     var p = UnsafePointer[UInt8](addr)
     return CArrowArrayHandle(p)
 
 # wrap a raw address as schema handle. Inputs: addr (address). Output: schema handle
+# Performs the operation described below.
+# Inputs: see the signature below.
+# Returns: see the signature below.
 fn import_schema_from_address(addr: UInt64) -> CArrowSchemaHandle:
     var p = UnsafePointer[UInt8](addr)
     return CArrowSchemaHandle(p)
