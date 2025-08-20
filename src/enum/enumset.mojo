@@ -8,77 +8,94 @@
 
 
 from bit import pop_count
-
-# Tracks membership of small integer tags (0..63) in a compact bitset.
 struct EnumSet(Copyable, Movable, Sized):
     var bits: UInt64
 
-# Does: utility function in enum module.
-# Inputs: out self.
-# Returns: result value or status.
-    fn __init__(out self):
+    fn __init__(out self, bits: UInt64 = 0):
+        # Initializes empty set or from bitmask.
+        self.bits = bits
+
+    fn __len__(self) -> Int:
+        # Number of members == number of 1-bits.
+        var x = self.bits
+        var cnt: Int = 0
+        while x != 0:
+            x = x & (x - UInt64(1))   # clear lowest set bit
+            cnt += 1
+        return cnt
+
+    fn is_empty(self) -> Bool:
+        # True if no members are present.
+        return self.bits == 0
+
+    fn clear(mut self):
+        # Removes all members.
         self.bits = 0
 
-# Does: utility function in enum module.
-# Inputs: self.
-# Returns: result value or status.
-    fn __len__(self) -> Int:
-        return Int(pop_count(self.bits))
+    fn contains(self, idx: Int) -> Bool:
+        # Checks membership by ordinal index.
+        # Input: idx — ordinal of the enum value
+        # Output: True if present
+        if idx < 0 or idx >= 64:
+            return False
+        return (self.bits & (UInt64(1) << UInt64(idx))) != 0
 
-# Returns a new empty set.
-fn enumset_empty() -> EnumSet:
-    return EnumSet()
+    fn add(mut self, idx: Int):
+        # Inserts a member by ordinal index.
+        if idx < 0 or idx >= 64:
+            return
+        self.bits = self.bits | (UInt64(1) << UInt64(idx))
 
-# Adds a tag to the set.
-fn enumset_insert(mut s: EnumSet, tag: Int32):
-    s.bits = s.bits | (UInt64(1) << UInt64(tag))
+    fn remove(mut self, idx: Int):
+        # Erases a member by ordinal index.
+        if idx < 0 or idx >= 64:
+            return
+        self.bits = self.bits & ~(UInt64(1) << UInt64(idx))
 
-# Removes a tag from the set.
-fn enumset_erase(mut s: EnumSet, tag: Int32):
-    s.bits = s.bits & (~(UInt64(1) << UInt64(tag)))
+    fn union(a: Self, b: Self) -> Self:
+        # Returns set union.
+        return EnumSet(bits = (a.bits | b.bits))
 
-# Checks membership.
-fn enumset_contains(s: EnumSet, tag: Int32) -> Bool:
-    return (s.bits & (UInt64(1) << UInt64(tag))) != 0
+    fn intersect(a: Self, b: Self) -> Self:
+        # Returns set intersection.
+        return EnumSet(bits = (a.bits & b.bits))
 
-# Set union.
-fn enumset_union(a: EnumSet, b: EnumSet) -> EnumSet:
-    return EnumSet(bits=(a.bits | b.bits))
+    fn difference(a: Self, b: Self) -> Self:
+        # Returns set difference a \ b.
+        return EnumSet(bits = (a.bits & ~b.bits))
 
-# Set intersection.
-fn enumset_intersect(a: EnumSet, b: EnumSet) -> EnumSet:
-    return EnumSet(bits=(a.bits & b.bits))
+    fn symmetric_difference(a: Self, b: Self) -> Self:
+        # Returns symmetric difference.
+        return EnumSet(bits = (a.bits ^ b.bits))
 
-# Counts members.
-fn enumset_count(s: EnumSet) -> Int:
-    return Int(pop_count(s.bits))
+    fn is_subset(a: Self, b: Self) -> Bool:
+        # True if all members of a are in b.
+        return (a.bits & ~b.bits) == 0
 
-# True when empty.
-fn enumset_is_empty(s: EnumSet) -> Bool:
-    return s.bits == 0
+    fn is_superset(a: Self, b: Self) -> Bool:
+        # True if all members of b are in a.
+        return (b.bits & ~a.bits) == 0
 
-# Clears all members.
-fn enumset_clear_all(mut s: EnumSet):
-    s.bits = 0
+    fn equals(a: Self, b: Self) -> Bool:
+        # Value equality based on bitmask.
+        return a.bits == b.bits
 
-# Adds many tags at once.
-fn enumset_insert_many(mut s: EnumSet, tags: List[Int32]):
-    var i = 0
-    while i < len(tags):
-        s.bits = s.bits | (UInt64(1) << UInt64(tags[i]))
-        i += 1
+    fn any(self) -> Bool:
+        # True if at least one member exists.
+        return self.bits != 0
 
-# Removes many tags at once.
-fn enumset_erase_many(mut s: EnumSet, tags: List[Int32]):
-    var i = 0
-    while i < len(tags):
-        s.bits = s.bits & (~(UInt64(1) << UInt64(tags[i])))
-        i += 1
+    fn all_up_to(self, n: Int) -> Bool:
+        # True if all ordinals in [0, n) are present.
+        # Input: n — domain size to check
+        if n <= 0:
+            return True
+        if n > 64:
+            return False
 
-# Returns the raw mask for interop.
-fn enumset_to_bits(s: EnumSet) -> UInt64:
-    return s.bits
+        var mask: UInt64
+        if n == 64:
+            mask = ~UInt64(0)
+        else:
+            mask = (UInt64(1) << UInt64(n)) - UInt64(1)
 
-# Builds from a raw mask (truncates to 64 tags).
-fn enumset_from_bits(mask: UInt64) -> EnumSet:
-    return EnumSet(bits=mask)
+        return (self.bits & mask) == mask
