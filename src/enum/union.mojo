@@ -1,17 +1,11 @@
-# Module: momijo.enum.union
-# Minimal enum utilities implemented in Mojo.
-# Project: momijo.enum
 # MIT License
 # Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
-# Momijo Enum
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Module: momijo.enum.union
 
-#
-# Copyright (c) 2025 Morteza Taleblou (https:#taleblou.ir/)
-# All rights reserved.
-#
-fn words_needed(size_bytes: UInt64) -> UInt64:
-    var w = size_bytes / 8
-    if (size_bytes % 8) != 0: w += 1
-    if w > 4: w = 4
-    return w
+# Compute number of 64-bit words needed to store `bits` bits (ceiling division by 64)
+fn words_needed(bits: Int) -> Int:
+    if bits <= 0:
+        return 0
+    var b = UInt64(bits)
+    var q = Int((b + UInt64(63)) >> UInt64(6))
+    return q
