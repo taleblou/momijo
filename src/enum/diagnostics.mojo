@@ -1,96 +1,64 @@
-# Module: momijo.enum.diagnostics
-# Minimal enum utilities implemented in Mojo.
-# Project: momijo.enum
 # MIT License
 # Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
-# Momijo Enum
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Module: momijo.enum.diagnostics
 
-#
-# Copyright (c) 2025 Morteza Taleblou (https:#taleblou.ir/)
-# All rights reserved.
-#
-from .match import Case, RangeCase
+from momijo.enum.`match` import Case, RangeCase
 
-# Does: utility function in enum module.
-# Inputs: cases.
-# Returns: result value or status.
-fn find_duplicate_cases(cases: List[Case]) -> List[UInt64]:
-    var out = List[UInt64](0)
-    for i in range(0, len(cases)):
-        for j in range(i+1, len(cases)):
-            if cases[i].tag == cases[j].tag:
-                out.append(cases[i].tag)
-    return out
-
-# Does: utility function in enum module.
-# Inputs: ranges.
-# Returns: result value or status.
-fn find_overlapping_ranges(ranges: List[RangeCase]) -> List[(UInt64, UInt64)]:
-    var out = List[(UInt64, UInt64)](0)
-    for i in range(0, len(ranges)):
-        var a = ranges[i]
-        var alo = a.lo if a.lo <= a.hi else a.hi
-        var ahi = a.hi if a.hi >= a.lo else a.lo
-        for j in range(i+1, len(ranges)):
-            var b = ranges[j]
-            var blo = b.lo if b.lo <= b.hi else b.hi
-            var bhi = b.hi if b.hi >= b.lo else b.lo
-            if not (ahi < blo or bhi < alo):
-                out.append((UInt64(i), UInt64(j)))
-    return out
-
-# Does: utility function in enum module.
-# Inputs: cases, ranges.
-# Returns: result value or status.
-fn find_shadowed_cases(cases: List[Case], ranges: List[RangeCase]) -> List[UInt64]:
-    var out = List[UInt64](0)
-    for i in range(0, len(cases)):
-        var t = cases[i].tag
-        var shadow = False
-        for r in range(0, len(ranges)):
-            var lo = ranges[r].lo if ranges[r].lo <= ranges[r].hi else ranges[r].hi
-            var hi = ranges[r].hi if ranges[r].hi >= ranges[r].lo else ranges[r].lo
-            if t >= lo and t <= hi:
-                shadow = True; break
-        if shadow: out.append(t)
-    return out
-
-# Does: utility function in enum module.
-# Inputs: cases, ranges, u_lo, u_hi.
-# Returns: result value or status.
-fn coverage_holes(cases: List[Case], ranges: List[RangeCase], u_lo: UInt64, u_hi: UInt64) -> List[UInt64]:
-    var out = List[UInt64](0)
-    for t in range(Int(u_lo), Int(u_hi)+1):
-        var covered = False
-        for i in range(0, len(cases)):
-            if cases[i].tag == UInt64(t):
-                covered = True; break
-        if not covered:
-            for r in range(0, len(ranges)):
-                var lo = ranges[r].lo if ranges[r].lo <= ranges[r].hi else ranges[r].hi
-                var hi = ranges[r].hi if ranges[r].hi >= ranges[r].lo else ranges[r].lo
-                if UInt64(t) >= lo and UInt64(t) <= hi:
-                    covered = True; break
-        if not covered:
-            out.append(UInt64(t))
-    return out
-
-# Does: utility function in enum module.
-# Inputs: cases, ranges, u_lo, u_hi.
-# Returns: result value or status.
-fn assert_exhaustive_or_warn(cases: List[Case], ranges: List[RangeCase], u_lo: UInt64, u_hi: UInt64) -> Bool:
-    var holes = coverage_holes(cases, ranges, u_lo, u_hi)
-    if len(holes) == 0:
+fn _check_exhaustive(min_tag: Int, max_tag: Int, tags: List[Int], rstarts: List[Int], rends: List[Int]) -> Bool:
+    if max_tag < min_tag:
+        print("warning: empty domain")
         return True
-    print(String("[enumx] Non-exhaustive match; missing tags: ") + String(holes))
-    return False
 
-# Does: utility function in enum module.
-# Inputs: cases.
-# Returns: result value or status.
-fn assert_no_duplicates_or_warn(cases: List[Case]) -> Bool:
-    var dups = find_duplicate_cases(cases)
-    if len(dups) == 0: return True
-    print(String("[enumx] Duplicate exact cases: ") + String(dups))
-    return False
+    var size = (max_tag - min_tag) + 1
+    var covered = List[Bool](length=size, fill=False)
+
+    # precise tags
+    for i in range(len(tags)):
+        var t = tags[i]
+        if t >= min_tag and t <= max_tag:
+            covered[t - min_tag] = True
+
+    # ranges
+    var n = min(len(rstarts), len(rends))
+    var idx = 0
+    while idx < n:
+        var s = rstarts[idx]
+        var e = rends[idx]
+        if e < s:
+            var tmp = s
+            s = e
+            e = tmp
+        if e >= min_tag and s <= max_tag:
+            if s < min_tag: s = min_tag
+            if e > max_tag: e = max_tag
+            var k = s
+            while k <= e:
+                covered[k - min_tag] = True
+                k += 1
+        idx += 1
+
+    var all_ok = True
+    var j = 0
+    while j < size:
+        if not covered[j]:
+            var miss = min_tag + j
+            print("warning: uncovered tag ", miss)
+            all_ok = False
+        j += 1
+    return all_ok
+
+# Legacy API wrapper using Case/RangeCase
+fn assert_exhaustive_or_warn(cases: List[Case], ranges: List[RangeCase], min_tag: Int, max_tag: Int) -> Bool:
+    var tags = List[Int](capacity=len(cases))
+    for i in range(len(cases)):
+        tags.append(cases[i].tag)
+    var rstarts = List[Int](capacity=len(ranges))
+    var rends = List[Int](capacity=len(ranges))
+    for j in range(len(ranges)):
+        rstarts.append(ranges[j].start)
+        rends.append(ranges[j].end)
+    return _check_exhaustive(min_tag, max_tag, tags, rstarts, rends)
+
+# Direct tags API
+fn assert_exhaustive_or_warn_tags(tags: List[Int], rstarts: List[Int], rends: List[Int], min_tag: Int, max_tag: Int) -> Bool:
+    return _check_exhaustive(min_tag, max_tag, tags, rstarts, rends)
