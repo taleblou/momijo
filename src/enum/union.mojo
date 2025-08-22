@@ -1,7 +1,7 @@
 # MIT License
-# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
-# Module: momijo.enum.union
-
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
 # Compute number of 64-bit words needed to store `bits` bits (ceiling division by 64)
 fn words_needed(bits: Int) -> Int:
     if bits <= 0:
