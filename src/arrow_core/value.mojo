@@ -1,64 +1,101 @@
-
-# Momijo Arrow Core
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo 
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
+#
+# Project: momijo.arrow_core
+# File: momijo/arrow_core/value.mojo
+#
+# This file is part of the Momijo project.
+# See the LICENSE file at the repository root for license information. 
 
-from momijo.arrow_core.types import DataType, INT32, FLOAT64, BOOL, STRING, UNKNOWN
+from momijo.arrow_core.types import ArrowType, arrow_type_name
+from momijo.enum import Enum
 
-struct Value:
-    is_null: Bool
-    tag: Int
-    i: Int
-    f: Float64
-    b: Bool
-    s: String
+struct ValueTag: Enum:
+    INT
+    FLOAT64
+    STRING
+    BOOL
+    NULL
+
+struct Value(Copyable, Movable, Sized):
+    var tag: ValueTag
+    var int_val: Int
+    var f64_val: Float64
+    var str_val: String
+    var bool_val: Bool
+
+    # ---------- Constructors ----------
 
     fn __init__(out self):
-        self.is_null = True
-        self.tag = -1
-        self.i = 0
-        self.f = 0.0
-        self.b = False
-        self.s = ""
+        self.tag = ValueTag.NULL
+        self.int_val = 0
+        self.f64_val = 0.0
+        self.str_val = ""
+        self.bool_val = False
 
-    fn int(v: Int) -> Value:
-        var x = Value()
-        x.is_null = False
-        x.tag = 0
-        x.i = v
-        return x
+    fn from_int(out self, v: Int):
+        self.tag = ValueTag.INT
+        self.int_val = v
+        self.f64_val = 0.0
+        self.str_val = ""
+        self.bool_val = False
 
-    fn float64(v: Float64) -> Value:
-        var x = Value()
-        x.is_null = False
-        x.tag = 1
-        x.f = v
-        return x
+    fn from_f64(out self, v: Float64):
+        self.tag = ValueTag.FLOAT64
+        self.int_val = 0
+        self.f64_val = v
+        self.str_val = ""
+        self.bool_val = False
 
-    fn boolean(v: Bool) -> Value:
-        var x = Value()
-        x.is_null = False
-        x.tag = 2
-        x.b = v
-        return x
+    fn from_string(out self, v: String):
+        self.tag = ValueTag.STRING
+        self.int_val = 0
+        self.f64_val = 0.0
+        self.str_val = v
+        self.bool_val = False
 
-    fn string(v: String) -> Value:
-        var x = Value()
-        x.is_null = False
-        x.tag = 3
-        x.s = v
-        return x
+    fn from_bool(out self, v: Bool):
+        self.tag = ValueTag.BOOL
+        self.int_val = 0
+        self.f64_val = 0.0
+        self.str_val = ""
+        self.bool_val = v
 
-    fn dtype(self) -> DataType:
-        if self.is_null: return UNKNOWN()
-        if self.tag == 0: return INT32()
-        if self.tag == 1: return FLOAT64()
-        if self.tag == 2: return BOOL()
-        if self.tag == 3: return STRING()
-        return UNKNOWN()
-// removed stray dunder: 
-    fn __str__(self) -> String:
-        if self.is_null: return "null"
-        if self.tag == 0: return str(self.i)
-        if self.tag == 1: return str(self.f)
-        if self.tag == 2: return "true" if self.b else "false"
-        return self.s
+    fn null(out self):
+        self.tag = ValueTag.NULL
+        self.int_val = 0
+        self.f64_val = 0.0
+        self.str_val = ""
+        self.bool_val = False
+
+    # ---------- Accessors ----------
+
+    fn as_int(self) -> Int:
+        return self.int_val if self.tag == ValueTag.INT else 0
+
+    fn as_f64(self) -> Float64:
+        return self.f64_val if self.tag == ValueTag.FLOAT64 else 0.0
+
+    fn as_string(self) -> String:
+        return self.str_val if self.tag == ValueTag.STRING else ""
+
+    fn as_bool(self) -> Bool:
+        return self.bool_val if self.tag == ValueTag.BOOL else False
+
+    fn is_null(self) -> Bool:
+        return self.tag == ValueTag.NULL
+
+    fn type_name(self) -> String:
+        match self.tag:
+            case .INT: return "Int"
+            case .FLOAT64: return "Float64"
+            case .STRING: return "String"
+            case .BOOL: return "Bool"
+            case .NULL: return "Null"
