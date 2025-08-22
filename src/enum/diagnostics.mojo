@@ -1,7 +1,7 @@
 # MIT License
-# Copyright (c) 2025 Morteza Talebou (https://taleblou.ir/)
-# Module: momijo.enum.diagnostics
-
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
 from momijo.enum.`match` import Case, RangeCase
 
 fn _check_exhaustive(min_tag: Int, max_tag: Int, tags: List[Int], rstarts: List[Int], rends: List[Int]) -> Bool:
@@ -58,7 +58,45 @@ fn assert_exhaustive_or_warn(cases: List[Case], ranges: List[RangeCase], min_tag
         rstarts.append(ranges[j].start)
         rends.append(ranges[j].end)
     return _check_exhaustive(min_tag, max_tag, tags, rstarts, rends)
+ 
+fn join_with(items: List[String], delim: String) -> String:
+    let n = len(items)
+    if n == 0:
+        return ""
+    if n == 1:
+        return items[0]
+    var out = String("")
+    var i = 0
+    while i < n:
+        out = out + items[i]
+        if i + 1 < n:
+            out = out + delim
+        i += 1
+    return out
 
-# Direct tags API
-fn assert_exhaustive_or_warn_tags(tags: List[Int], rstarts: List[Int], rends: List[Int], min_tag: Int, max_tag: Int) -> Bool:
-    return _check_exhaustive(min_tag, max_tag, tags, rstarts, rends)
+# "Expected one of: A, B, C" style message.
+fn enum_expected_one_of(enum_name: String, names: List[String]) -> String:
+    return enum_name + ": expected one of {" + join_with(names, ", ") + "}"
+
+# Pretty dump of name->index mapping.
+fn enum_debug_dump(enum_name: String, names: List[String]) -> String:
+    var lines = List[String]()
+    var i = 0
+    while i < len(names):
+        lines.append(String(i) + " => " + names[i])
+        i += 1
+    return enum_name + "[" + String(len(names)) + "]\n" + join_with(lines, "\n")
+
+# Guard for index validity; returns false and a message when invalid.
+fn enum_check_index(enum_name: String, i: Int, count: Int) -> (Bool, String):
+    if i < 0 or i >= count:
+        return (False, enum_name + ": invalid index " + String(i) + ", valid range is [0, " + String(count - 1) + "]")
+    return (True, "")
+
+# Parse error message builder.
+fn enum_parse_error(enum_name: String, token: String) -> String:
+    return enum_name + ": could not parse token '" + token + "'"
+
+# Mismatch message (e.g., when wiring schemas).
+fn enum_mismatch(enum_name: String, got: String, expected: String) -> String:
+    return enum_name + ": got '" + got + "', expected '" + expected + "'"
