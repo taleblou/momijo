@@ -1,51 +1,58 @@
-# Momijo Arrow Core
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo 
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
+#
+# Project: momijo.arrow_core
+# File: momijo/arrow_core/types.mojo
+#
+# This file is part of the Momijo project.
+# See the LICENSE file at the repository root for license information. 
+ 
 
+from momijo.enum import Enum
 
-struct DataType(Copyable, Movable, EqualityComparable):
-    var name: String
-    fn __init__(out self, name: String):
-        self.name = name
-    fn __eq__(self, other: DataType) -> Bool:
-        return self.name == other.name
-    fn __ne__(self, other: DataType) -> Bool:
-        return not self.__eq__(other)
+struct ArrowType: Enum:
+    INT
+    FLOAT64
+    STRING
+    BOOL
+    UNKNOWN
 
-fn INT32() -> DataType: return DataType("int32")
-fn INT64() -> DataType: return DataType("int64")
-fn FLOAT32() -> DataType: return DataType("float32")
-fn FLOAT64() -> DataType: return DataType("float64")
-fn BOOL()   -> DataType: return DataType("bool")
-fn STRING() -> DataType: return DataType("string")
-fn DATE64() -> DataType: return DataType("date64")
-fn TIMESTAMP() -> DataType: return DataType("timestamp")
-fn UNKNOWN() -> DataType: return DataType("unknown")
+fn arrow_type_name(t: ArrowType) -> String:
+    match t:
+        case .INT: return "Int"
+        case .FLOAT64: return "Float64"
+        case .STRING: return "String"
+        case .BOOL: return "Bool"
+        case .UNKNOWN: return "Unknown"
 
-struct Field(Copyable, Movable, EqualityComparable):
-    var name: String
-    var dtype: DataType
-    var nullable: Bool
-    fn __init__(out self, name: String, dtype: DataType, nullable: Bool = True):
-        self.name = name
-        self.dtype = dtype
-        self.nullable = nullable
-    fn __eq__(self, other: Field) -> Bool:
-        return self.name == other.name and self.dtype == other.dtype and self.nullable == other.nullable
-    fn __ne__(self, other: Field) -> Bool:
-        return not self.__eq__(other)
+# Map from string name to ArrowType
+fn parse_arrow_type(name: String) -> ArrowType:
+    if name == "Int":
+        return ArrowType.INT
+    if name == "Float64":
+        return ArrowType.FLOAT64
+    if name == "String":
+        return ArrowType.STRING
+    if name == "Bool":
+        return ArrowType.BOOL
+    return ArrowType.UNKNOWN
 
-struct Schema(Copyable, Movable, EqualityComparable, Sized):
-    var fields: List[Field]
-    fn __init__(out self, fields: List[Field]):
-        self.fields = fields
-    fn __len__(self) -> Int:
-        return len(self.fields)
-    fn __eq__(self, other: Schema) -> Bool:
-        if len(self.fields) != len(other.fields): return False
-        var i = 0
-        while i < len(self.fields):
-            if self.fields[i] != other.fields[i]: return False
-            i += 1
-        return True
-    fn __ne__(self, other: Schema) -> Bool:
-        return not self.__eq__(other)
+# Simple trait simulation: check if numeric
+fn arrow_type_is_numeric(t: ArrowType) -> Bool:
+    return t == ArrowType.INT or t == ArrowType.FLOAT64
+
+# Default values for types
+fn arrow_type_default(t: ArrowType) -> String:
+    match t:
+        case .INT: return "0"
+        case .FLOAT64: return "0.0"
+        case .STRING: return ""
+        case .BOOL: return "false"
+        case .UNKNOWN: return ""
