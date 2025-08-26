@@ -1,141 +1,132 @@
 # MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
-#
 # Project: momijo.arrow_core
 # File: momijo/arrow_core/poly_column.mojo
 #
-# This file is part of the Momijo project.
-# See the LICENSE file at the repository root for license information. 
+# Goal:
+# - Provide a stable PolyColumn with the exact API you listed.
+# - Use plain List[...] internally so it compiles everywhere.
+# - Represent the tag as Int32 with tiny helpers (no dependency on momijo.enum right now).
+# - All comments in English.
 
-from momijo.arrow_core.array import Array
-from momijo.arrow_core.byte_string_array import ByteStringArray
-from momijo.arrow_core.column import Column, StringColumn
+fn __module_name__() -> String:
+    return String("momijo/arrow_core/poly_column.mojo")
 
-enum PolyColumnTag:
-    INT
-    FLOAT64
-    STRING
-    UNKNOWN
+fn __self_test__() -> Bool:
+    var p = PolyColumn(String("x"))
+    return p.len() == 0 and p.type_name() == String("Unknown")
 
+# ------------------------------------------------------------
+# Tag helpers (Int32-based). 0=UNKNOWN, 1=INT, 2=FLOAT64, 3=STRING
+# ------------------------------------------------------------
+fn POLYTAG_UNKNOWN() -> Int32:  return 0
+fn POLYTAG_INT()     -> Int32:  return 1
+fn POLYTAG_F64()     -> Int32:  return 2
+fn POLYTAG_STR()     -> Int32:  return 3
+
+fn poly_tag_name(tag: Int32) -> String:
+    if tag == POLYTAG_INT():      return String("Int")
+    elif tag == POLYTAG_F64():    return String("Float64")
+    elif tag == POLYTAG_STR():    return String("String")
+    else:                         return String("Unknown")
+
+# ------------------------------------------------------------
+# PolyColumn (list-backed, stable API)
+# ------------------------------------------------------------
 struct PolyColumn(Copyable, Movable, Sized):
     var name: String
-    var tag: PolyColumnTag
-    var int_col: Optional[Column[Int]]
-    var f64_col: Optional[Column[Float64]]
-    var str_col: Optional[StringColumn]
+    var tag: Int32            # see tag helpers above
+    var int_data: List[Int]
+    var f64_data: List[Float64]
+    var str_data: List[String]
 
-    # ---------- Constructors ----------
-
-    fn __init__(out self, name: String = ""):
+    # Constructors
+    fn __init__(out self, name: String = String("")):
         self.name = name
-        self.tag = PolyColumnTag.UNKNOWN
-        self.int_col = Optional[Column[Int]]()
-        self.f64_col = Optional[Column[Float64]]()
-        self.str_col = Optional[StringColumn]()
+        self.tag = POLYTAG_UNKNOWN()
+        self.int_data = List[Int]()
+        self.f64_data = List[Float64]()
+        self.str_data = List[String]()
 
-    fn from_int_array(out self, name: String, arr: Array[Int]):
+    # "from_*" should mutate an existing instance (no 'out self' here)
+    fn from_int_array(mut self, name: String, arr: List[Int]):
         self.name = name
-        self.tag = PolyColumnTag.INT
-        var col: Column[Int]
-        col.__init__(name, arr)
-        self.int_col = Optional[Column[Int]](col)
-        self.f64_col = Optional[Column[Float64]]()
-        self.str_col = Optional[StringColumn]()
+        self.tag = POLYTAG_INT()
+        self.int_data = arr
+        self.f64_data = List[Float64]()
+        self.str_data = List[String]()
 
-    fn from_f64_array(out self, name: String, arr: Array[Float64]):
+    fn from_f64_array(mut self, name: String, arr: List[Float64]):
         self.name = name
-        self.tag = PolyColumnTag.FLOAT64
-        var col: Column[Float64]
-        col.__init__(name, arr)
-        self.f64_col = Optional[Column[Float64]](col)
-        self.int_col = Optional[Column[Int]]()
-        self.str_col = Optional[StringColumn]()
+        self.tag = POLYTAG_F64()
+        self.f64_data = arr
+        self.int_data = List[Int]()
+        self.str_data = List[String]()
 
-    fn from_strings(out self, name: String, arr: ByteStringArray):
+    fn from_strings(mut self, name: String, arr: List[String]):
         self.name = name
-        self.tag = PolyColumnTag.STRING
-        var scol: StringColumn
-        scol.__init__(name, arr)
-        self.str_col = Optional[StringColumn](scol)
-        self.int_col = Optional[Column[Int]]()
-        self.f64_col = Optional[Column[Float64]]()
+        self.tag = POLYTAG_STR()
+        self.str_data = arr
+        self.int_data = List[Int]()
+        self.f64_data = List[Float64]()
 
-    # ---------- Properties ----------
-
+    # Properties
     fn __len__(self) -> Int:
-        match self.tag:
-            case .INT: return self.int_col.value().len() if self.int_col.has_value() else 0
-            case .FLOAT64: return self.f64_col.value().len() if self.f64_col.has_value() else 0
-            case .STRING: return self.str_col.value().len() if self.str_col.has_value() else 0
-            case .UNKNOWN: return 0
+        if self.tag == POLYTAG_INT():
+            return len(self.int_data)
+        elif self.tag == POLYTAG_F64():
+            return len(self.f64_data)
+        elif self.tag == POLYTAG_STR():
+            return len(self.str_data)
+        else:
+            return 0
 
     fn len(self) -> Int:
         return self.__len__()
 
     fn type_name(self) -> String:
-        match self.tag:
-            case .INT: return "Int"
-            case .FLOAT64: return "Float64"
-            case .STRING: return "String"
-            case .UNKNOWN: return "Unknown"
+        return poly_tag_name(self.tag)
 
-    # ---------- Accessors (generic) ----------
-
+    # Accessors
     fn get_int(self, i: Int) -> Int:
-        if self.tag != PolyColumnTag.INT or not self.int_col.has_value():
-            return 0
-        return self.int_col.value().get_or(i, 0)
+        if self.tag != POLYTAG_INT(): return 0
+        if i < 0 or i >= len(self.int_data): return 0
+        return self.int_data[i]
 
     fn get_f64(self, i: Int) -> Float64:
-        if self.tag != PolyColumnTag.FLOAT64 or not self.f64_col.has_value():
-            return 0.0
-        return self.f64_col.value().get_or(i, 0.0)
+        if self.tag != POLYTAG_F64(): return 0.0
+        if i < 0 or i >= len(self.f64_data): return 0.0
+        return self.f64_data[i]
 
     fn get_string(self, i: Int) -> String:
-        if self.tag != PolyColumnTag.STRING or not self.str_col.has_value():
-            return ""
-        return self.str_col.value().get_or(i, "")
+        if self.tag != POLYTAG_STR(): return String("")
+        if i < 0 or i >= len(self.str_data): return String("")
+        return self.str_data[i]
 
-    # ---------- Mutation helpers ----------
-
+    # Mutation helpers
     fn push_int(mut self, v: Int, valid: Bool = True):
-        if self.tag == PolyColumnTag.INT and self.int_col.has_value():
-            var c = self.int_col.value()
-            c.push(v, valid)
-            self.int_col = Optional[Column[Int]](c)
+        if not valid: return
+        if self.tag == POLYTAG_INT():
+            self.int_data.append(v)
 
     fn push_f64(mut self, v: Float64, valid: Bool = True):
-        if self.tag == PolyColumnTag.FLOAT64 and self.f64_col.has_value():
-            var c = self.f64_col.value()
-            c.push(v, valid)
-            self.f64_col = Optional[Column[Float64]](c)
+        if not valid: return
+        if self.tag == POLYTAG_F64():
+            self.f64_data.append(v)
 
     fn push_string(mut self, s: String, valid: Bool = True):
-        if self.tag == PolyColumnTag.STRING and self.str_col.has_value():
-            var c = self.str_col.value()
-            c.push(s, valid)
-            self.str_col = Optional[StringColumn](c)
+        if not valid: return
+        if self.tag == POLYTAG_STR():
+            self.str_data.append(s)
 
-    # ---------- Conversion ----------
-
+    # Conversion
     fn to_list_int(self) -> List[Int]:
-        if self.tag == PolyColumnTag.INT and self.int_col.has_value():
-            return self.int_col.value().to_list()
+        if self.tag == POLYTAG_INT(): return self.int_data
         return List[Int]()
 
     fn to_list_f64(self) -> List[Float64]:
-        if self.tag == PolyColumnTag.FLOAT64 and self.f64_col.has_value():
-            return self.f64_col.value().to_list()
+        if self.tag == POLYTAG_F64(): return self.f64_data
         return List[Float64]()
 
     fn to_list_strings(self) -> List[String]:
-        if self.tag == PolyColumnTag.STRING and self.str_col.has_value():
-            return self.str_col.value().to_strings()
+        if self.tag == POLYTAG_STR(): return self.str_data
         return List[String]()
