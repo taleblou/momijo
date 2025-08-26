@@ -1,34 +1,41 @@
 # MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
-#
 # Project: momijo.arrow_core
 # File: momijo/arrow_core/poly_record_batch.mojo
 #
-# This file is part of the Momijo project.
-# See the LICENSE file at the repository root for license information. 
+# Works with the current list-backed PolyColumn implementation.
+# Tag selection is done via POLYTAG_* helpers imported from poly_column.
 
-from momijo.arrow_core.poly_column import PolyColumn, PolyColumnTag
+from momijo.arrow_core.poly_column import (
+    PolyColumn,
+    POLYTAG_UNKNOWN,
+    POLYTAG_INT,
+    POLYTAG_F64,
+    POLYTAG_STR,
+)
+
+fn __module_name__() -> String:
+    return String("momijo/arrow_core/poly_record_batch.mojo")
+
+fn __self_test__() -> Bool:
+    var rb = PolyRecordBatch()
+    return rb.n_columns() == 0 and rb.n_rows() == 0 and len(rb) == 0
 
 struct PolyRecordBatch(Copyable, Movable, Sized):
     var columns: List[PolyColumn]
 
     # ---------- Constructors ----------
-
     fn __init__(out self):
         self.columns = List[PolyColumn]()
 
-    fn from_columns(out self, cols: List[PolyColumn]):
+    fn from_columns(mut self, cols: List[PolyColumn]):
         self.columns = cols
 
-    # ---------- Properties ----------
+    # ---------- Sized ----------
+    fn __len__(self) -> Int:
+        # define size as number of rows
+        return self.n_rows()
 
+    # ---------- Properties ----------
     fn n_columns(self) -> Int:
         return len(self.columns)
 
@@ -39,45 +46,48 @@ struct PolyRecordBatch(Copyable, Movable, Sized):
 
     fn column_names(self) -> List[String]:
         var names = List[String]()
-        for c in self.columns:
-            names.append(c.name)
+        var i = 0
+        while i < len(self.columns):
+            names.append(self.columns[i].name)
+            i += 1
         return names
 
     # ---------- Access by column ----------
-
     fn get_column(self, i: Int) -> PolyColumn:
         if i < 0 or i >= len(self.columns):
-            var dummy: PolyColumn
-            dummy.__init__("invalid")
+            # construct an initialized dummy
+            var dummy = PolyColumn(String("invalid"))
             return dummy
         return self.columns[i]
 
     fn get_column_by_name(self, name: String) -> PolyColumn:
-        for c in self.columns:
-            if c.name == name:
-                return c
-        var dummy: PolyColumn
-        dummy.__init__("invalid")
+        var i = 0
+        while i < len(self.columns):
+            if self.columns[i].name == name:
+                return self.columns[i]
+            i += 1
+        # construct an initialized dummy
+        var dummy = PolyColumn(String("invalid"))
         return dummy
 
     # ---------- Access by row ----------
-
     fn get_row_as_strings(self, row: Int) -> List[String]:
         var out = List[String]()
-        let ncols = len(self.columns)
         var j = 0
-        while j < ncols:
-            let col = self.columns[j]
-            match col.tag:
-                case .INT: out.append(String(col.get_int(row)))
-                case .FLOAT64: out.append(String(col.get_f64(row)))
-                case .STRING: out.append(col.get_string(row))
-                case .UNKNOWN: out.append("")
+        while j < len(self.columns):
+            var col = self.columns[j]
+            if col.tag == POLYTAG_INT():
+                out.append(String(col.get_int(row)))
+            elif col.tag == POLYTAG_F64():
+                out.append(String(col.get_f64(row)))
+            elif col.tag == POLYTAG_STR():
+                out.append(col.get_string(row))
+            else:
+                out.append(String(""))
             j += 1
         return out
 
     # ---------- Mutation ----------
-
     fn add_column(mut self, col: PolyColumn):
         self.columns.append(col)
 
@@ -85,13 +95,11 @@ struct PolyRecordBatch(Copyable, Movable, Sized):
         self.columns = List[PolyColumn]()
 
     # ---------- Conversion ----------
-
     fn to_table_strings(self) -> List[List[String]]:
         var rows = List[List[String]]()
-        let n = self.n_rows()
+        var n = self.n_rows()
         var i = 0
         while i < n:
             rows.append(self.get_row_as_strings(i))
             i += 1
         return rows
-
