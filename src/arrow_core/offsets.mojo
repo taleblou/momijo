@@ -2,19 +2,52 @@
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
 #
 # Project: momijo.arrow_core
 # File: momijo/arrow_core/offsets.mojo
-#
-# This file is part of the Momijo project.
-# See the LICENSE file at the repository root for license information. 
 
+fn __module_name__() -> String:
+    return String("momijo/arrow_core/offsets.mojo")
 
+fn __self_test__() -> Bool:
+    # extend with real checks as needed
+    return True
+
+# --- Lightweight helpers ---
+fn argmax_index(xs: List[Float64]) -> Int:
+    if len(xs) == 0:
+        return -1
+    var best = xs[0]
+    var idx = 0
+    var i = 1
+    while i < len(xs):
+        if xs[i] > best:
+            best = xs[i]
+            idx = i
+        i += 1
+    return idx
+
+fn argmin_index(xs: List[Float64]) -> Int:
+    if len(xs) == 0:
+        return -1
+    var best = xs[0]
+    var idx = 0
+    var i = 1
+    while i < len(xs):
+        if xs[i] < best:
+            best = xs[i]
+            idx = i
+        i += 1
+    return idx
+
+fn ensure_not_empty[T: Copyable & Movable](xs: List[T]) -> Bool:
+    return len(xs) > 0
+
+# ---------------- Offsets ----------------
 struct Offsets(Copyable, Movable, EqualityComparable, Sized):
     var data: List[Int]
 
@@ -25,7 +58,8 @@ struct Offsets(Copyable, Movable, EqualityComparable, Sized):
     fn __copyinit__(out self, other: Offsets):
         self.data = List[Int]()
         var i = 0
-        while i < len(other.data):
+        var n = len(other.data)
+        while i < n:
             self.data.append(other.data[i])
             i += 1
 
@@ -33,10 +67,13 @@ struct Offsets(Copyable, Movable, EqualityComparable, Sized):
         return len(self.data)
 
     fn __eq__(self, other: Offsets) -> Bool:
-        if len(self.data) != len(other.data): return False
+        var n = len(self.data)
+        if n != len(other.data):
+            return False
         var i = 0
-        while i < len(self.data):
-            if self.data[i] != other.data[i]: return False
+        while i < n:
+            if self.data[i] != other.data[i]:
+                return False
             i += 1
         return True
 
@@ -50,6 +87,7 @@ struct Offsets(Copyable, Movable, EqualityComparable, Sized):
         return len(self.data)
 
     fn last(self) -> Int:
+        # assumes at least one element exists (constructor seeds 0)
         return self.data[len(self.data) - 1]
 
     fn add_length(mut self, length: Int):
@@ -58,16 +96,23 @@ struct Offsets(Copyable, Movable, EqualityComparable, Sized):
 
     fn is_valid(self) -> Bool:
         var i = 1
-        while i < len(self.data):
+        var n = len(self.data)
+        while i < n:
             if self.data[i] < self.data[i - 1]:
                 return False
             i += 1
         return True
 
+# Build Offsets from a list of lengths
 fn from_lengths(lengths: List[Int]) -> Offsets:
     var o = Offsets()
     var i = 0
-    while i < len(lengths):
+    var n = len(lengths)
+    while i < n:
         o.add_length(lengths[i])
         i += 1
     return o
+
+# --- Module-level convenience to match legacy imports elsewhere ---
+fn last(o: Offsets) -> Int:
+    return o.last()
