@@ -2,53 +2,64 @@
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Taleblou and Mitra Daneshmand
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
 #
 # Project: momijo.arrow_core
 # File: momijo/arrow_core/bitmap.mojo
-#
-# This file is part of the Momijo project.
-# See the LICENSE file at the repository root for license information. 
- 
 
-struct Bitmap(Copyable, Movable, Sized):
+struct Bitmap(Movable, Sized):
     var bytes: List[UInt8]
     var nbits: Int
+
+    # ---------- Copy initializer (enables safe copies when needed) ----------
+    fn __copyinit__(out self, other: Self):
+        self.nbits = other.nbits
+        var dup = List[UInt8]()
+        var i = 0
+        var n = len(other.bytes)
+        while i < n:
+            dup.append(other.bytes[i])
+            i += 1
+        self.bytes = dup
 
     # ---------- Constructors ----------
 
     fn __init__(out self, nbits: Int = 0, all_valid: Bool = True):
         self.nbits = nbits
-        let nbytes = _bytes_len(nbits)
+        var nbytes = _bytes_len(nbits)
         self.bytes = List[UInt8]()
         for _ in range(nbytes):
             if all_valid:
                 self.bytes.append(UInt8(0xFF))
             else:
                 self.bytes.append(UInt8(0x00))
-        # Mask off extra bits in last byte if not full
-        _mask_last_byte(mut self)
+        _mask_last_byte(self)
 
-    # Build from existing byte buffer (truncated/padded to nbits).
-    fn from_bytes(out self, buf: List[UInt8], nbits: Int):
-        self.nbits = nbits
-        let nbytes = _bytes_len(nbits)
-        self.bytes = List[UInt8]()
+    # Build from an existing byte buffer (truncate/pad to 'nbits') and return a new Bitmap.
+    @staticmethod
+    fn from_bytes(buf: List[UInt8], nbits: Int) -> Bitmap:
+        var nbytes = _bytes_len(nbits)
+        var out_bytes = List[UInt8]()
         var i = 0
         while i < nbytes:
             if i < len(buf):
-                self.bytes.append(buf[i])
+                out_bytes.append(buf[i])
             else:
-                self.bytes.append(UInt8(0))
+                out_bytes.append(UInt8(0))
             i += 1
-        _mask_last_byte(mut self)
+
+        var bm = Bitmap(nbits=0, all_valid=False)
+        bm.nbits = nbits
+        bm.bytes = out_bytes
+        _mask_last_byte(bm)
+        return bm
 
     # ---------- Core queries ----------
 
+    @always_inline
     fn __len__(self) -> Int:
         return self.nbits
 
@@ -58,26 +69,25 @@ struct Bitmap(Copyable, Movable, Sized):
     fn get_valid(self, i: Int) -> Bool:
         if i < 0 or i >= self.nbits:
             return False
-        let byte_idx = i // 8
-        let bit_off = i % 8
-        let b = self.bytes[byte_idx]
-        let mask: UInt8 = (UInt8(1)) << UInt8(bit_off)
+        var byte_idx = i // 8
+        var bit_off  = i % 8
+        var b = self.bytes[byte_idx]
+        var mask: UInt8 = (UInt8(1)) << UInt8(bit_off)
         return (b & mask) != UInt8(0)
 
     fn count_valid(self) -> Int:
         var s: Int = 0
-        let nbytes = len(self.bytes)
+        var nbytes = len(self.bytes)
         var i = 0
         while i < nbytes:
             s += _popcount(self.bytes[i])
             i += 1
-        # If last byte is partially used, mask out extras
-        let extra = (nbytes * 8) - self.nbits
-        if extra > 0 and nbytes > 0:
-            let mask: UInt8 = (UInt8(1) << UInt8(8 - extra)) - UInt8(1)
-            let last = self.bytes[nbytes - 1] & mask
+        var extra_bits = (nbytes * 8) - self.nbits
+        if extra_bits > 0 and nbytes > 0:
+            var mask: UInt8 = (UInt8(1) << UInt8(8 - extra_bits)) - UInt8(1)
+            var last_masked = self.bytes[nbytes - 1] & mask
             s -= _popcount(self.bytes[nbytes - 1])
-            s += _popcount(last)
+            s += _popcount(last_masked)
         return s
 
     fn count_invalid(self) -> Int:
@@ -88,27 +98,26 @@ struct Bitmap(Copyable, Movable, Sized):
     fn set_valid(mut self, i: Int, valid: Bool):
         if i < 0 or i >= self.nbits:
             return
-        let byte_idx = i // 8
-        let bit_off = i % 8
-        let mask: UInt8 = (UInt8(1)) << UInt8(bit_off)
+        var byte_idx = i // 8
+        var bit_off  = i % 8
+        var mask: UInt8 = (UInt8(1)) << UInt8(bit_off)
         if valid:
             self.bytes[byte_idx] = self.bytes[byte_idx] | mask
         else:
-            self.bytes[byte_idx] = self.bytes[byte_idx] & (~mask)
-        _mask_last_byte(mut self)
+            var inv_mask: UInt8 = UInt8(0xFF) ^ mask
+            self.bytes[byte_idx] = self.bytes[byte_idx] & inv_mask
+        _mask_last_byte(self)
 
     fn resize(mut self, new_nbits: Int, default_valid: Bool = True):
-        let new_nbytes = _bytes_len(new_nbits)
-        let old_nbytes = len(self.bytes)
+        var new_nbytes = _bytes_len(new_nbits)
+        var old_nbytes = len(self.bytes)
         if new_nbytes > old_nbytes:
-            # Extend
             for _ in range(new_nbytes - old_nbytes):
                 if default_valid:
                     self.bytes.append(UInt8(0xFF))
                 else:
                     self.bytes.append(UInt8(0x00))
         elif new_nbytes < old_nbytes:
-            # Shrink
             var new_bytes = List[UInt8]()
             var i = 0
             while i < new_nbytes:
@@ -116,11 +125,12 @@ struct Bitmap(Copyable, Movable, Sized):
                 i += 1
             self.bytes = new_bytes
         self.nbits = new_nbits
-        _mask_last_byte(mut self)
+        _mask_last_byte(self)
 
 # ---------- Free functions ----------
 
 fn bitmap_set_valid(mut bm: Bitmap, i: Int, valid: Bool):
+    # NOTE: mutates a copy under current call semantics (demo-only)
     bm.set_valid(i, valid)
 
 fn bitmap_get_valid(bm: Bitmap, i: Int) -> Bool:
@@ -129,8 +139,8 @@ fn bitmap_get_valid(bm: Bitmap, i: Int) -> Bool:
 # ---------- Private helpers ----------
 
 fn _bytes_len(nbits: Int) -> Int:
-    let q = nbits // 8
-    let r = nbits % 8
+    var q = nbits // 8
+    var r = nbits % 8
     return q if r == 0 else (q + 1)
 
 fn _popcount(b: UInt8) -> Int:
@@ -142,9 +152,9 @@ fn _popcount(b: UInt8) -> Int:
     return c
 
 fn _mask_last_byte(mut bm: Bitmap):
-    let r = bm.nbits % 8
+    var r = bm.nbits % 8
     if r == 0:
         return
-    let mask: UInt8 = (UInt8(1) << UInt8(r)) - UInt8(1)
-    let last_idx = len(bm.bytes) - 1
+    var mask: UInt8 = (UInt8(1) << UInt8(r)) - UInt8(1)
+    var last_idx = len(bm.bytes) - 1
     bm.bytes[last_idx] = bm.bytes[last_idx] & mask
