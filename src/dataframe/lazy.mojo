@@ -1,46 +1,36 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Minimal usage demo for LazyFrame API
 
-
-# LazyFrame wrapping a LogicalPlan; now supports select/filter/aggregate
-
-from momijo.dataframe.logical_plan import LogicalPlan, scan as lp_scan, filter as lp_filter, project as lp_project, aggregate as lp_agg, AggSpec
-from momijo.dataframe.optimizer import optimize
-from momijo.dataframe.exec import execute
 from momijo.dataframe.frame import DataFrame
-from momijo.dataframe.expr import Expr, Pred
+from momijo.dataframe.column import Column
+from momijo.dataframe.lazy import LazyFrame
+from momijo.dataframe.logical_plan import AggSpec
 
-struct LazyFrame(Copyable, Movable):
-    var plan: LogicalPlan
+fn make_df() -> DataFrame:
+    # Build a tiny DataFrame: cols: ["id", "grp", "val"]
+    var c_id = Column.from_i64_name(String("id"), [1, 2, 3, 4, 5])
+    var c_g  = Column.from_str_name(String("grp"), [String("A"), String("A"), String("B"), String("B"), String("B")])
+    var c_v  = Column.from_f64_name(String("val"), [10.0, 11.0, 5.0, 7.0, 9.0])
+    return DataFrame([String("id"), String("grp"), String("val")], [c_id, c_g, c_v])
 
-    fn __init__(out self, plan: LogicalPlan):
-        self.plan = plan
+fn main():
+    var df = make_df()
+    var lf = LazyFrame.scan(df)
 
-    fn filter(self, e: Expr) -> LazyFrame:
-        return LazyFrame(lp_filter(self.plan, e))
+    # filter + select
+    var lf2 = lf.filter(Expr.col(String("val")).gt(Expr.lit_f64(8.0))).select([String("id"), String("grp"), String("val")])
 
-    fn select(self, cols: List[String]) -> LazyFrame:
-        return LazyFrame(lp_project(self.plan, cols))
+    # groupby + aggregate
+    var specs = List[AggSpec]()
+    specs.push(AggSpec.sum(String("val"), String("sum_val")))
+    specs.push(AggSpec.mean(String("val"), String("mean_val")))
 
-    fn groupby(self, by: String) -> LazyGroupBy:
-        return LazyGroupBy(self.plan, by)
+    var gb = lf2.groupby([String("grp")]).agg(specs)
 
-    fn collect(self) -> DataFrame:
-        let opt = optimize(self.plan)
-        return execute(opt)
+    # sort
+    var out = gb.sort_by([String("sum_val")], [False]).collect()
+    out.show()
 
-struct LazyGroupBy(Copyable, Movable):
-    var input_plan: LogicalPlan
-    var by: String
-
-    fn __init__(out self, input_plan: LogicalPlan, by: String):
-        self.input_plan = input_plan
-        self.by = by
-
-    fn agg(self, aggs: List[AggSpec]) -> LazyFrame:
-        return LazyFrame(lp_agg(self.input_plan, self.by, aggs))
-
-fn from_df(df: DataFrame) -> LazyFrame:
-    return LazyFrame(lp_scan(df))
+    # window example: row_number within grp ordered by val desc
+    var lf3 = lf.row_number(String("val"), [String("grp")])
+    var out2 = lf3.collect()
+    out2.show()
