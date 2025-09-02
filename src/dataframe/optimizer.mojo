@@ -2,41 +2,65 @@
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo
+# SPDX-License-Identifier: MIT
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
+#
+# Project: momijo.dataframe
+# File: momijo/dataframe/optimizer.mojo
+#
+# Simple rule-based logical optimizer:
+# - Project(Filter(X, e))  -> Filter(Project(X, cols), e)
+# - Filter(Project(X,c),e) -> Project(Filter(X, e), c)
+# - Project(Project(X,c1),c2) -> Project(X, c2)
+#
+# We run a small fixed number of top-level passes to propagate rewrites.
+
+from momijo.dataframe.logical_plan import (
+    LogicalPlan,
+    PLAN_PROJECT,
+    PLAN_FILTER
+)
+
+# --- one pass of top-level rewrite ---
+fn optimize_once(p: LogicalPlan) -> LogicalPlan:
+    # Rule 1: Project over Filter  -> swap
+    if p.kind == PLAN_PROJECT and p.child.kind == PLAN_FILTER:
+        # p = Project(Filter(X, e), cols)  ==>  Filter(Project(X, cols), e)
+        var filter_child = p.child.child
+        var filter_expr = p.child.expr
+        var new_child = LogicalPlan.project(filter_child, p.columns)
+        return LogicalPlan.filter(new_child, filter_expr)
+
+    # Rule 2: Filter over Project -> swap
+    if p.kind == PLAN_FILTER and p.child.kind == PLAN_PROJECT:
+        # p = Filter(Project(X, cols), e)  ==>  Project(Filter(X, e), cols)
+        var proj_child = p.child.child
+        var proj_cols = p.child.columns
+        var new_child = LogicalPlan.filter(proj_child, p.expr)
+        return LogicalPlan.project(new_child, proj_cols)
+
+    # Rule 3: Collapse double Project
+    if p.kind == PLAN_PROJECT and p.child.kind == PLAN_PROJECT:
+        # Project(Project(X, cols1), cols2) -> Project(X, cols2)
+        var inner_child = p.child.child
+        return LogicalPlan.project(inner_child, p.columns)
+
+    # No change at top-level in this pass
+    return p
 
 
-# Rule-based optimizer: push projection below filter; prune projection against aggregate needs
-
-from momijo.dataframe.logical_plan import LogicalPlan, PlanKind, filter as lp_filter, project as lp_project, aggregate as lp_agg, AggSpec
-from momijo.dataframe.expr import columns_referenced
-
+# --- run a few passes to propagate rewrites ---
 fn optimize(plan: LogicalPlan) -> LogicalPlan:
-    # PROJECT over FILTER: pushdown
-    if plan.kind == PlanKind.PROJECT and plan.input is not None:
-        let child = plan.input!
-        if child.kind == PlanKind.FILTER and child.filter_expr is not None:
-            var needed = Set[String]()
-            # columns needed for final projection
-            for c in plan.project_cols:
-                needed.insert(c)
-            # plus columns used in filter
-            for c in columns_referenced(child.filter_expr!):
-                needed.insert(c)
-            # reconstruct: PROJECT(needed) -> FILTER -> input
-            var below = lp_project(child.input!, List[String](needed)) if child.input is not None else child
-            var newf = lp_filter(below, child.filter_expr!)
-            return lp_project(newf, plan.project_cols)
-
-    # PROJECT over AGGREGATE: prune to only requested outputs
-    if plan.kind == PlanKind.PROJECT and plan.input is not None:
-        let child = plan.input!
-        if child.kind == PlanKind.AGGREGATE:
-            # project only requested output cols that exist after agg
-            var cols = List[String]()
-            if child.group_key is not None and plan.project_cols.contains(child.group_key!):
-                cols.append(child.group_key!)
-            for a in child.aggs:
-                if plan.project_cols.contains(a.output_col):
-                    cols.append(a.output_col)
-            return lp_project(child, cols)
-
-    return plan
+    var cur = plan
+    var i = 0
+    # Run a small fixed number of passes. This helps push rules deeper
+    # without requiring full recursion/rebuild for all node kinds.
+    while i < 6:
+        var nxt = optimize_once(cur)
+        # If no change at top, further passes may still catch a new pattern
+        # exposed by the previous rewrite one level down, so we just continue.
+        cur = nxt
+        i += 1
+    return cur
