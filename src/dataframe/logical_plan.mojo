@@ -1,68 +1,231 @@
 # MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-
-
-# Logical plan nodes for a minimal DataFrame engine with Scan/Filter/Project/Aggregate
+# Project: momijo.dataframe
+# File: momijo/dataframe/logical_plan.mojo
 
 from momijo.dataframe.frame import DataFrame
-from momijo.dataframe.expr import Expr
+from momijo.dataframe.column import Column  # needed for empty DataFrame ctor
 
-enum PlanKind:
-    SCAN
-    FILTER
-    PROJECT
-    AGGREGATE
+# -----------------------------------------------------------------------------
+# Plan kind "enum-like" helper (Mojo doesn't support top-level globals)
+# -----------------------------------------------------------------------------
+struct PlanKind:
+    @staticmethod
+    fn SCAN() -> Int:      return 0
+    @staticmethod
+    fn FILTER() -> Int:    return 1
+    @staticmethod
+    fn PROJECT() -> Int:   return 2
+    @staticmethod
+    fn AGGREGATE() -> Int: return 3
+    @staticmethod
+    fn SORT() -> Int:      return 4
+    @staticmethod
+    fn JOIN() -> Int:      return 5
+    @staticmethod
+    fn WINDOW() -> Int:    return 6
 
+# -----------------------------------------------------------------------------
+# Aggregation specification
+#   op:       operation name ("sum" | "mean" | "count" | ...)
+#   column:   input column name
+#   out_name: output column name (avoid 'alias' keyword)
+# -----------------------------------------------------------------------------
 struct AggSpec(Copyable, Movable):
-    var input_col: String
-    var agg_func: String   # "sum","mean","count"
-    var output_col: String
+    var op: String
+    var column: String
+    var out_name: String
 
-    fn __init__(out self, input_col: String, agg_func: String, output_col: String):
-        self.input_col = input_col
-        self.agg_func = agg_func
-        self.output_col = output_col
+    fn __init__(out self):
+        self.op = String("sum")
+        self.column = String("")
+        self.out_name = String("")
 
+    fn __init__(out self, op: String, column: String, out_name: String):
+        self.op = op
+        self.column = column
+        self.out_name = out_name
+
+# -----------------------------------------------------------------------------
+# Unified logical plan node
+# Each node type (kind) uses a subset of the fields below.
+# -----------------------------------------------------------------------------
 struct LogicalPlan(Copyable, Movable):
-    var kind: PlanKind
-    var input: Optional[Pointer[LogicalPlan]]
-    var df: Optional[DataFrame]     # for SCAN
-    var filter_expr: Optional[Expr] # for FILTER
-    var project_cols: List[String]  # for PROJECT
-    var group_key: Optional[String] # for AGGREGATE (single key)
-    var aggs: List[AggSpec]         # for AGGREGATE
+    # Discriminant
+    var kind: Int
 
-    fn __init__(out self, kind: PlanKind):
-        self.kind = kind
-        self.input = None
-        self.df = None
-        self.filter_expr = None
-        self.project_cols = []
-        self.group_key = None
-        self.aggs = []
+    # SCAN
+    var df: DataFrame
 
-fn scan(df: DataFrame) -> LogicalPlan:
-    var p = LogicalPlan(PlanKind.SCAN)
-    p.df = df
-    return p
+    # Children (unary ops use 'child'; joins also use 'right')
+    var child: LogicalPlan
+    var right: LogicalPlan
 
-fn filter(input: LogicalPlan, e: Expr) -> LogicalPlan:
-    var p = LogicalPlan(PlanKind.FILTER)
-    p.input = &input
-    p.filter_expr = e
-    return p
+    # PROJECT / FILTER
+    var columns: List[String]
+    var expr: String  # kept as String to match executor
 
-fn project(input: LogicalPlan, cols: List[String]) -> LogicalPlan:
-    var p = LogicalPlan(PlanKind.PROJECT)
-    p.input = &input
-    p.project_cols = cols
-    return p
+    # AGGREGATE
+    var group_keys: List[String]
+    var aggs: List[AggSpec]
 
-fn aggregate(input: LogicalPlan, by: String, aggs: List[AggSpec]) -> LogicalPlan:
-    var p = LogicalPlan(PlanKind.AGGREGATE)
-    p.input = &input
-    p.group_key = by
-    p.aggs = aggs
-    return p
+    # SORT
+    var sort_keys: List[String]
+    var sort_asc: List[Bool]
+
+    # JOIN
+    var join_kind: String
+    var left_keys: List[String]
+    var right_keys: List[String]
+    var suffix_left: String
+    var suffix_right: String
+
+    # WINDOW
+    var window_kind: String
+    var window_value_col: String
+    var window_param_int: Int
+    var window_order_by: List[String]
+    var window_partition_by: List[String]
+    var window_new_name: String
+
+    # Default initializer: safe "SCAN of empty DF" node
+    fn __init__(out self):
+        self.kind = PlanKind.SCAN()
+        self.df = DataFrame(List[String](), List[Column]())  # empty df
+
+        # initialize children to safe empty nodes
+        self.child = LogicalPlan.__empty_node()
+        self.right = LogicalPlan.__empty_node()
+
+        # filter/project
+        self.columns = List[String]()
+        self.expr = String("")
+
+        # aggregate
+        self.group_keys = List[String]()
+        self.aggs = List[AggSpec]()
+
+        # sort
+        self.sort_keys = List[String]()
+        self.sort_asc = List[Bool]()
+
+        # join
+        self.join_kind = String("")
+        self.left_keys = List[String]()
+        self.right_keys = List[String]()
+        self.suffix_left = String("_l")
+        self.suffix_right = String("_r")
+
+        # window
+        self.window_kind = String("")
+        self.window_value_col = String("")
+        self.window_param_int = 0
+        self.window_order_by = List[String]()
+        self.window_partition_by = List[String]()
+        self.window_new_name = String("")
+
+    # Copy initializer: shallow copy (types used are Copyable)
+    fn __copyinit__(out self, other: Self):
+        self.kind = other.kind
+        self.df = other.df
+        self.child = other.child
+        self.right = other.right
+        self.columns = other.columns
+        self.expr = other.expr
+        self.group_keys = other.group_keys
+        self.aggs = other.aggs
+        self.sort_keys = other.sort_keys
+        self.sort_asc = other.sort_asc
+        self.join_kind = other.join_kind
+        self.left_keys = other.left_keys
+        self.right_keys = other.right_keys
+        self.suffix_left = other.suffix_left
+        self.suffix_right = other.suffix_right
+        self.window_kind = other.window_kind
+        self.window_value_col = other.window_value_col
+        self.window_param_int = other.window_param_int
+        self.window_order_by = other.window_order_by
+        self.window_partition_by = other.window_partition_by
+        self.window_new_name = other.window_new_name
+
+    # -----------------------------------------------------------------------------
+    # Factory helpers
+    # -----------------------------------------------------------------------------
+    @staticmethod
+    fn scan(df: DataFrame) -> LogicalPlan:
+        var p = LogicalPlan()
+        p.kind = PlanKind.SCAN()
+        p.df = df
+        return p
+
+    @staticmethod
+    fn filter(child: LogicalPlan, expr: String) -> LogicalPlan:
+        var p = LogicalPlan()
+        p.kind = PlanKind.FILTER()
+        p.child = child
+        p.expr = expr
+        return p
+
+    @staticmethod
+    fn project(child: LogicalPlan, cols: List[String]) -> LogicalPlan:
+        var p = LogicalPlan()
+        p.kind = PlanKind.PROJECT()
+        p.child = child
+        p.columns = cols
+        return p
+
+    @staticmethod
+    fn aggregate(child: LogicalPlan, keys: List[String], aggs: List[AggSpec]) -> LogicalPlan:
+        var p = LogicalPlan()
+        p.kind = PlanKind.AGGREGATE()
+        p.child = child
+        p.group_keys = keys
+        p.aggs = aggs
+        return p
+
+    @staticmethod
+    fn sort(child: LogicalPlan, keys: List[String], asc: List[Bool]) -> LogicalPlan:
+        var p = LogicalPlan()
+        p.kind = PlanKind.SORT()
+        p.child = child
+        p.sort_keys = keys
+        p.sort_asc = asc
+        return p
+
+    @staticmethod
+    fn join(left: LogicalPlan, right: LogicalPlan, kind: String,
+            left_keys: List[String], right_keys: List[String],
+            suffix_left: String, suffix_right: String) -> LogicalPlan:
+        var p = LogicalPlan()
+        p.kind = PlanKind.JOIN()
+        p.child = left
+        p.right = right
+        p.join_kind = kind
+        p.left_keys = left_keys
+        p.right_keys = right_keys
+        p.suffix_left = suffix_left
+        p.suffix_right = suffix_right
+        return p
+
+    @staticmethod
+    fn window(child: LogicalPlan, kind: String, value_col: String, param_int: Int,
+              order_by: List[String], partition_by: List[String], new_name: String) -> LogicalPlan:
+        var p = LogicalPlan()
+        p.kind = PlanKind.WINDOW()
+        p.child = child
+        p.window_kind = kind
+        p.window_value_col = value_col
+        p.window_param_int = param_int
+        p.window_order_by = order_by
+        p.window_partition_by = partition_by
+        p.window_new_name = new_name
+        return p
+
+    # -----------------------------------------------------------------------------
+    # Internal helper to create a safe empty node
+    # -----------------------------------------------------------------------------
+    @staticmethod
+    fn __empty_node() -> LogicalPlan:
+        var n = LogicalPlan()
+        n.kind = PlanKind.SCAN()
+        n.df = DataFrame(List[String](), List[Column]())
+        return n
