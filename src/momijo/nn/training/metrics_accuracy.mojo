@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.training.metrics_accuracy
+# File:         metrics_accuracy.mojo
+# Path:         src/momijo/nn/training/metrics_accuracy.mojo
 #
-# Project: momijo.nn.training
-# File: src/momijo/nn/training/metrics_accuracy.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: AccuracyMeter, WindowedAccuracy
+#   - Key functions: zeros1d_f, zeros1d_i, zeros2d_i, _safediv, argmax1d_f, topk_indices_row, accuracy_from_labels, accuracy_from_scores ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn zeros1d_f(n: Int) -> List[Float64]:
     var y = List[Float64]()
