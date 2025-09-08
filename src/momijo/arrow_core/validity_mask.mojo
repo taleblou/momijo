@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.arrow_core.validity_mask
+# File:         validity_mask.mojo
+# Path:         src/momijo/arrow_core/validity_mask.mojo
 #
-# Project: momijo.arrow_core
-# File: src/momijo/arrow_core/validity_mask.mojo
+# Description:  Arrow-inspired columnar primitives (offsets, buffers, list/struct arrays)
+#               supporting zero-copy slicing and predictable memory semantics.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ValidityMask
+#   - Key functions: argmax_index, argmin_index, _bytes_for_bits, __module_name__, __self_test__, __init__, __init__, from_count ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.arrow_core.bitmap import Bitmap
 
