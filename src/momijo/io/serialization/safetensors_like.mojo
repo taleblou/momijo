@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.io.serialization.safetensors_like
+# File:         safetensors_like.mojo
+# Path:         src/momijo/io/serialization/safetensors_like.mojo
 #
-# Project: momijo.io.serialization
-# File: src/momijo/io/serialization/safetensors_like.mojo
+# Description:  Filesystem/IO helpers with Path-centric APIs and safe resource
+#               management (binary/text modes and encoding clarity).
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: save_safetensors, load_safetensors, _self_test, main
+#   - Performs file/Path IO; prefer context-managed patterns.
+
 
 from momijo.tensor.tensor import Tensor
 import json
