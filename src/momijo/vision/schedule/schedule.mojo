@@ -1,15 +1,26 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.schedule.schedule
+# File:         schedule.mojo
+# Path:         src/momijo/vision/schedule/schedule.mojo
 #
-# Project: momijo.vision.schedule
-# File: src/momijo/vision/schedule/schedule.mojo
+# Description:  src.momijo.vision.schedule.schedule — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Work1D, Tile, TileOrderMode
+#   - Key functions: __init__, end, to_string, __init__, to_string, __init__, RASTER, SERPENTINE ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 struct Work1D(Copyable, Movable):
     var start: Int
