@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.dtypes
+# File:         dtypes.mojo
+# Path:         src/momijo/vision/dtypes.mojo
 #
-# Project: momijo.vision
-# File: src/momijo/vision/dtypes.mojo
+# Description:  src.momijo.vision.dtypes — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ChannelOrder, Layout, AlphaMode
+#   - Key functions: __init__, GRAY, RGB, BGR, RGBA, BGRA, ARGB, __eq__ ...
+#   - Static methods present.
+
 
 struct ChannelOrder(Copyable, Movable):
     var id: Int
