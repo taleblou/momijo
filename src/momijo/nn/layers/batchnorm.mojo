@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.layers.batchnorm
+# File:         batchnorm.mojo
+# Path:         src/momijo/nn/layers/batchnorm.mojo
 #
-# Project: momijo.nn.layers
-# File: src/momijo/nn/layers/batchnorm.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: BatchNorm1d
+#   - Key functions: _ones1d, _zeros2d, _mean_channelwise, _var_channelwise, _norm_apply_affine, _update_running, __init__, eval_mode ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.core.error import module
 from momijo.core.traits import zero
