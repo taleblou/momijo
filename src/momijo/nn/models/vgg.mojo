@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.models.vgg
+# File:         vgg.mojo
+# Path:         src/momijo/nn/models/vgg.mojo
 #
-# Project: momijo.nn.models
-# File: src/momijo/nn/models/vgg.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Linear, VGGBlock, VGGNetTiny
+#   - Key functions: zeros1d, zeros2d, zeros3d, zeros4d, relu, relu_chw, pad2d_chw, conv3x3_single ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn zeros1d(n: Int) -> List[Float64]:
     var y = List[Float64]()
