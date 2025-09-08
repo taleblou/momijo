@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.tensor
+# File:         tensor.mojo
+# Path:         src/momijo/vision/tensor.mojo
 #
-# Project: momijo.vision
-# File: src/momijo/vision/tensor.mojo
+# Description:  src.momijo.vision.tensor — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: DType, Layout, Tensor
+#   - Key functions: __init__, UInt8, Float32, __eq__, to_string, dtype_bytes, __init__, HWC ...
+#   - Static methods present.
+
 
 struct DType(Copyable, Movable):
     var id: Int
