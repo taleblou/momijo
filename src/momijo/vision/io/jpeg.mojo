@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.io.jpeg
+# File:         jpeg.mojo
+# Path:         src/momijo/vision/io/jpeg.mojo
 #
-# Project: momijo.vision.io
-# File: src/momijo/vision/io/jpeg.mojo
+# Description:  src.momijo.vision.io.jpeg — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: JpegInfo
+#   - Key functions: __init__, __init__, _read_be_u16, _is_ff, _is_sof, is_jpeg, parse_info, decode_to_rgb_u8 ...
+#   - Static methods present.
+
 
 from momijo.core.device import id
 from momijo.ir.passes.cse import find
