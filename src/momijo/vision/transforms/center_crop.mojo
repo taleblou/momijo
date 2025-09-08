@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.transforms.center_crop
+# File:         center_crop.mojo
+# Path:         src/momijo/vision/transforms/center_crop.mojo
 #
-# Project: momijo.vision.transforms
-# File: src/momijo/vision/transforms/center_crop.mojo
+# Description:  src.momijo.vision.transforms.center_crop — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: CenterCrop
+#   - Key functions: __init__, __call__, __copyinit__, __moveinit__
+#   - Uses generic functions/types with explicit trait bounds.
+#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+
 
 from memory import Pointer
 from momijo.arrow_core.buffer_slice import __init__
