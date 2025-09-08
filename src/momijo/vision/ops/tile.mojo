@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.ops.tile
+# File:         tile.mojo
+# Path:         src/momijo/vision/ops/tile.mojo
 #
-# Project: momijo.vision.ops
-# File: src/momijo/vision/ops/tile.mojo
+# Description:  src.momijo.vision.ops.tile — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Tile, ImageU8
+#   - Key functions: __init__, to_string, _min, _max, _offset, _alloc_u8, _alloc_i32, tile_grid ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 struct Tile(Copyable, Movable):
     var x: Int
