@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.core.shape
+# File:         shape.mojo
+# Path:         src/momijo/core/shape.mojo
 #
-# Project: momijo.core
-# File: src/momijo/core/shape.mojo
+# Description:  src.momijo.core.shape — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Shape, Strides, Slice
+#   - Key functions: __copyinit__, __init__, rank, count, is_scalar, is_vector, is_matrix, to_string ...
+#   - Static methods present.
+
 
 from momijo.core.config import off
 from momijo.core.error import MomijoError, code, invalid_argument, module, range_error
