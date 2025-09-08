@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.kernels.cpu.simd_elemwise
+# File:         simd_elemwise.mojo
+# Path:         src/momijo/kernels/cpu/simd_elemwise.mojo
 #
-# Project: momijo.kernels.cpu
-# File: src/momijo/kernels/cpu/simd_elemwise.mojo
+# Description:  src.momijo.kernels.cpu.simd_elemwise — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: simd_add, simd_mul, simd_sigmoid, _self_test
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from math import exp
 from stdlib.simd import SIMD
