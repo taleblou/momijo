@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.string_ops
+# File:         string_ops.mojo
+# Path:         src/momijo/dataframe/string_ops.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/string_ops.mojo
+# Description:  src.momijo.dataframe.string_ops — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: str_contains, str_split_once, str_strip, compare_str_eq, is_digit_code, contains_digit, extract_first_alpha, extract_all_alpha_joined ...
+#   - Error paths explicitly marked with 'raises'.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.dataframe.frame import width
 from momijo.dataframe.helpers import is_alpha_code, is_digit_code, rpad
