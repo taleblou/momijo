@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.core.ops.matmul
+# File:         matmul.mojo
+# Path:         src/momijo/core/ops/matmul.mojo
 #
-# Project: momijo.core.ops
-# File: src/momijo/core/ops/matmul.mojo
+# Description:  src.momijo.core.ops.matmul — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: matmul, get_M, get_K, get_KK, get_N, get_i, get_j, get_acc ...
+
 
 fn matmul(a: Tensor, b: Tensor) -> Tensor:
 # [auto-fix]     var M: Int = a.shape[0]
