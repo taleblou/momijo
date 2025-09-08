@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.losses.cross_entropy
+# File:         cross_entropy.mojo
+# Path:         src/momijo/nn/losses/cross_entropy.mojo
 #
-# Project: momijo.nn.losses
-# File: src/momijo/nn/losses/cross_entropy.mojo
+# Description:  Loss functions for supervised learning in Momijo with numerically
+#               stable forward and backward computations for classification/regression.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _exp, _log, _logsumexp_row, _zeros1d, log_softmax_row, nll_loss_row, cross_entropy1d, cross_entropy2d ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.core.error import module, underflow
 from momijo.core.traits import one
