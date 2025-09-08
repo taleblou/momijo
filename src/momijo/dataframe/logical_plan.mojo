@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.logical_plan
+# File:         logical_plan.mojo
+# Path:         src/momijo/dataframe/logical_plan.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/logical_plan.mojo
+# Description:  src.momijo.dataframe.logical_plan — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: PlanKind, AggSpec, LogicalPlan
+#   - Key functions: SCAN, FILTER, PROJECT, AGGREGATE, SORT, JOIN, WINDOW, __moveinit__ ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from builtin import sort
 from momijo.core.device import kind
