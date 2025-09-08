@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.render.raster.raster_buffer
+# File:         raster_buffer.mojo
+# Path:         src/momijo/visual/render/raster/raster_buffer.mojo
 #
-# Project: momijo.visual.render.raster
-# File: src/momijo/visual/render/raster/raster_buffer.mojo
+# Description:  src.momijo.visual.render.raster.raster_buffer — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Raster
+#   - Key functions: __init__, __moveinit__, _in_bounds, clear, put_pixel, read_pixel, blend_over, hspan ...
+#   - Performs file/Path IO; prefer context-managed patterns.
+
 
 from io.file import open
 from momijo.autograd.hook import call
