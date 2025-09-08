@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.io.onnx.shape_utils
+# File:         shape_utils.mojo
+# Path:         src/momijo/io/onnx/shape_utils.mojo
 #
-# Project: momijo.io.onnx
-# File: src/momijo/io/onnx/shape_utils.mojo
+# Description:  Filesystem/IO helpers with Path-centric APIs and safe resource
+#               management (binary/text modes and encoding clarity).
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ShapeInfo
+#   - Key functions: __init__, __copyinit__, __moveinit__, _broadcast_shapes, infer_add_shape, infer_matmul_shape, infer_relu_shape, infer_reshape_shape ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 struct ShapeInfo:
     var shape: List[Int]
