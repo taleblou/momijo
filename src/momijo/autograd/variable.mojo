@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.autograd.variable
+# File:         variable.mojo
+# Path:         src/momijo/autograd/variable.mojo
 #
-# Project: momijo.autograd
-# File: src/momijo/autograd/variable.mojo
+# Description:  src.momijo.autograd.variable — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Variable
+#   - Key functions: __init__, zero_grad, has_grad, __copyinit__, __moveinit__, Variable_zero_grad, Variable_has_grad, __self_test__
+#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+
 
 from memory import Pointer
 from momijo.arrow_core.tensor_bridge import TensorHandle
