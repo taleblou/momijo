@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.kernels.gpu.cuda.cudnn
+# File:         cudnn.mojo
+# Path:         src/momijo/kernels/gpu/cuda/cudnn.mojo
 #
-# Project: momijo.kernels.gpu.cuda
-# File: src/momijo/kernels/gpu/cuda/cudnn.mojo
+# Description:  src.momijo.kernels.gpu.cuda.cudnn — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: CuDNNHandle
+#   - Key functions: __init__, __copyinit__, __moveinit__, cudnn_conv2d_forward, cudnn_batchnorm_inference, _self_test
+#   - Error paths explicitly marked with 'raises'.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 from math import sqrt
 from momijo.core.device import Device
