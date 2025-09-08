@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.arrow_core.array_stats
+# File:         array_stats.mojo
+# Path:         src/momijo/arrow_core/array_stats.mojo
 #
-# Project: momijo.arrow_core
-# File: src/momijo/arrow_core/array_stats.mojo
+# Description:  Arrow-inspired columnar primitives (offsets, buffers, list/struct arrays)
+#               supporting zero-copy slicing and predictable memory semantics.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: sum, mean, sum_f64, mean_f64, min, max, min_f64, max_f64 ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from math import sqrt
 from momijo.arrow_core.array import Array
