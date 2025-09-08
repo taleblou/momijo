@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.arrow_core.bitmap_extras
+# File:         bitmap_extras.mojo
+# Path:         src/momijo/arrow_core/bitmap_extras.mojo
 #
-# Project: momijo.arrow_core
-# File: src/momijo/arrow_core/bitmap_extras.mojo
+# Description:  Arrow-style bitmap (validity mask) utilities for Momijo enabling
+#               bitwise logical ops, popcount, and safe nullable indexing.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Final-byte masking (& UInt8(0xFF)) on NOT/XOR/resize paths.
+#   - Key functions: bitmap_and, bitmap_or, bitmap_xor, bitmap_not, bitmap_count_set_bits, bitmap_any, bitmap_all, bitmap_copy_slice
+
 
 from momijo.arrow_core.bitmap import bitmap_set_valid
 from momijo.arrow_core.offsets import last
