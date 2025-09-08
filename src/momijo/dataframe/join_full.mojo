@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.join_full
+# File:         join_full.mojo
+# Path:         src/momijo/dataframe/join_full.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/join_full.mojo
+# Description:  src.momijo.dataframe.join_full — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _build_map, _keys_of, _row_to_strings, _append_row, _empty_row, inner_join, left_join_full, right_join_full ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.arrow_core.poly_column import get_string
 from momijo.core.error import module
