@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.tensor.broadcast
+# File:         broadcast.mojo
+# Path:         src/momijo/tensor/broadcast.mojo
 #
-# Project: momijo.tensor
-# File: src/momijo/tensor/broadcast.mojo
+# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
+#               element-wise ops, and foundational kernels.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: BroadcastMapper
+#   - Key functions: _prod, _row_major_strides, _align_right, can_broadcast, broadcast_shape, _ravel_index, _unravel_index, _map_indices ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.core.version import major
 from momijo.dataframe.diagnostics import safe
