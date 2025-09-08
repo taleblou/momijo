@@ -1,15 +1,26 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.tensor.storage
+# File:         storage.mojo
+# Path:         src/momijo/tensor/storage.mojo
 #
-# Project: momijo.tensor
-# File: src/momijo/tensor/storage.mojo
+# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
+#               element-wise ops, and foundational kernels.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Storage, BufferF32, BufferF64, BufferI32, BufferI64
+#   - Key functions: argmax_index, argmin_index, __module_name__, __self_test__, __init__, data_ptr, size_in_bytes, __copyinit__ ...
+#   - Uses generic functions/types with explicit trait bounds.
+#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 from momijo.tensor.device import Device
 
