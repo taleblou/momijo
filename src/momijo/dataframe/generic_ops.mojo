@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.generic_ops
+# File:         generic_ops.mojo
+# Path:         src/momijo/dataframe/generic_ops.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/generic_ops.mojo
+# Description:  src.momijo.dataframe.generic_ops — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: EqString, EqI64, EqF64, EqBool
+#   - Traits: Equality
+#   - Key functions: eq
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.dataframe.series_bool import append
 from momijo.extras.stubs import eq, found, if, in_b, len, pass, return, seen
