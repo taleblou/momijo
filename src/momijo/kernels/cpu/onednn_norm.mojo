@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.kernels.cpu.onednn_norm
+# File:         onednn_norm.mojo
+# Path:         src/momijo/kernels/cpu/onednn_norm.mojo
 #
-# Project: momijo.kernels.cpu
-# File: src/momijo/kernels/cpu/onednn_norm.mojo
+# Description:  src.momijo.kernels.cpu.onednn_norm — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: batchnorm_inference, batchnorm_training, batchnorm_onednn, _self_test
+#   - Error paths explicitly marked with 'raises'.
+
 
 from math import sqrt
 from momijo.tensor.tensor import Tensor
