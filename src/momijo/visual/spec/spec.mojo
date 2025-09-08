@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.spec.spec
+# File:         spec.mojo
+# Path:         src/momijo/visual/spec/spec.mojo
 #
-# Project: momijo.visual.spec
-# File: src/momijo/visual/spec/spec.mojo
+# Description:  src.momijo.visual.spec.spec — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: SeriesKind, SeriesKinds, OptColor, SeriesSpec, PlotSpec
+#   - Key functions: __init__, __copyinit__, __moveinit__, scatter, line, rect, __init__, __copyinit__ ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.visual.api import Figure
 from momijo.visual.api import _build_points
