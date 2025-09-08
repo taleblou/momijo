@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.spec.api
+# File:         api.mojo
+# Path:         src/momijo/visual/spec/api.mojo
 #
-# Project: momijo.visual.spec
-# File: src/momijo/visual/spec/api.mojo
+# Description:  src.momijo.visual.spec.api — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Figure
+#   - Key functions: _build_points, _add_grid, __init__, scatter, line, rect, save, __copyinit__ ...
+#   - Uses generic functions/types with explicit trait bounds.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 from momijo.core.device import kind
 from momijo.core.error import module
