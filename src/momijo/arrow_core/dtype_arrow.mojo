@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.arrow_core.dtype_arrow
+# File:         dtype_arrow.mojo
+# Path:         src/momijo/arrow_core/dtype_arrow.mojo
 #
-# Project: momijo.arrow_core
-# File: src/momijo/arrow_core/dtype_arrow.mojo
+# Description:  Arrow-inspired columnar primitives (offsets, buffers, list/struct arrays)
+#               supporting zero-copy slicing and predictable memory semantics.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ArrowType, DataType
+#   - Key functions: __module_name__, __self_test__, BOOL, INT8, INT16, INT32, INT64, UINT8 ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn __module_name__() -> String:
     return String("momijo/arrow_core/dtype_arrow.mojo")
