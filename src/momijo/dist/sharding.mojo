@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dist.sharding
+# File:         sharding.mojo
+# Path:         src/momijo/dist/sharding.mojo
 #
-# Project: momijo.dist
-# File: src/momijo/dist/sharding.mojo
+# Description:  src.momijo.dist.sharding — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ShardSpec
+#   - Key functions: argmin_index, __init__, __copyinit__, __moveinit__, shard_tensor
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from arrow_core.tensor_bridge import TensorHandle
 from dist.process_group import ProcessGroup
