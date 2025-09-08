@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.ir.dialects.annotations
+# File:         annotations.mojo
+# Path:         src/momijo/ir/dialects/annotations.mojo
 #
-# Project: momijo.ir.dialects
-# File: src/momijo/ir/dialects/annotations.mojo
+# Description:  src.momijo.ir.dialects.annotations — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: UnitAttr, StringAttr, IntegerAttr, ArrayAttr, DictEntry, DictAttr, Attribute, NamedAttr
+#   - Key functions: __init__, to_string, __copyinit__, __moveinit__, __init__, to_string, __copyinit__, __moveinit__ ...
+#   - Static methods present.
+
 
 enum AttrKind(Int):
     Unit = 0       # e.g., {noreturn}
