@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.training.visualize
+# File:         visualize.mojo
+# Path:         src/momijo/nn/training/visualize.mojo
 #
-# Project: momijo.nn.training
-# File: src/momijo/nn/training/visualize.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _minf, _maxf, _clampf, _minmax, _repeat, _to_int, sparkline, line_chart_ascii ...
+#   - Uses generic functions/types with explicit trait bounds.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 from momijo.core.error import module
 from momijo.dataframe.bitmap import invert
