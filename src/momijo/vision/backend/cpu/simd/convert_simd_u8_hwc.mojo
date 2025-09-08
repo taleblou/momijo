@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.backend.cpu.simd.convert_simd_u8_hwc
+# File:         convert_simd_u8_hwc.mojo
+# Path:         src/momijo/vision/backend/cpu/simd/convert_simd_u8_hwc.mojo
 #
-# Project: momijo.vision.backend.cpu.simd
-# File: src/momijo/vision/backend/cpu/simd/convert_simd_u8_hwc.mojo
+# Description:  src.momijo.vision.backend.cpu.simd.convert_simd_u8_hwc — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _offset, _alloc_u8, simd_bgr_to_rgb_u8_hwc, simd_rgb_to_gray_u8_hwc, simd_rgba_to_rgb_u8_hwc, simd_bgra_to_bgr_u8_hwc, simd_argmin_channel_u8_hwc, __self_test__
+#   - Static methods present.
+
 
 @staticmethod
 fn _offset(w: Int, c: Int, x: Int, y: Int, ch: Int) -> Int:
