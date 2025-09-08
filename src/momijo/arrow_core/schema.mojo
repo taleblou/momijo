@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.arrow_core.schema
+# File:         schema.mojo
+# Path:         src/momijo/arrow_core/schema.mojo
 #
-# Project: momijo.arrow_core
-# File: src/momijo/arrow_core/schema.mojo
+# Description:  Arrow-inspired columnar primitives (offsets, buffers, list/struct arrays)
+#               supporting zero-copy slicing and predictable memory semantics.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Schema
+#   - Key functions: __module_name__, __self_test__, argmax_index, argmin_index, __init__, __copyinit__, __len__, num_fields ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.arrow_core.field import Field
 
