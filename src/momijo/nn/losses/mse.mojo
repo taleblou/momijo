@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.losses.mse
+# File:         mse.mojo
+# Path:         src/momijo/nn/losses/mse.mojo
 #
-# Project: momijo.nn.losses
-# File: src/momijo/nn/losses/mse.mojo
+# Description:  Loss functions for supervised learning in Momijo with numerically
+#               stable forward and backward computations for classification/regression.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: MSELoss
+#   - Key functions: _zeros1d, _zeros2d, mse1d, mse2d, __init__, forward1d, forward2d, __copyinit__ ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.core.error import module
 from momijo.dataframe.helpers import t
