@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.index
+# File:         index.mojo
+# Path:         src/momijo/dataframe/index.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/index.mojo
+# Description:  src.momijo.dataframe.index — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: SimpleIndex, SimpleMultiIndex
+#   - Key functions: __copyinit__, __init__, len, __copyinit__, __copyinit__, __init__, nlevels, height ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.core.option import __copyinit__
 from momijo.dataframe.sampling import __init__
