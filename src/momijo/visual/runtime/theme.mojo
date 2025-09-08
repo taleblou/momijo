@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.runtime.theme
+# File:         theme.mojo
+# Path:         src/momijo/visual/runtime/theme.mojo
 #
-# Project: momijo.visual.runtime
-# File: src/momijo/visual/runtime/theme.mojo
+# Description:  src.momijo.visual.runtime.theme — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Theme
+#   - Key functions: _clamp8, rgb, rgba, lerp, __init__, __copyinit__, __moveinit__, theme_color_at ...
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 from momijo.dataframe.diagnostics import safe
 from momijo.dataframe.helpers import between, t
