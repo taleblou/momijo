@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.utils.string_utils
+# File:         string_utils.mojo
+# Path:         src/momijo/utils/string_utils.mojo
 #
-# Project: momijo.utils
-# File: src/momijo/utils/string_utils.mojo
+# Description:  General-purpose utilities and math helpers used across Momijo,
+#               designed to be small, composable, and well-tested.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: is_ascii_alpha, is_ascii_digit, is_ascii_alnum, is_ascii_space, to_lower_ascii, to_upper_ascii, lstrip_ws, rstrip_ws ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from stdlib.list import List
 from stdlib.string import String
