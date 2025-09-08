@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.core.parameter
+# File:         parameter.mojo
+# Path:         src/momijo/core/parameter.mojo
 #
-# Project: momijo.core
-# File: src/momijo/core/parameter.mojo
+# Description:  src.momijo.core.parameter — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ParameterState, Parameter, ParamHyper, ParameterGroup
+#   - Key functions: __copyinit__, __init__, to_string, __init__, __copyinit__, with_name, with_requires_grad, with_dtype ...
+#   - Static methods present.
+
 
 from builtin.dtype import DType
 from momijo.core.error import MomijoError
