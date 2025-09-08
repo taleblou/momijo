@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.transforms.random_rotation
+# File:         random_rotation.mojo
+# Path:         src/momijo/vision/transforms/random_rotation.mojo
 #
-# Project: momijo.vision.transforms
-# File: src/momijo/vision/transforms/random_rotation.mojo
+# Description:  src.momijo.vision.transforms.random_rotation — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ChannelOrder, Image, PadMode, LcgRng
+#   - Key functions: __init__, GRAY, RGB, BGR, RGBA, BGRA, __eq__, _num_ch ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 struct ChannelOrder(Copyable, Movable):
     var id: Int
