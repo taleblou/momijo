@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.ffi.freetype
+# File:         freetype.mojo
+# Path:         src/momijo/visual/ffi/freetype.mojo
 #
-# Project: momijo.visual.ffi
-# File: src/momijo/visual/ffi/freetype.mojo
+# Description:  src.momijo.visual.ffi.freetype — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: FT_Library, FT_Face, FT_GlyphSlot, FT_Vector, FT_Bitmap, FT_Glyph_Metrics, FTError, FTLib
+#   - Key functions: FT_RENDER_MODE_NORMAL_const, FT_LOAD_NO_HINTING_const, FT_LOAD_RENDER_const, FT_LOAD_DEFAULT_const, __init__, __init__, __copyinit__, __moveinit__ ...
+#   - Static methods present.
+#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+
 
 @staticmethod
 fn FT_RENDER_MODE_NORMAL_const() -> c_int:
