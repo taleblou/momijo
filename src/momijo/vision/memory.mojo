@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.memory
+# File:         memory.mojo
+# Path:         src/momijo/vision/memory.mojo
 #
-# Project: momijo.vision
-# File: src/momijo/vision/memory.mojo
+# Description:  src.momijo.vision.memory — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: U8Buffer
+#   - Key functions: __init__, is_empty, buf_get, buf_set, buf_fill, buf_copy_into, buf_clone_n, buf_realloc ...
+#   - Static methods present.
+
 
 from gpu import memory
 from momijo.core.config import off
