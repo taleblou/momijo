@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.gan.dcgan
+# File:         dcgan.mojo
+# Path:         src/momijo/nn/gan/dcgan.mojo
 #
-# Project: momijo.nn.gan
-# File: src/momijo/nn/gan/dcgan.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Linear, Generator, Discriminator, DCGAN
+#   - Key functions: _sum1d, _max1d, _exp, _log1p, _log, sigmoid, tanh_like, act1d ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn _sum1d(xs: List[Float64]) -> Float64:
     var s = 0.0
