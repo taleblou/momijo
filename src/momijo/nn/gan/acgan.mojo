@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.gan.acgan
+# File:         acgan.mojo
+# Path:         src/momijo/nn/gan/acgan.mojo
 #
-# Project: momijo.nn.gan
-# File: src/momijo/nn/gan/acgan.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Linear, Generator, DiscriminatorAux, ACGAN
+#   - Key functions: _abs, _sum1d, _max1d, _exp, _log1p, _log, sigmoid, softmax1d ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn _abs(x: Float64) -> Float64:
     if x >= 0.0: return x
