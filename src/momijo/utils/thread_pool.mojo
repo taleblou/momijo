@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.utils.thread_pool
+# File:         thread_pool.mojo
+# Path:         src/momijo/utils/thread_pool.mojo
 #
-# Project: momijo.utils
-# File: src/momijo/utils/thread_pool.mojo
+# Description:  General-purpose utilities and math helpers used across Momijo,
+#               designed to be small, composable, and well-tested.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ThreadPool
+#   - Key functions: _max, _min, cpu_count_guess, chunk_ranges, __init__, __copyinit__, set_workers, parallel_for ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from stdlib.list import List
 
