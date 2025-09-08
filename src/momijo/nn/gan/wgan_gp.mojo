@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.gan.wgan_gp
+# File:         wgan_gp.mojo
+# Path:         src/momijo/nn/gan/wgan_gp.mojo
 #
-# Project: momijo.nn.gan
-# File: src/momijo/nn/gan/wgan_gp.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Linear, Generator, Critic, WGAN_GP
+#   - Key functions: _exp, tanh_like, act1d, add1d, scale1d, mix1d, unit_dir, grad_norm_proxy ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn _exp(x: Float64) -> Float64:
     var term = 1.0
