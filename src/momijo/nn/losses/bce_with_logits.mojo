@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.losses.bce_with_logits
+# File:         bce_with_logits.mojo
+# Path:         src/momijo/nn/losses/bce_with_logits.mojo
 #
-# Project: momijo.nn.losses
-# File: src/momijo/nn/losses/bce_with_logits.mojo
+# Description:  Loss functions for supervised learning in Momijo with numerically
+#               stable forward and backward computations for classification/regression.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _abs, _exp, _log, _log1p, sigmoid, softplus, bce_with_logits_elem, bce_with_logits1d ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn _abs(x: Float64) -> Float64:
     if x < 0.0: return -x
