@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.io_bytes
+# File:         io_bytes.mojo
+# Path:         src/momijo/dataframe/io_bytes.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/io_bytes.mojo
+# Description:  src.momijo.dataframe.io_bytes — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: bytes_to_string
+
 
 from momijo.dataframe.helpers import bytes_to_string
 from momijo.dataframe.series_bool import append
