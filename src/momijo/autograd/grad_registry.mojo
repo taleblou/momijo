@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.autograd.grad_registry
+# File:         grad_registry.mojo
+# Path:         src/momijo/autograd/grad_registry.mojo
 #
-# Project: momijo.autograd
-# File: src/momijo/autograd/grad_registry.mojo
+# Description:  src.momijo.autograd.grad_registry — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: GradRegistry
+#   - Key functions: __init__, has_vjp, has_jvp, get_vjp, get_jvp, register_vjp, register_jvp, __copyinit__ ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.arrow_core.tensor_bridge import TensorHandle
 
