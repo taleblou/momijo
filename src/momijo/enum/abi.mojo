@@ -1,15 +1,21 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.enum.abi
+# File:         abi.mojo
+# Path:         src/momijo/enum/abi.mojo
 #
-# Project: momijo.enum
-# File: momijo/enum/abi.mojo
+# Description:  src.momijo.enum.abi — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _ascii_tolower, ascii_lower, enum_name_at, enum_index_of, enum_index_valid, enum_index_clamp, to_i8, to_i16 ...
 
 
 from momijo.core.error import module
