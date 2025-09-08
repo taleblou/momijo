@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.utils.hashing
+# File:         hashing.mojo
+# Path:         src/momijo/utils/hashing.mojo
 #
-# Project: momijo.utils
-# File: src/momijo/utils/hashing.mojo
+# Description:  General-purpose utilities and math helpers used across Momijo,
+#               designed to be small, composable, and well-tested.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Hasher64
+#   - Key functions: _const_fnv64_offset, _const_fnv64_prime, _const_golden64, _splitmix64, __init__, update_byte, update_bytes, update_u64 ...
+
 
 from hashlib.hash import hash
 from momijo.core.config import deterministic
