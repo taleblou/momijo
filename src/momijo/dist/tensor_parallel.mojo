@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dist.tensor_parallel
+# File:         tensor_parallel.mojo
+# Path:         src/momijo/dist/tensor_parallel.mojo
 #
-# Project: momijo.dist
-# File: src/momijo/dist/tensor_parallel.mojo
+# Description:  src.momijo.dist.tensor_parallel — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: TensorParallelSpec
+#   - Key functions: argmin_index, __init__, __copyinit__, __moveinit__, scatter_weight_row, scatter_weight_col, tp_allgather, tp_matmul
+
 
 from momijo.arrow_core.tensor_bridge import TensorHandle
 from momijo.core.device import kind
