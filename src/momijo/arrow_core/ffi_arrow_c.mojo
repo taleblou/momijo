@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.arrow_core.ffi_arrow_c
+# File:         ffi_arrow_c.mojo
+# Path:         src/momijo/arrow_core/ffi_arrow_c.mojo
 #
-# Project: momijo.arrow_core
-# File: src/momijo/arrow_core/ffi_arrow_c.mojo
+# Description:  Arrow-inspired columnar primitives (offsets, buffers, list/struct arrays)
+#               supporting zero-copy slicing and predictable memory semantics.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ArrowArray, ArrowSchema
+#   - Key functions: __module_name__, __self_test__, argmax_index, argmin_index, __init__, __init__, arrow_array_length, arrow_array_null_count ...
+#   - Uses generic functions/types with explicit trait bounds.
+#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+
 
 fn __module_name__() -> String:
     return String("momijo/arrow_core/ffi_arrow_c.mojo")
