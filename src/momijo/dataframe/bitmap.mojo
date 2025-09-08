@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.bitmap
+# File:         bitmap.mojo
+# Path:         src/momijo/dataframe/bitmap.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/bitmap.mojo
+# Description:  src.momijo.dataframe.bitmap — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Bitmap
+#   - Key functions: min_int, __init__, __init__, __copyinit__, __len__, get, set, count_true ...
+#   - Static methods present.
+
 
 from momijo.core.error import module
 from momijo.dataframe.expr import AND, OR
