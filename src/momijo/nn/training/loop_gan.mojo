@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.training.loop_gan
+# File:         loop_gan.mojo
+# Path:         src/momijo/nn/training/loop_gan.mojo
 #
-# Project: momijo.nn.training
-# File: src/momijo/nn/training/loop_gan.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: GanParamsG, GanParamsD, GanLog
+#   - Key functions: _abs, zeros1d_f, _exp, _log, _sigmoid, _mean_f, batch_z, batch_real ...
+#   - Uses generic functions/types with explicit trait bounds.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 fn _abs(x: Float64) -> Float64:
     if x < 0.0: return -x
