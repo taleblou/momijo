@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.core.result
+# File:         result.mojo
+# Path:         src/momijo/core/result.mojo
 #
-# Project: momijo.core
-# File: src/momijo/core/result.mojo
+# Description:  src.momijo.core.result — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Result
+#   - Key functions: __copyinit__, __init__, ok, err, is_ok, is_err, unwrap, unwrap_err ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.core.error import module
 from momijo.tensor.broadcast import valid
