@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.backend.registry
+# File:         registry.mojo
+# Path:         src/momijo/vision/backend/registry.mojo
 #
-# Project: momijo.vision.backend
-# File: src/momijo/vision/backend/registry.mojo
+# Description:  src.momijo.vision.backend.registry — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: OpKind, ImplState, OpSpec, Node, Registry
+#   - Key functions: __init__, None_, ResizeNearest, RGBToGray, BGRToRGB, DropAlpha, FlipH, FlipV ...
+#   - Static methods present.
+
 
 struct OpKind(Copyable, Movable):
     var id: Int
