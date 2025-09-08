@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.executor
+# File:         executor.mojo
+# Path:         src/momijo/vision/executor.mojo
 #
-# Project: momijo.vision
-# File: src/momijo/vision/executor.mojo
+# Description:  src.momijo.vision.executor — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ImageU8HWC, Node, Executor
+#   - Key functions: HWC, __eq__, __init__, layout, channels, _offset, get_px, set_px ...
+#   - Static methods present.
+
 
 from momijo.arrow_core.dtype_arrow import uint8
 from momijo.core.device import id, kind
