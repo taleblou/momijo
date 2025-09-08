@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.diagnostics
+# File:         diagnostics.mojo
+# Path:         src/momijo/dataframe/diagnostics.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/diagnostics.mojo
+# Description:  src.momijo.dataframe.diagnostics — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: dtype_name_of_column, print_df_info, join_col_names, print_i64_head, print_f64_head, rep, pad, join_i64_list ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.arrow_core.array_stats import count
 from momijo.dataframe.column import BOOL, Column, F64, I64, STR, safe
