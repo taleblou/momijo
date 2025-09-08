@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.io.file_system
+# File:         file_system.mojo
+# Path:         src/momijo/io/file_system.mojo
 #
-# Project: momijo.io
-# File: src/momijo/io/file_system.mojo
+# Description:  Filesystem/IO helpers with Path-centric APIs and safe resource
+#               management (binary/text modes and encoding clarity).
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: FileSystem
+#   - Key functions: exists, is_file, is_dir, read_text, write_text, append_text, delete, list_files ...
+#   - Static methods present.
+#   - Performs file/Path IO; prefer context-managed patterns.
+
 
 from os import listdir, remove
 from os.path import exists, isdir, isfile, join
