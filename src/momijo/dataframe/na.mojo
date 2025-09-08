@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.na
+# File:         na.mojo
+# Path:         src/momijo/dataframe/na.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/na.mojo
+# Description:  src.momijo.dataframe.na — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: fillna_col_i64, fillna_col_f64, fillna_col_bool, dropna_rows_any, isin_i64, isin_f64
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.arrow_core.poly_column import get_string
 from momijo.dataframe.api import col_bool, col_f64, col_i64, col_str, df_make
