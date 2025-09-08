@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.arrow_core.poly_record_batch
+# File:         poly_record_batch.mojo
+# Path:         src/momijo/arrow_core/poly_record_batch.mojo
 #
-# Project: momijo.arrow_core
-# File: src/momijo/arrow_core/poly_record_batch.mojo
+# Description:  Arrow-inspired columnar primitives (offsets, buffers, list/struct arrays)
+#               supporting zero-copy slicing and predictable memory semantics.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: PolyRecordBatch
+#   - Key functions: __module_name__, __self_test__, __init__, from_columns, __len__, n_columns, n_rows, column_names ...
+
 
 from momijo.arrow_core.poly_column import (
 
