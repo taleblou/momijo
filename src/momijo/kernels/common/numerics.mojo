@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.kernels.common.numerics
+# File:         numerics.mojo
+# Path:         src/momijo/kernels/common/numerics.mojo
 #
-# Project: momijo.kernels.common
-# File: src/momijo/kernels/common/numerics.mojo
+# Description:  src.momijo.kernels.common.numerics — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: NumericConsts
+#   - Key functions: __init__, __copyinit__, __moveinit__, safe_div, sigmoid, relu, tanh_fn, softmax ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from math import exp
 
