@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.autograd.tape
+# File:         tape.mojo
+# Path:         src/momijo/autograd/tape.mojo
 #
-# Project: momijo.autograd
-# File: src/momijo/autograd/tape.mojo
+# Description:  src.momijo.autograd.tape — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Node, Tape
+#   - Key functions: __init__, __copyinit__, __moveinit__, __init__, enable_recording, disable_recording, make_leaf, record_op ...
+
 
 from momijo.arrow_core.tensor_bridge import TensorHandle
 from momijo.autograd.hook import GradHook
