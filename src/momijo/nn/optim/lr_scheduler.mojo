@@ -1,15 +1,26 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.optim.lr_scheduler
+# File:         lr_scheduler.mojo
+# Path:         src/momijo/nn/optim/lr_scheduler.mojo
 #
-# Project: momijo.nn.optim
-# File: src/momijo/nn/optim/lr_scheduler.mojo
+# Description:  Learning-rate schedulers for Momijo neural networks, including
+#               step-based, exponential, and cosine-annealing variants compatible
+#               with Momijo optimizers.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Part of the neural network (nn) utilities in Momijo.
+#   - Designed for extensibility with custom learning rate schedulers.
+#   - Structs: StepLR, MultiStepLR, ExponentialLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, LinearWarmup, WarmupCosine, _MockOpt
+#   - Key functions: _abs, _powf, _pi, _two_pi, _wrap_pi, _cos, _max, _min ...
+
 
 fn _abs(x: Float64) -> Float64:
     if x < 0.0: return -x
