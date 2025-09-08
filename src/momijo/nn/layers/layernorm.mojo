@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.layers.layernorm
+# File:         layernorm.mojo
+# Path:         src/momijo/nn/layers/layernorm.mojo
 #
-# Project: momijo.nn.layers
-# File: src/momijo/nn/layers/layernorm.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: LayerNorm
+#   - Key functions: _zeros1d, _ones1d, _zeros2d, _mean_1d, _var_1d, _sqrt_pos, _norm_apply_affine_vec, __init__ ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn _zeros1d(n: Int) -> List[Float64]:
     var y = List[Float64]()
