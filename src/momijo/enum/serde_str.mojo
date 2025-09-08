@@ -1,15 +1,21 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.enum.serde_str
+# File:         serde_str.mojo
+# Path:         src/momijo/enum/serde_str.mojo
 #
-# Project: momijo.enum
-# File: momijo/enum/serde_str.mojo
+# Description:  src.momijo.enum.serde_str — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: enum_tag_to_string, enum_tag_from_string, enumset_to_string, enumset_from_string
 
 
 from .enumset import EnumSet, enumset_add, enumset_from_meta, enumset_iter_names
