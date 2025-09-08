@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.sorting
+# File:         sorting.mojo
+# Path:         src/momijo/dataframe/sorting.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/sorting.mojo
+# Description:  src.momijo.dataframe.sorting — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: rank_dense_f64, sort_values_key, argsort_i64, argsort_city_ts
+#   - Error paths explicitly marked with 'raises'.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.dataframe.datetime_ops import parse_minutes
 from momijo.dataframe.helpers import argsort_f64, argsort_i64
