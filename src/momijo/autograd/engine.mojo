@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.autograd.engine
+# File:         engine.mojo
+# Path:         src/momijo/autograd/engine.mojo
 #
-# Project: momijo.autograd
-# File: src/momijo/autograd/engine.mojo
+# Description:  src.momijo.autograd.engine — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: GradEntry, Engine
+#   - Key functions: __init__, __copyinit__, __moveinit__, __init__, accumulate_grad, backward, __copyinit__, __moveinit__ ...
+
 
 from gpu import id
 from momijo.arrow_core.offsets import last
