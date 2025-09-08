@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.stats_transform
+# File:         stats_transform.mojo
+# Path:         src/momijo/dataframe/stats_transform.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/stats_transform.mojo
+# Description:  src.momijo.dataframe.stats_transform — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: value_counts_str, str_replace_all
+
 
 from momijo.dataframe.api import col_i64, col_str, df_make
 from momijo.dataframe.column import Column
