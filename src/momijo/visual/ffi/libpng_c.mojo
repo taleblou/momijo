@@ -1,15 +1,27 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.ffi.libpng_c
+# File:         libpng_c.mojo
+# Path:         src/momijo/visual/ffi/libpng_c.mojo
 #
-# Project: momijo.visual.ffi
-# File: src/momijo/visual/ffi/libpng_c.mojo
+# Description:  src.momijo.visual.ffi.libpng_c — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ModuleState
+#   - Key functions: __init__, make_module_state, PNG_FILTER_TYPE_BASE_const, PNG_COMPRESSION_TYPE_BASE_const, PNG_INTERLACE_NONE_const, PNG_COLOR_TYPE_RGBA_const, PNG_COLOR_TYPE_RGB_const, PNG_COLOR_TYPE_GRAY_const ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+
+
 struct ModuleState:
     var PNG_VER
     fn __init__(out self, PNG_VER):
