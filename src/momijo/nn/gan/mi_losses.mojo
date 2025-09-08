@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.gan.mi_losses
+# File:         mi_losses.mojo
+# Path:         src/momijo/nn/gan/mi_losses.mojo
 #
-# Project: momijo.nn.gan
-# File: src/momijo/nn/gan/mi_losses.mojo
+# Description:  Loss functions for supervised learning in Momijo with numerically
+#               stable forward and backward computations for classification/regression.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _sum1d, _max1d, _exp, _log1p, _log, softmax1d, cross_entropy_logits1d, cross_entropy_prob_p_vs_logits_q ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn _sum1d(xs: List[Float64]) -> Float64:
     var s = 0.0
