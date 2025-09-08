@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.utils.math_utils
+# File:         math_utils.mojo
+# Path:         src/momijo/utils/math_utils.mojo
 #
-# Project: momijo.utils
-# File: src/momijo/utils/math_utils.mojo
+# Description:  General-purpose utilities and math helpers used across Momijo,
+#               designed to be small, composable, and well-tested.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: abs_i64, abs_f64, min_i64, max_i64, min_f64, max_f64, clamp_i64, clamp_f64 ...
+#   - Uses generic functions/types with explicit trait bounds.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 from stdlib.list import List
 
