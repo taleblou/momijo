@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.utils.env
+# File:         env.mojo
+# Path:         src/momijo/utils/env.mojo
 #
-# Project: momijo.utils
-# File: src/momijo/utils/env.mojo
+# Description:  General-purpose utilities and math helpers used across Momijo,
+#               designed to be small, composable, and well-tested.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Env
+#   - Key functions: _lower_ascii, _is_truthy, _is_falsy, _parse_int64_safe, _parse_float64_safe, __init__, size, keys ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from stdlib.dict import Dict
 from stdlib.list import List
