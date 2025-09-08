@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.render.raster.simd
+# File:         simd.mojo
+# Path:         src/momijo/visual/render/raster/simd.mojo
 #
-# Project: momijo.visual.render.raster
-# File: src/momijo/visual/render/raster/simd.mojo
+# Description:  src.momijo.visual.render.raster.simd — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _clipi, _memset32_line, hspan_simd, fill_rect_simd, blit_rgba8_over_simd, blit_raster_simd, clear_tiled, _self_test
+
 
 from momijo.visual.render.raster.raster_buffer import Raster
 
