@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.parameter
+# File:         parameter.mojo
+# Path:         src/momijo/nn/parameter.mojo
 #
-# Project: momijo.nn
-# File: src/momijo/nn/parameter.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Parameter
+#   - Key functions: __init__, data, set_data, requires_grad, set_requires_grad, has_grad, grad, set_grad ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.autograd.hook import call
 from momijo.core.error import module
