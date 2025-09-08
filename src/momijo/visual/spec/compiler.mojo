@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.spec.compiler
+# File:         compiler.mojo
+# Path:         src/momijo/visual/spec/compiler.mojo
 #
-# Project: momijo.visual.spec
-# File: src/momijo/visual/spec/compiler.mojo
+# Description:  src.momijo.visual.spec.compiler — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: CompileReport
+#   - Key functions: version_string, __init__, add, __copyinit__, __moveinit__, check_environment, _dummy_foreign_marker, _try_scene ...
+
 
 from momijo.autograd.hook import call
 from momijo.core.device import kind
