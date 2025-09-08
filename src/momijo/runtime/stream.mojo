@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.runtime.stream
+# File:         stream.mojo
+# Path:         src/momijo/runtime/stream.mojo
 #
-# Project: momijo.runtime
-# File: src/momijo/runtime/stream.mojo
+# Description:  Runtime facilities: device/context management, error handling,
+#               environment queries, and state injection patterns.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Stream
+#   - Key functions: __init__, enqueue, dequeue, pending, summary, __copyinit__, __moveinit__, _self_test
+
 
 from momijo.core.device import id
 from momijo.dataframe.helpers import t
