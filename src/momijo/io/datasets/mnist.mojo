@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.io.datasets.mnist
+# File:         mnist.mojo
+# Path:         src/momijo/io/datasets/mnist.mojo
 #
-# Project: momijo.io.datasets
-# File: src/momijo/io/datasets/mnist.mojo
+# Description:  Filesystem/IO helpers with Path-centric APIs and safe resource
+#               management (binary/text modes and encoding clarity).
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: MNIST
+#   - Key functions: __init__, __len__, __getitem__, _download, _load_data, __copyinit__, __moveinit__, _self_test ...
+#   - Performs file/Path IO; prefer context-managed patterns.
+
 
 from momijo.tensor.tensor import Tensor
 import gzip
