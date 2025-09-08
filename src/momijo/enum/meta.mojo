@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.enum.meta
+# File:         meta.mojo
+# Path:         src/momijo/enum/meta.mojo
 #
-# Project: momijo.enum
-# File: momijo/enum/meta.mojo
+# Description:  src.momijo.enum.meta — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: EnumMetaInfo
+#   - Key functions: __init__, __copyinit__, __moveinit__, make_meta, name_of, tag_of, all_names, all_tags ...
+#   - Uses generic functions/types with explicit trait bounds.
 
 
 from momijo.core.device import unknown
