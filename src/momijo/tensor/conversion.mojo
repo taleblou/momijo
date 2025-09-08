@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.tensor.conversion
+# File:         conversion.mojo
+# Path:         src/momijo/tensor/conversion.mojo
 #
-# Project: momijo.tensor
-# File: src/momijo/tensor/conversion.mojo
+# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
+#               element-wise ops, and foundational kernels.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: __module_name__, __self_test__, argmax_index, argmin_index, astype
+
 
 from momijo.tensor.tensor import Tensor
 
