@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.io_csv
+# File:         io_csv.mojo
+# Path:         src/momijo/dataframe/io_csv.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/io_csv.mojo
+# Description:  src.momijo.dataframe.io_csv — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: rstrip_cr, split_csv_line, is_ascii_digit_code, is_bool, is_int, is_float, parse_i64, parse_f64 ...
+
 
 from momijo.dataframe.column import Column
 from momijo.dataframe.frame import DataFrame
