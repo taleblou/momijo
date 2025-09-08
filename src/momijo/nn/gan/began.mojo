@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.gan.began
+# File:         began.mojo
+# Path:         src/momijo/nn/gan/began.mojo
 #
-# Project: momijo.nn.gan
-# File: src/momijo/nn/gan/began.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: Linear, AE, Generator, BEGAN
+#   - Key functions: _abs, _sum1d, _mean_abs_err, __init__, forward, __copyinit__, __moveinit__, _exp ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn _abs(x: Float64) -> Float64:
     if x >= 0.0: return x
