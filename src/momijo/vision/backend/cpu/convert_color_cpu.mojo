@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.backend.cpu.convert_color_cpu
+# File:         convert_color_cpu.mojo
+# Path:         src/momijo/vision/backend/cpu/convert_color_cpu.mojo
 #
-# Project: momijo.vision.backend.cpu
-# File: src/momijo/vision/backend/cpu/convert_color_cpu.mojo
+# Description:  src.momijo.vision.backend.cpu.convert_color_cpu — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _offset, bgr_to_rgb_u8_hwc, rgb_to_gray_u8_hwc, rgba_to_rgb_u8_hwc, bgra_to_bgr_u8_hwc, argmin_channel_u8_hwc, __self_test__
+#   - Static methods present.
+
 
 @staticmethod
 fn _offset(w: Int, c: Int, x: Int, y: Int, ch: Int) -> Int:
