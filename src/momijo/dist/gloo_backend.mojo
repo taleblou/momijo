@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dist.gloo_backend
+# File:         gloo_backend.mojo
+# Path:         src/momijo/dist/gloo_backend.mojo
 #
-# Project: momijo.dist
-# File: src/momijo/dist/gloo_backend.mojo
+# Description:  src.momijo.dist.gloo_backend — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: argmin_index, gloo_init, gloo_broadcast, gloo_allgather, gloo_reduce_scatter, gloo_barrier
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from arrow_core.tensor_bridge import TensorHandle
 from dist.process_group import ProcessGroup, ReduceOp, Status
