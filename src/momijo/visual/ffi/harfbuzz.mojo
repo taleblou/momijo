@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.ffi.harfbuzz
+# File:         harfbuzz.mojo
+# Path:         src/momijo/visual/ffi/harfbuzz.mojo
 #
-# Project: momijo.visual.ffi
-# File: src/momijo/visual/ffi/harfbuzz.mojo
+# Description:  src.momijo.visual.ffi.harfbuzz — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: hb_buffer_t, hb_font_t, hb_face_t, FT_Face, hb_glyph_info_t, hb_glyph_position_t, HBFont, HBGlyph
+#   - Key functions: HB_SCRIPT_LATIN_const, HB_DIRECTION_LTR_const, hb_buffer_create, hb_buffer_destroy, hb_buffer_add_utf8, hb_buffer_guess_segment_properties, hb_shape, hb_buffer_get_length ...
+#   - Static methods present.
+#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+
 
 @staticmethod
 fn HB_SCRIPT_LATIN_const() -> c_uint32:
