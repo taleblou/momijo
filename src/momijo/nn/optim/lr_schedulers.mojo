@@ -1,15 +1,26 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.optim.lr_schedulers
+# File:         lr_schedulers.mojo
+# Path:         src/momijo/nn/optim/lr_schedulers.mojo
 #
-# Project: momijo.nn.optim
-# File: src/momijo/nn/optim/lr_schedulers.mojo
+# Description:  Learning-rate schedulers for Momijo neural networks, including
+#               step-based, exponential, and cosine-annealing variants compatible
+#               with Momijo optimizers.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Part of the neural network (nn) utilities in Momijo.
+#   - Designed for extensibility with custom learning rate schedulers.
+#   - Structs: StepLR, MultiStepLR, CosineAnnealingLR
+#   - Key functions: __init__, get_lr, __copyinit__, __moveinit__, __init__, get_lr, __copyinit__, __moveinit__ ...
+
 
 from momijo.arrow_core.buffer_slice import __init__
 from momijo.extras.stubs import cos, factor, get_lr, if, return
