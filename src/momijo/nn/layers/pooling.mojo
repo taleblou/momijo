@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.nn.layers.pooling
+# File:         pooling.mojo
+# Path:         src/momijo/nn/layers/pooling.mojo
 #
-# Project: momijo.nn.layers
-# File: src/momijo/nn/layers/pooling.mojo
+# Description:  Neural-network utilities for Momijo integrating with tensors,
+#               optimizers, and training/evaluation loops.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: MaxPool2d, AvgPool2d
+#   - Key functions: zeros2d, zeros3d, zeros4d, pad2d_chw, _max, maxpool2d_single, avgpool2d_single, maxpool2d_batch ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 fn zeros2d(h: Int, w: Int) -> List[List[Float64]]:
     var y = List[List[Float64]]()
