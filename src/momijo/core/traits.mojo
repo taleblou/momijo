@@ -1,15 +1,26 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.core.traits
+# File:         traits.mojo
+# Path:         src/momijo/core/traits.mojo
 #
-# Project: momijo.core
-# File: src/momijo/core/traits.mojo
+# Description:  src.momijo.core.traits — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: SeqList, ListIterator, TensorMeta
+#   - Traits: PrettyPrintable, Describable, Hashable64, Cloneable, SizedLike, IndexGet, IndexSet, Sequence
+#   - Key functions: to_string, description, hash64, clone, size, get, set, size ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from builtin.dtype import DType
 from momijo.core.shape import Shape
