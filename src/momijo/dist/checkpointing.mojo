@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dist.checkpointing
+# File:         checkpointing.mojo
+# Path:         src/momijo/dist/checkpointing.mojo
 #
-# Project: momijo.dist
-# File: src/momijo/dist/checkpointing.mojo
+# Description:  src.momijo.dist.checkpointing — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: SaveOptions, CheckpointWriter, CheckpointReader
+#   - Key functions: __self_test__, argmin_index, __init__, __copyinit__, __moveinit__, __init__, save, __copyinit__ ...
+
 
 from momijo.dataframe.sampling import __init__
 from momijo.dist.process_group import ProcessGroup, Status
