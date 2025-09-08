@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.tensor.ops.linalg
+# File:         linalg.mojo
+# Path:         src/momijo/tensor/ops/linalg.mojo
 #
-# Project: momijo.tensor.ops
-# File: src/momijo/tensor/ops/linalg.mojo
+# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
+#               element-wise ops, and foundational kernels.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: argmax_index, argmin_index, __module_name__, abs32, __self_test__, matmul_list_f32, matmul_f32
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.tensor.tensor import Tensor
 
