@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.runtime.eager_executor
+# File:         eager_executor.mojo
+# Path:         src/momijo/runtime/eager_executor.mojo
 #
-# Project: momijo.runtime
-# File: src/momijo/runtime/eager_executor.mojo
+# Description:  Runtime facilities: device/context management, error handling,
+#               environment queries, and state injection patterns.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: EagerExecutor
+#   - Key functions: __init__, run_op, history, __copyinit__, __moveinit__, _self_test
+
 
 from momijo.autograd.function import apply
 from pathlib import Path
