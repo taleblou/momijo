@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.io.serialization.tensor_writer
+# File:         tensor_writer.mojo
+# Path:         src/momijo/io/serialization/tensor_writer.mojo
 #
-# Project: momijo.io.serialization
-# File: src/momijo/io/serialization/tensor_writer.mojo
+# Description:  Filesystem/IO helpers with Path-centric APIs and safe resource
+#               management (binary/text modes and encoding clarity).
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: write_tensor, write_tensors, _self_test, main
+
 
 from momijo.io.checkpoints.mnp import save_mnp
 from momijo.io.formats.npy import save_npy
