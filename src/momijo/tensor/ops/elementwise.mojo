@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.tensor.ops.elementwise
+# File:         elementwise.mojo
+# Path:         src/momijo/tensor/ops/elementwise.mojo
 #
-# Project: momijo.tensor.ops
-# File: src/momijo/tensor/ops/elementwise.mojo
+# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
+#               element-wise ops, and foundational kernels.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: argmax_index, argmin_index, __module_name__, _same_len_min, ew_add, ew_sub, ew_mul, ew_div ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from math import exp, log, sqrt, tanh
 from momijo.tensor.registry import add as registry_add
