@@ -1,15 +1,22 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.render.raster.png_backend
+# File:         png_backend.mojo
+# Path:         src/momijo/visual/render/raster/png_backend.mojo
 #
-# Project: momijo.visual.render.raster
-# File: src/momijo/visual/render/raster/png_backend.mojo
+# Description:  src.momijo.visual.render.raster.png_backend — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _raster_to_rgba8, write_png_from_raster, render_scene_raster
+
 
 from momijo.core.device import kind, unknown
 from momijo.core.error import module
