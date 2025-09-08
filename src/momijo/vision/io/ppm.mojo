@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.io.ppm
+# File:         ppm.mojo
+# Path:         src/momijo/vision/io/ppm.mojo
 #
-# Project: momijo.vision.io
-# File: src/momijo/vision/io/ppm.mojo
+# Description:  src.momijo.vision.io.ppm — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ImageRGBU8, PpmInfo
+#   - Key functions: __init__, __init__, _is_ws, _skip_ws_and_comments, _read_uint, _scale_sample, _append_byte, _append_uint_ascii ...
+#   - Static methods present.
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.core.error import unsupported
 from momijo.dataframe.helpers import read
