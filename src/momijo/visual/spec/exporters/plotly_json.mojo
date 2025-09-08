@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.spec.exporters.plotly_json
+# File:         plotly_json.mojo
+# Path:         src/momijo/visual/spec/exporters/plotly_json.mojo
 #
-# Project: momijo.visual.spec.exporters
-# File: src/momijo/visual/spec/exporters/plotly_json.mojo
+# Description:  src.momijo.visual.spec.exporters.plotly_json — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: _escape_json, _pad3, _css_rgb, _opacity_str, _append_number_array, write_plotly_json, _self_test
+#   - Performs file/Path IO; prefer context-managed patterns.
+
 
 from io.file import open
 from momijo.core.config import trace
