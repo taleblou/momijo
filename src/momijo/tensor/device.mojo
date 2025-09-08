@@ -1,15 +1,25 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.tensor.device
+# File:         device.mojo
+# Path:         src/momijo/tensor/device.mojo
 #
-# Project: momijo.tensor
-# File: src/momijo/tensor/device.mojo
+# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
+#               element-wise ops, and foundational kernels.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: DeviceKind, Device
+#   - Key functions: __module_name__, __self_test__, __copyinit__, CPU, CUDA, METAL, OTHER, __eq__ ...
+#   - Static methods present.
+#   - GPU/device utilities present; validate backend assumptions.
+
 
 from momijo.core.device import cpu, cuda, kind, metal
 from momijo.core.error import code
