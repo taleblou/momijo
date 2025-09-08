@@ -1,15 +1,24 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.vision.io.png
+# File:         png.mojo
+# Path:         src/momijo/vision/io/png.mojo
 #
-# Project: momijo.vision.io
-# File: src/momijo/vision/io/png.mojo
+# Description:  src.momijo.vision.io.png — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: ImageRGBAU8, PngInfo
+#   - Key functions: __init__, __init__, _read_be_u32, _eq4, is_png, parse_info, decode_to_rgba_u8, encode_from_rgba_u8 ...
+#   - Static methods present.
+
 
 from momijo.dataframe.helpers import t
 from momijo.nn.parameter import data
