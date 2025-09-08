@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.dataframe.stats_core
+# File:         stats_core.mojo
+# Path:         src/momijo/dataframe/stats_core.mojo
 #
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/stats_core.mojo
+# Description:  src.momijo.dataframe.stats_core — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: cumsum_i64, corr_f64, sqrt_f64
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.dataframe.helpers import sqrt
 from momijo.dataframe.series_bool import append
