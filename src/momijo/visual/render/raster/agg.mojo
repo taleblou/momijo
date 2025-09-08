@@ -1,15 +1,23 @@
-# MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       src.momijo.visual.render.raster.agg
+# File:         agg.mojo
+# Path:         src/momijo/visual/render/raster/agg.mojo
 #
-# Project: momijo.visual.render.raster
-# File: src/momijo/visual/render/raster/agg.mojo
+# Description:  src.momijo.visual.render.raster.agg — focused Momijo functionality with a stable public API.
+#               Composable building blocks intended for reuse.
+#
+# Author(s):    Morteza Taleblou & Mitra Daneshmand
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
+# SPDX-License-Identifier: MIT
+# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Key functions: rgb_hex, rgba_hex, _clipi, _plot, draw_point, draw_circle, draw_line, stroke_rect ...
+#   - Uses generic functions/types with explicit trait bounds.
+
 
 from momijo.autograd.hook import call
 from momijo.core.error import module
