@@ -1,148 +1,135 @@
-# Project:      Momijo
-# Module:       src.momijo.tensor.storage
-# File:         storage.mojo
-# Path:         src/momijo/tensor/storage.mojo
-#
-# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
-#               element-wise ops, and foundational kernels.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Structs: Storage, BufferF32, BufferF64, BufferI32, BufferI64
-#   - Key functions: argmax_index, argmin_index, __module_name__, __self_test__, __init__, data_ptr, size_in_bytes, __copyinit__ ...
-#   - Uses generic functions/types with explicit trait bounds.
-#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
-#   - GPU/device utilities present; validate backend assumptions.
+# Project: momijo.tensor
+# File: src/momijo/tensor/storage.mojo
 
-
-from momijo.tensor.device import Device
-
-fn argmax_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] > best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-fn argmin_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] < best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-
-fn ensure_not_empty[T: Copyable & Movable](xs: List[T]) -> Bool:
-    return len(xs) > 0
-fn __module_name__() -> String:
-    return String("momijo/tensor/storage.mojo")
-fn __self_test__() -> Bool:
-    # This is a cheap smoke-test hook; extend with real checks as needed.
-    return True
-
+from momijo.tensor.allocator import Allocator
+ 
+from momijo.tensor.tensor_base import device  # chosen by proximity
+ 
+from momijo.tensor.tensor_base import nbytes
+ 
 # ---- Minimal Storage header (to satisfy tensor_base imports) ----
+from momijo.tensor.device import Device
 
 struct Storage:
     var device: Device
     var nbytes: Int
-fn __init__(out self, nbytes: Int, device: Device) -> None:
+
+    fn __init__(out self, nbytes: Int, device: Device):
         self.device = device
         self.nbytes = nbytes
 
     # NOTE: Minimal stub; returns a nil pointer.
     # This is enough for header-level ops (pointer arithmetic ok if not dereferenced).
     # If you need actual readable/writable backing memory, we can extend this.
-fn data_ptr(self) -> Pointer[UInt8]:
+    fn data_ptr(self) -> Pointer[UInt8]:
         return Pointer[UInt8].nil()
-fn size_in_bytes(self) -> Int:
+
+    fn size_in_bytes(self) -> Int:
         return self.nbytes
-fn __copyinit__(out self, other: Self) -> None:
-        self.device = other.device
-        self.nbytes = other.nbytes
-fn __moveinit__(out self, deinit other: Self) -> None:
-        self.device = other.device
-        self.nbytes = other.nbytes
+
 # ---- Simple typed buffers (kept from your draft; useful for tests/examples) ----
 
 struct BufferF32:
     var data: List[Float32]
-fn __init__(out self, n: Int) -> None:
+    fn __init__(out self, n: Int):
         # Safe manual fill in case list-repetition isn't supported on your toolchain
         self.data = List[Float32]()
         var i = 0
         while i < n:
             self.data.append(0.0)
             i += 1
-fn ptr_mut(self) -> List[Float32]:
+    fn ptr_mut(self) -> List[Float32]:
         return self.data
-fn ptr(self) -> List[Float32]:
+    fn ptr(self) -> List[Float32]:
         return self.data
-fn __copyinit__(out self, other: Self) -> None:
-        self.data = other.data
-fn __moveinit__(out self, deinit other: Self) -> None:
-        self.data = other.data
+
 struct BufferF64:
     var data: List[Float64]
-fn __init__(out self, n: Int) -> None:
+    fn __init__(out self, n: Int):
         self.data = List[Float64]()
         var i = 0
         while i < n:
             self.data.append(0.0)
             i += 1
-fn ptr_mut(self) -> List[Float64]:
+    fn ptr_mut(self) -> List[Float64]:
         return self.data
-fn ptr(self) -> List[Float64]:
+    fn ptr(self) -> List[Float64]:
         return self.data
-fn __copyinit__(out self, other: Self) -> None:
-        self.data = other.data
-fn __moveinit__(out self, deinit other: Self) -> None:
-        self.data = other.data
+
 struct BufferI32:
     var data: List[Int32]
-fn __init__(out self, n: Int) -> None:
+    fn __init__(out self, n: Int):
         self.data = List[Int32]()
         var i = 0
         while i < n:
             self.data.append(0)
             i += 1
-fn ptr_mut(self) -> List[Int32]:
+    fn ptr_mut(self) -> List[Int32]:
         return self.data
-fn ptr(self) -> List[Int32]:
+    fn ptr(self) -> List[Int32]:
         return self.data
-fn __copyinit__(out self, other: Self) -> None:
-        self.data = other.data
-fn __moveinit__(out self, deinit other: Self) -> None:
-        self.data = other.data
+
 struct BufferI64:
     var data: List[Int64]
-fn __init__(out self, n: Int) -> None:
+    fn __init__(out self, n: Int):
         self.data = List[Int64]()
         var i = 0
         while i < n:
             self.data.append(0)
             i += 1
-fn ptr_mut(self) -> List[Int64]:
+    fn ptr_mut(self) -> List[Int64]:
         return self.data
-fn ptr(self) -> List[Int64]:
+    fn ptr(self) -> List[Int64]:
         return self.data
-fn __copyinit__(out self, other: Self) -> None:
-        self.data = other.data
-fn __moveinit__(out self, deinit other: Self) -> None:
-        self.data = other.data
+
+
+struct Storage[T: Copyable & Movable](ExplicitlyCopyable, Movable):
+    var _buf: List[T]
+    var _length: Int
+
+    fn __init__(out self, n: Int, fill: T):
+        self._buf = Allocator.allocate[T](n)
+        var i = 0
+        while i < n:
+            self._buf[i] = fill
+            i += 1
+        self._length = n
+
+    fn __copyinit__(out self, other: Self):
+        self._buf = List[T]()
+        self._length = other._length
+        var i = 0
+        while i < other._length:
+            self._buf.append(other._buf[i])
+            i += 1
+
+    fn len(self) -> Int:
+        return self._length
+
+    fn get(self, i: Int) -> T:
+        assert i >= 0 and i < self._length, "index out of bounds"
+        return self._buf[i]
+
+    fn set(mut self, i: Int, v: T) -> None:
+        assert i >= 0 and i < self._length, "index out of bounds"
+        self._buf[i] = v
+
+    fn resize(mut self, n: Int, fill: T) -> None:
+        if n < self._length:
+            self._buf = self._buf[0:n]
+        else:
+            var i = self._length
+            while i < n:
+                self._buf.append(fill)
+                i += 1
+        self._length = n
