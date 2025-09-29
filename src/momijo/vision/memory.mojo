@@ -1,181 +1,170 @@
-# Project:      Momijo
-# Module:       src.momijo.vision.memory
-# File:         memory.mojo
-# Path:         src/momijo/vision/memory.mojo
-#
-# Description:  src.momijo.vision.memory — focused Momijo functionality with a stable public API.
-#               Composable building blocks intended for reuse.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo 
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Structs: U8Buffer
-#   - Key functions: __init__, is_empty, buf_get, buf_set, buf_fill, buf_copy_into, buf_clone_n, buf_realloc ...
-#   - Static methods present.
+# Project: momijo.vision
+# File: momijo/vision/memory.mojo
+ 
+# -------------------------------
+# UInt8 allocation helpers
+# -------------------------------
 
+fn alloc_u8(nbytes: Int) -> UnsafePointer[UInt8]:
+    # Allocate nbytes of uninitialized memory (bytes)
+    return UnsafePointer[UInt8].alloc(nbytes)
 
-from gpu import memory
-from momijo.core.config import off
-from momijo.core.ndarray import offset
-from momijo.core.traits import zero
-from momijo.core.version import major
-from momijo.dataframe.diagnostics import safe
-from momijo.dataframe.expr import single
-from momijo.dataframe.helpers import m
-from momijo.nn.parameter import data
-from pathlib import Path
-from pathlib.path import Path
-from sys import version
-
-struct U8Buffer(Copyable, Movable):
-    var data: List[UInt8]
-fn __init__(out self, size: Int) -> None:
-        var buf: List[UInt8] = List[UInt8]()
-        var i = 0
-        while i < size:
-            buf.append(0)
-            i += 1
-        self.data = buf
-# NOTE: Removed duplicate definition of `len`; use `from momijo.arrow_core.array import len`
-fn is_empty(self) -> Bool:
-        return len(self.data) == 0
-
-# Read element
-@staticmethod
-fn buf_get(buf: U8Buffer, idx: Int) -> UInt8:
-    return buf.data[idx]
-
-# Set element
-@staticmethod
-fn buf_set(mut buf: U8Buffer, idx: Int, v: UInt8) -> U8Buffer:
-    buf.data[idx] = v
-    return buf
-
-# Fill with a constant value
-@staticmethod
-fn buf_fill(mut buf: U8Buffer, v: UInt8) -> U8Buffer:
+fn calloc_u8(nbytes: Int) -> UnsafePointer[UInt8]:
+    # Allocate and zero-initialize nbytes
+    var ptr = UnsafePointer[UInt8].alloc(nbytes)
     var i = 0
-    var n = len(buf.data)
-    while i < n:
-        buf.data[i] = v
+    while i < nbytes:
+        ptr[i] = 0
         i += 1
-    return buf
+    return ptr
 
-# Copy from src into dst (up to min length)
-@staticmethod
-fn buf_copy_into(mut dst: U8Buffer, src: U8Buffer) -> U8Buffer:
-    var n = len(dst.data)
-    var m = len(src.data)
-    var k = n
-    if m < k: k = m
+fn free_u8(ptr: UnsafePointer[UInt8]):
+    # Placeholder for explicit deallocation when needed by the runtime.
+    # Keep for API symmetry with alloc_u8/calloc_u8.
+    return
+
+# -------------------------------
+# Int32 / Float32 / Float64 helpers
+# (Allocate by element count, not bytes)
+# -------------------------------
+
+fn alloc_i32(nelems: Int) -> UnsafePointer[Int32]:
+    return UnsafePointer[Int32].alloc(nelems)
+
+fn calloc_i32(nelems: Int) -> Pointer[Int32]:
+    var p = UnsafePointer[Int32].alloc(nelems)
     var i = 0
-    while i < k:
-        dst.data[i] = src.data[i]
+    while i < nelems:
+        p[i] = 0
         i += 1
-    return dst
+    return p
 
-# Create a new buffer by copying [0..n) from src (or zero-pad if n > src.len)
-@staticmethod
-fn buf_clone_n(src: U8Buffer, n: Int) -> U8Buffer:
-    var out = U8Buffer(n)
-    var m = len(src.data)
-    var k = n
-    if m < k: k = m
+fn free_i32(ptr: UnsafePointer[Int32]):
+    return
+
+fn alloc_f32(nelems: Int) -> Pointer[Float32]:
+    return UnsafePointer[Float32].alloc(nelems)
+
+fn calloc_f32(nelems: Int) -> UnsafePointer[Float32]:
+    var p = UnsafePointer[Float32].alloc(nelems)
     var i = 0
-    while i < k:
-        out = buf_set(out, i, src.data[i])
+    while i < nelems:
+        p[i] = 0.0
         i += 1
-    # if n > m, remaining bytes already zero
-    return out
+    return p
 
-# Reallocate (returns a new buffer preserving contents up to min(old, new))
-@staticmethod
-fn buf_realloc(buf: U8Buffer, new_size: Int) -> U8Buffer:
-    return buf_clone_n(buf, new_size)
+fn free_f32(ptr: UnsafePointer[Float32]):
+    return
 
-# Append a single byte (returns a new buffer). Not optimal, but safe and simple.
-@staticmethod
-fn buf_append(buf: U8Buffer, v: UInt8) -> U8Buffer:
-    var out = U8Buffer(len(buf.data) + 1)
-    out = buf_copy_into(out, buf)
-    out = buf_set(out, len(buf.data), v)
-    return out
+fn alloc_f64(nelems: Int) -> UnsafePointer[Float64]:
+    return UnsafePointer[Float64].alloc(nelems)
 
-# Concatenate two buffers
-@staticmethod
-fn buf_concat(a: U8Buffer, b: U8Buffer) -> U8Buffer:
-    var out = U8Buffer(len(a.data) + len(b.data))
-    out = buf_copy_into(out, a)
+fn calloc_f64(nelems: Int) -> UnsafePointer[Float64]:
+    var p = UnsafePointer[Float64].alloc(nelems)
     var i = 0
-    while i < len(b.data):
-        out = buf_set(out, len(a.data) + i, b.data[i])
+    while i < nelems:
+        p[i] = 0.0
         i += 1
-    return out
+    return p
 
-# Safe clamp add: out[i] = clamp(a[i] + b[i], 0..255)
-@staticmethod
-fn buf_add_clamp(a: U8Buffer, b: U8Buffer) -> U8Buffer:
-    var n = len(a.data)
-    var m = len(b.data)
-    var k = n
-    if m < k: k = m
-    var out = U8Buffer(k)
+fn free_f64(ptr: UnsafePointer[Float64]):
+    return
+
+# -------------------------------
+# Byte-level utilities
+# -------------------------------
+
+fn memcpy_u8(dst: UnsafePointer[UInt8], src: UnsafePointer[UInt8], nbytes: Int):
+    # Safe, simple forward copy (works for non-overlapping regions).
+    # For overlapping ranges, prefer memmove semantics (not provided here).
     var i = 0
-    while i < k:
-        var s = UInt16(a.data[i]) + UInt16(b.data[i])
-        if s > UInt16(255):
-            out = buf_set(out, i, UInt8(255))
+    while i < nbytes:
+        dst[i] = src[i]
+        i += 1
+
+fn memset_u8(dst: UnsafePointer[UInt8], value: UInt8, nbytes: Int):
+    var i = 0
+    while i < nbytes:
+        dst[i] = value
+        i += 1
+
+fn pointer_add_u8(p: UnsafePointer[UInt8], offset_bytes: Int) -> UnsafePointer[UInt8]:
+    # Return a pointer advanced by offset_bytes. Caller must ensure bounds.
+    return p + offset_bytes
+
+# -------------------------------
+# RAII-like byte buffer (uint8)
+# - Owns a UInt8 buffer.
+# - Allocates in __init__, frees in __del__ (if runtime supports).
+# -------------------------------
+
+ 
+struct BufferU8:
+    var _data: UnsafePointer[UInt8]
+    var _length: Int         # length in bytes
+
+    fn __init__(out self, length_bytes: Int, zero_init: Bool = False):
+        self._length = length_bytes
+        if zero_init:
+            self._data = calloc_u8(length_bytes)
         else:
-            out = buf_set(out, i, UInt8(s & UInt16(0xFF)))
-        i += 1
+            self._data = alloc_u8(length_bytes)
+
+    fn __del__(deinit self):
+        # Keep symmetric with alloc/free. If explicit free is required by the
+        # runtime/FFI, hook it here.
+        free_u8(self._data)
+
+    fn data(self) -> UnsafePointer[UInt8]:
+        return self._data
+
+    fn length(self) -> Int:
+        return self._length
+
+    fn zero(self):
+        memset_u8(self._data, 0, self._length)
+
+    fn fill(self, value: UInt8):
+        memset_u8(self._data, value, self._length)
+
+    fn clone(self) -> BufferU8:
+        var out = BufferU8(self._length, zero_init=False)
+        memcpy_u8(out._data, self._data, self._length)
+        return out
+
+# -------------------------------
+# Simple typed views over BufferU8
+# (No bounds metadata; caller ensures n fits within _length)
+# -------------------------------
+
+fn as_i32_view(buf: BufferU8, nelems: Int) -> UnsafePointer[Int32]:
+    # Reinterpret the underlying bytes as Int32 array
+    return UnsafePointer[Int32](buf._data)
+
+fn as_f32_view(buf: BufferU8, nelems: Int) -> UnsafePointer[Float32]:
+    return UnsafePointer[Float32](buf._data)
+
+fn as_f64_view(buf: BufferU8, nelems: Int) -> UnsafePointer[Float64]:
+    return UnsafePointer[Float64](buf._data)
+
+# -------------------------------
+# Convenience: copy constructors between buffers
+# -------------------------------
+
+fn copy_bytes_to_new(src: UnsafePointer[UInt8], nbytes: Int) -> BufferU8:
+    var out = BufferU8(nbytes, zero_init=False)
+    memcpy_u8(out.data(), src, nbytes)
     return out
 
-# -------------------------
-# Stride helpers (row-major HWC convention)
-# -------------------------
-@staticmethod
-fn packed_hwc_strides(h: Int, w: Int, c: Int) -> (Int, Int, Int):
-    # (s0, s1, s2) for (y, x, ch)
-    var s2 = 1
-    var s1 = c
-    var s0 = w * c
-    return (s0, s1, s2)
-
-# Flat offset helper for HWC
-@staticmethod
-fn hwc_offset(w: Int, c: Int, x: Int, y: Int, ch: Int) -> Int:
-    return ((y * w) + x) * c + ch
-
-# -------------------------
-# Minimal smoke test
-# -------------------------
-@staticmethod
-fn __self_test__() -> Bool:
-    var a = U8Buffer(4)
-    a = buf_fill(a, 10)
-    if buf_get(a, 0) != 10: return False
-
-    var b = buf_append(a, 5)  # now len=5
-    if b.len() != 5: return False
-    if buf_get(b, 4) != 5: return False
-
-    var c = buf_realloc(b, 3)
-    if c.len() != 3: return False
-    if buf_get(c, 0) != 10: return False
-
-    var d = buf_add_clamp(a, a)  # 10+10=20
-    if d.len() != 4 or buf_get(d, 2) != 20: return False
-
-    var (s0, s1, s2) = packed_hwc_strides(2, 3, 4)
-    if not (s0 == 12 and s1 == 4 and s2 == 1): return False
-
-    var off = hwc_offset(3, 4, 1, 0, 2)
-    if off != ((0 * 3) + 1) * 4 + 2: return False
-
-    return True
+fn copy_buffer(src: BufferU8) -> BufferU8:
+    return src.clone()
