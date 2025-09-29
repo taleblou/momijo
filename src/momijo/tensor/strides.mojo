@@ -1,60 +1,25 @@
-# Project:      Momijo
-# Module:       src.momijo.tensor.strides
-# File:         strides.mojo
-# Path:         src/momijo/tensor/strides.mojo
-#
-# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
-#               element-wise ops, and foundational kernels.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Key functions: argmax_index, argmin_index, __module_name__, __self_test__, max_fn, default_strides
-#   - Uses generic functions/types with explicit trait bounds.
-#   - GPU/device utilities present; validate backend assumptions.
+# Project: momijo.tensor
+# File: src/momijo/tensor/strides.mojo
 
-
+ 
+ 
+from momijo.tensor.shape import rank  # chosen by proximity
+ 
+from momijo.tensor.shape import dim
 from momijo.tensor.shape import Shape
 
-fn argmax_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] > best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-fn argmin_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] < best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-
-fn ensure_not_empty[T: Copyable & Movable](xs: List[T]) -> Bool:
-    return len(xs) > 0
-fn __module_name__() -> String:
-    return String("momijo/tensor/strides.mojo")
-fn __self_test__() -> Bool:
-    return True
-
-# simple replacement for Python's max
+ 
+ 
 fn max_fn(a: Int, b: Int) -> Int:
     if a > b:
         return a
@@ -78,3 +43,74 @@ fn default_strides(shape: Shape) -> List[Int]:
         acc = acc * max_fn(1, d)
         i -= 1
     return s
+
+fn shape_product(shape: List[Int]) -> Int:
+    var prod = 1
+    var i = 0
+    while i < len(shape):
+        prod *= shape[i]
+        i += 1
+    return prod
+
+fn compute_strides_rowmajor(shape: List[Int]) -> List[Int]:
+    var n = len(shape)
+    var strides = List[Int]()
+    while len(strides) < n:
+        strides.append(0)
+    var acc = 1
+    var i = n - 1
+    while i >= 0:
+        strides[i] = acc
+        acc *= shape[i]
+        i -= 1
+    return strides
+
+fn compute_strides_colmajor(shape: List[Int]) -> List[Int]:
+    var n = len(shape)
+    var strides = List[Int]()
+    while len(strides) < n:
+        strides.append(0)
+    var acc = 1
+    var i = 0
+    while i < n:
+        strides[i] = acc
+        acc *= shape[i]
+        i += 1
+    return strides
+
+fn is_contiguous_rowmajor(shape: List[Int], strides: List[Int]) -> Bool:
+    assert len(shape) == len(strides)
+    var expected = compute_strides_rowmajor(shape)
+    var i = 0
+    while i < len(shape):
+        if strides[i] != expected[i]:
+            return False
+        i += 1
+    return True
+
+fn is_contiguous_colmajor(shape: List[Int], strides: List[Int]) -> Bool:
+    assert len(shape) == len(strides)
+    var expected = compute_strides_colmajor(shape)
+    var i = 0
+    while i < len(shape):
+        if strides[i] != expected[i]:
+            return False
+        i += 1
+    return True
+
+fn index_to_offset(idx: List[Int], shape: List[Int], strides: List[Int], offset: Int) -> Int:
+    assert len(idx) == len(shape)
+    var off = offset
+    var i = 0
+    while i < len(shape):
+        var ii = idx[i]
+        assert ii >= 0 and ii < shape[i]
+        off += ii * strides[i]
+        i += 1
+    return off
+
+fn normalize_index(idx: Int, dim: Int) -> Int:
+    assert dim > 0
+    if idx < 0:
+        return dim + idx
+    return idx
