@@ -1,169 +1,81 @@
-# Project:      Momijo
-# Module:       src.momijo.vision.adapters.arrow
-# File:         arrow.mojo
-# Path:         src/momijo/vision/adapters/arrow.mojo
-#
-# Description:  src.momijo.vision.adapters.arrow — focused Momijo functionality with a stable public API.
-#               Composable building blocks intended for reuse.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo 
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Structs: TensorU8HWCView
-#   - Key functions: UInt8, to_string, dtype_bytes, HWC, to_string, packed_hwc_strides, __init__, byte_len ...
-#   - Static methods present.
-#   - Low-level memory (Pointer/UnsafePointer) used; observe safety invariants.
+# Project: momijo.vision.adapters
+# File: momijo/vision/adapters/arrow.mojo
+  
+from momijo.vision.tensor import Tensor, packed_hwc_strides, packed_chw_strides
+from momijo.vision.dtypes import DType, dtype_bytes
+ 
 
+# -----------------------------------------------------------------------------
+# Core unsafe view: wraps an existing raw buffer as a Tensor without copying.
+# Caller must ensure that:
+#   - 'ptr' stays alive for the lifetime of the returned Tensor.
+#   - 'nbytes' covers the accessible range for the provided shape/strides/dtype.
+#   - 's0/s1/s2' are logical strides in ELEMENTS (not bytes).
+# -----------------------------------------------------------------------------
+fn unsafe_view_from_raw_u8(ptr: UnsafePointer[UInt8], nbytes: Int,
+                           h: Int, w: Int, c: Int,
+                           s0: Int, s1: Int, s2: Int, dt: DType) -> Tensor:
+    # Quick sanity checks (assert-based; remove if you prefer pure unsafe):
+    assert(h > 0 and w > 0 and c > 0, "unsafe_view_from_raw_u8: bad shape")
+    assert(nbytes > 0, "unsafe_view_from_raw_u8: nbytes must be > 0")
+    assert(s0 > 0 and s1 > 0 and s2 > 0, "unsafe_view_from_raw_u8: bad strides")
 
-from memory import Pointer
-from momijo.arrow_core.dtype_arrow import uint8
-from momijo.core.device import id
-from momijo.core.ndarray import offset
-from momijo.dataframe.helpers import read, t
-from momijo.ir.dialects.annotations import array
-from momijo.nn.parameter import data
-from momijo.tensor.tensor_base import nbytes
-from pathlib import Path
-from pathlib.path import Path
-from sys import version
+    # NOTE: We do not validate that s0/s1/s2 match a packed layout; they are trusted as-is.
+    return Tensor(ptr, nbytes, h, w, c, s0, s1, s2, dt)
 
-# NOTE: Removed duplicate definition of `DType`; use `from momijo.ir.llir.codegen_mps import DType`
-# NOTE: Removed duplicate definition of `__init__`; use `from momijo.core.version import __init__`
-
-fn UInt8() -> DType: return DType(1)
-# NOTE: Removed duplicate definition of `__eq__`; use `from momijo.vision.ir.ir import __eq__`
-fn to_string(self) -> String:
-        if self.id == 1: return String("UInt8")
-        return String("UnknownDType")
-
-@staticmethod
-fn dtype_bytes(dt: DType) -> Int:
-    if dt == DType.UInt8(): return 1
-    return 1
-# NOTE: Removed duplicate definition of `Layout`; use `from momijo.vision.image import Layout`
-# NOTE: Removed duplicate definition of `__init__`; use `from momijo.core.version import __init__`
-fn HWC() -> Layout: return Layout(1)
-# NOTE: Removed duplicate definition of `__eq__`; use `from momijo.vision.ir.ir import __eq__`
-fn to_string(self) -> String:
-        if self.id == 1: return String("HWC")
-        return String("UnknownLayout")
-
-@staticmethod
-fn packed_hwc_strides(h: Int, w: Int, c: Int) -> (Int, Int, Int):
-    # (s0, s1, s2) for (y, x, ch)
-    var s2 = 1
-    var s1 = c
-    var s0 = w * c
-    return (s0, s1, s2)
-
-# -------------------------
-# Pointer-based tensor view (uint8, HWC)
-# -------------------------
-struct TensorU8HWCView(Copyable, Movable):
-    var data: Pointer[UInt8]
-    var nbytes: Int
-    var h: Int
-    var w: Int
-    var c: Int
-    var s0: Int
-    var s1: Int
-    var s2: Int
-    var dtype: DType
-    var layout: Layout
-fn __init__(out self,
-                data: Pointer[UInt8],
-                nbytes: Int,
-                h: Int,
-                w: Int,
-                c: Int,
-                s0: Int,
-                s1: Int,
-                s2: Int) -> None:
-        self.data = data
-        self.nbytes = nbytes
-        self.h = h
-        self.w = w
-        self.c = c
-        self.s0 = s0
-        self.s1 = s1
-        self.s2 = s2
-        self.dtype = DType.UInt8()
-        self.layout = Layout.HWC()
-
-    # Meta
-# NOTE: Removed duplicate definition of `height`; use `from momijo.vision.image import height`
-# NOTE: Removed duplicate definition of `width`; use `from momijo.vision.tensor import width`
-# NOTE: Removed duplicate definition of `channels`; use `from momijo.vision.image import channels`
-fn byte_len(self) -> Int: return self.nbytes
-
-# Create a view from a contiguous HWC array (no copy)
-@staticmethod
-fn tensor_from_array_u8_hwc(data: Pointer[UInt8], nbytes: Int, h: Int, w: Int, c: Int) -> TensorU8HWCView:
-    var expected = h * w * c * dtype_bytes(DType.UInt8())
-    # We don't change dims if nbytes < expected; caller is responsible.
+# -----------------------------------------------------------------------------
+# HWC helpers (UInt8)
+# -----------------------------------------------------------------------------
+fn tensor_from_u8_array_hwc(data: UnsafePointer[UInt8], nbytes: Int, h: Int, w: Int, c: Int) -> Tensor:
+    # If a raw pointer is already available, return a zero-copy HWC view.
+    assert(h > 0 and w > 0 and c > 0, "tensor_from_u8_array_hwc: bad shape")
     var (s0, s1, s2) = packed_hwc_strides(h, w, c)
-    return TensorU8HWCView(data, nbytes, h, w, c, s0, s1, s2)
+    # For UInt8 packed HWC, minimal byte footprint is h*w*c.
+    var min_bytes = h * w * c
+    assert(nbytes >= min_bytes, "tensor_from_u8_array_hwc: nbytes too small for HWC u8")
+    return Tensor(data, nbytes, h, w, c, s0, s1, s2, DType.UInt8)
 
-# Return the underlying pointer (no copy)
-@staticmethod
-fn array_from_tensor_u8_hwc(t: TensorU8HWCView) -> Pointer[UInt8]:
-    return t.data
+fn array_from_tensor_u8_hwc(t: Tensor) -> UnsafePointer[UInt8]:
+    # Returns the underlying pointer (no copy). Caller responsible for size = t.byte_len().
+    # This is intended for exporting a packed HWC u8 tensor back to a byte-level consumer.
+    return t.data()
 
-# ROI view (no copy): x:[x0,x0+cw), y:[y0,y0+ch)
-@staticmethod
-fn view_roi_hwc(t: TensorU8HWCView, x0: Int, y0: Int, cw: Int, ch: Int) -> TensorU8HWCView:
-    # Clamp to bounds
-    var x1 = x0 + cw
-    var y1 = y0 + ch
-    if x0 < 0: x0 = 0
-    if y0 < 0: y0 = 0
-    if x1 > t.w: x1 = t.w
-    if y1 > t.h: y1 = t.h
-    var ow = x1 - x0
-    var oh = y1 - y0
-    if ow <= 0 or oh <= 0:
-        return TensorU8HWCView(Pointer[UInt8](), 0, 0, 0, t.c, t.s0, t.s1, t.s2)
-    # Compute byte offset of (x0, y0, ch=0)
-    var elem = dtype_bytes(t.dtype)
-    var offset_elems = (y0 * t.s0) + (x0 * t.s1)  # + ch*s2 (ch=0)
-    var offset_bytes = offset_elems * elem
-    var new_ptr = t.data + offset_bytes
-    # Strides unchanged for the cropped view; byte_len is conservative
-    var new_bytes = ow * oh * t.c * elem
-    var (s0, s1, s2) = (t.s0, t.s1, t.s2)
-    return TensorU8HWCView(new_ptr, new_bytes, oh, ow, t.c, s0, s1, s2)
+# -----------------------------------------------------------------------------
+# CHW helpers (general dtype) — useful if your upstream is channel-major
+# -----------------------------------------------------------------------------
+fn tensor_from_raw_chw(ptr: UnsafePointer[UInt8], nbytes: Int,
+                       c: Int, h: Int, w: Int, dt: DType) -> Tensor:
+    assert(c > 0 and h > 0 and w > 0, "tensor_from_raw_chw: bad shape")
+    var (s0, s1, s2) = packed_chw_strides(c, h, w)
+    # Minimal bytes if packed:
+    var elems = c * h * w
+    var need = elems * dtype_bytes(dt)
+    assert(nbytes >= need, "tensor_from_raw_chw: nbytes too small for packed CHW")
+    # Note: We store shape as (dim0, dim1, dim2) = (C, H, W) for this logical view.
+    return Tensor(ptr, nbytes, c, h, w, s0, s1, s2, dt)
 
-# -------------------------
-# Summary helper
-# -------------------------
-@staticmethod
-fn summary(t: TensorU8HWCView) -> String:
-    var s = String("TensorU8HWCView(") + String(t.h) + String("x") + String(t.w) + String("x") + String(t.c) + String(", ")
-    s = s + t.layout.to_string() + String(", ") + t.dtype.to_string() + String(", strides=(")
-    s = s + String(t.s0) + String(",") + String(t.s1) + String(",") + String(t.s2) + String("), nbytes=") + String(t.nbytes) + String(")")
-    return s
+# -----------------------------------------------------------------------------
+# Generic helper that accepts strides in ELEMENTS for arbitrary layout
+# -----------------------------------------------------------------------------
+fn tensor_from_raw_strided(ptr: UnsafePointer[UInt8],
+                           nbytes: Int,
+                           d0: Int, d1: Int, d2: Int,
+                           s0: Int, s1: Int, s2: Int,
+                           dt: DType) -> Tensor:
+    assert(d0 > 0 and d1 > 0 and d2 > 0, "tensor_from_raw_strided: bad shape")
+    assert(s0 > 0 and s1 > 0 and s2 > 0, "tensor_from_raw_strided: bad strides")
+    assert(nbytes > 0, "tensor_from_raw_strided: nbytes must be > 0")
+    # We trust caller on stride correctness & coverage; pack into a Tensor as-is.
+    return Tensor(ptr, nbytes, d0, d1, d2, s0, s1, s2, dt)
 
-# -------------------------
-# Minimal smoke test (stride math only; does not dereference the pointer)
-# -------------------------
-@staticmethod
-fn __self_test__() -> Bool:
-    var dummy = Pointer[UInt8]()   # null pointer; we don't read from it
-    var h = 3; var w = 5; var c = 3
-    var (s0, s1, s2) = packed_hwc_strides(h, w, c) # (15, 3, 1)
-    var nbytes = h * w * c * dtype_bytes(DType.UInt8())
-    var view = TensorU8HWCView(dummy, nbytes, h, w, c, s0, s1, s2)
-    if view.byte_len() != 45: return False
-    # ROI math check: center 1x1
-    var roi = view_roi_hwc(view, 2, 1, 1, 1)
-    if not (roi.h == 1 and roi.w == 1 and roi.c == 3): return False
-    # roundtrip pointer
-    var p = array_from_tensor_u8_hwc(view)
-    # We only check that returning didn't crash and type matches
-    return True
+ 
