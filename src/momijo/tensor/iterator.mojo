@@ -1,83 +1,59 @@
-# Project:      Momijo
-# Module:       src.momijo.tensor.iterator
-# File:         iterator.mojo
-# Path:         src/momijo/tensor/iterator.mojo
-#
-# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
-#               element-wise ops, and foundational kernels.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Structs: Shape, LayoutView, NDIter
-#   - Key functions: __module_name__, __self_test__, argmax_index, argmin_index, __init__, ndim, __init__, __init__ ...
-#   - Uses generic functions/types with explicit trait bounds.
+# Project: momijo.tensor
+# File: src/momijo/tensor/iterator.mojo
 
-
-fn __module_name__() -> String:
-    return String("momijo/tensor/iterator.mojo")
-fn __self_test__() -> Bool:
-
-    return True
-
-# ---- small helpers (no external deps) ---------------------------------------
-fn argmax_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] > best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-fn argmin_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] < best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-
-fn ensure_not_empty[T: Copyable & Movable](xs: List[T]) -> Bool:
-    return len(xs) > 0
-
+ 
+ 
+from momijo.tensor.tensor_base import strides  # chosen by proximity
+from momijo.core.ndarray import offset
+ 
+ 
 # ---- minimal tensor-shape/view shims (to avoid external deps) ---------------
 
 struct Shape(Copyable, Movable):
     var dims: List[Int]
-fn __init__(out self, dims: List[Int]) -> None:
+
+    fn __init__(out self, dims: List[Int]):
         self.dims = dims
-fn ndim(self) -> Int:
+
+    fn ndim(self) -> Int:
         return len(self.dims)
+
+    fn __copyinit__(out self, other: Self):
+
+        self.dims = other.dims
 
 struct LayoutView(Copyable, Movable):
     var offset: Int
     var strides: List[Int]
-fn __init__(out self, offset: Int, strides: List[Int]) -> None:
+
+    fn __init__(out self, offset: Int, strides: List[Int]):
         self.offset = offset
         self.strides = strides
 
 # ---- ND iterator over an N-D shape ------------------------------------------
 
+    fn __copyinit__(out self, other: Self):
+
+        self.offset = other.offset
+
+        self.strides = other.strides
+
 struct NDIter(Copyable, Movable):
     var shape: Shape
     var idx: List[Int]
     var started: Bool
-fn __init__(out self, shape: Shape) -> None:
+
+    fn __init__(out self, shape: Shape):
         self.shape = shape
         self.idx = List[Int]()
         var k = 0
@@ -88,7 +64,7 @@ fn __init__(out self, shape: Shape) -> None:
         self.started = False
 
     # Returns (has_next, current_index)
-fn next(mut self) -> (Bool, List[Int]):
+    fn next(mut self) -> (Bool, List[Int]):
         var r = self.shape.ndim()
         if r == 0:
             return (False, self.idx)
@@ -114,6 +90,7 @@ fn NDIter_next(mut x: NDIter) -> (Bool, List[Int]):
     return x.next()
 
 # ---- linear index utility (row-major) ---------------------------------------
+
 fn linear_index(view: LayoutView, idx: List[Int]) -> Int:
     var s = view.offset
     var i = 0
@@ -122,3 +99,11 @@ fn linear_index(view: LayoutView, idx: List[Int]) -> Int:
         s = s + idx[i] * view.strides[i]
         i += 1
     return s
+
+    fn __copyinit__(out self, other: Self):
+
+        self.shape = other.shape
+
+        self.idx = other.idx
+
+        self.started = other.started
