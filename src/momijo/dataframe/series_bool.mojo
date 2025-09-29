@@ -1,10 +1,11 @@
 # Project:      Momijo
-# Module:       src.momijo.dataframe.series_bool
+# Module:       dataframe.series_bool
 # File:         series_bool.mojo
-# Path:         src/momijo/dataframe/series_bool.mojo
+# Path:         dataframe/series_bool.mojo
 #
-# Description:  src.momijo.dataframe.series_bool — focused Momijo functionality with a stable public API.
-#               Composable building blocks intended for reuse.
+# Description:  dataframe.series_bool — Boolean series for Momijo DataFrame.
+#               Implements core data structures, algorithms, and convenience APIs for production use.
+#               Designed as a stable, composable building block within the Momijo public API.
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
@@ -16,280 +17,193 @@
 #
 # Notes:
 #   - Structs: SeriesBool
-#   - Key functions: __init__, __init__, __init__, __copyinit__, len, is_valid, get, rename ...
-#   - Static methods present.
-
+#   - Key functions: __init__, len, get, set, set_name, values, head, count_valid, sum_true, logical_not, _binary_op, logical_and, logical_or, logical_xor
 
 from momijo.dataframe.bitmap import Bitmap
 
 struct SeriesBool(Copyable, Movable):
     var name: String
-    var values: List[Bool]
+    var data: List[Bool]
     var valid: Bitmap
 
-    # -------------------------
     # Constructors
-    # -------------------------
-fn __init__(out self) -> None:
+    fn __init__(out self):
         self.name = String("")
-        assert(self is not None, String("self is None"))
-        self.value()s = List[Bool]()
-        self.valid = Bitmap()
-fn __init__(out self, name: String, values: List[Bool]) -> None:
+        self.data = List[Bool]()
+        self.valid = Bitmap(0, True)
+
+    fn __init__(out self, data: List[Bool], name: String = String("")):
         self.name = name
-        assert(self is not None, String("self is None"))
-        self.value()s = values
-        self.valid = Bitmap(len(values), True)
-fn __init__(out self, name: String, values: List[Bool], valid: Bitmap) -> None:
+        self.data = data
+        self.valid = Bitmap(len(data), True)
+
+    fn __init__(out self, data: List[Bool], name: String, valid: Bitmap):
         self.name = name
-        assert(self is not None, String("self is None"))
-        self.value()s = values
-        if len(values) != len(valid):
-            self.valid = Bitmap(len(values), True)
-        else:
+        self.data = data
+        var n = len(data)
+        if valid.len() == n:
             self.valid = valid
-fn __copyinit__(out self, other: Self) -> None:
-        self.name = String(other.name)
-        assert(self is not None, String("self is None"))
-        self.value()s = List[Bool]()
-        var i = 0
-        assert(other is not None, String("other is None"))
-        var n = len(other.value()s)
-        while i < n:
-            assert(self is not None, String("self is None"))
-            self.value()s.append(other.value()s[i])
-            i += 1
-        self.valid = Bitmap(n, True)
-        i = 0
-        while i < n:
-            if not other.valid.get(i):
-                _ = self.valid.set(i, False)
-            i += 1
-
-    # -------------------------
-    # Basics
-    # -------------------------
-fn len(self) -> Int:
-        assert(self is not None, String("self is None"))
-        return len(self.value()s)
-fn is_valid(self, i: Int) -> Bool:
-        if i < 0 or i >= len(self.value()s):
-            return False
-        return self.valid.get(i)
-fn get(self, i: Int) -> Bool:
-        assert(self is not None, String("self is None"))
-        if i < 0 or i >= len(self.value()s):
-            return False
-        return self.value()s[i]
-fn rename(mut self, new_name: String) -> None:
-        self.name = new_name
-fn count_valid(self) -> Int:
-        return self.valid.count_true()
-fn null_count(self) -> Int:
-        return self.len() - self.count_valid()
-
-    # -------------------------
-    # Builders / Mutators
-    # -------------------------
-    @staticmethod
-fn full(name: String, n: Int, value: Bool, is_valid: Bool = True) -> SeriesBool:
-        var vals = List[Bool]()
-        var i = 0
-        while i < n:
-            vals.append(value)
-            i += 1
-        var mask = Bitmap(n, is_valid)
-        return SeriesBool(name, vals, mask)
-fn append(mut self, value: Bool, is_valid: Bool = True) -> None:
-        assert(self is not None, String("self is None"))
-        self.value()s.append(value)
-        if len(self.valid) == 0 and len(self.value()s) == 1:
-            self.valid = Bitmap(1, is_valid)
         else:
-            var old_len = len(self.valid)
-            assert(self is not None, String("self is None"))
-            if old_len < len(self.value()s):
-                var tmp = Bitmap(old_len + 1, True)
-                var i = 0
-                while i < old_len:
-                    if not self.valid.get(i):
-                        _ = tmp.set(i, False)
-                    i += 1
-                if not is_valid:
-                    _ = tmp.set(old_len, False)
-                self.valid = tmp
-            else:
-                assert(self is not None, String("self is None"))
-                _ = self.valid.set(len(self.value()s) - 1, is_valid)
-fn extend(mut self, more: SeriesBool) -> None:
+            var v = Bitmap(n, True)
+            var i = 0
+            var m = valid.len()
+            while i < n:
+                var bit = False
+                if i < m:
+                    bit = valid.get(i)
+                _ = v.set(i, bit)
+                i += 1
+            self.valid = v
+
+    # Clone / copy
+    fn clone(self) -> SeriesBool:
+        var out_data = List[Bool]()
         var i = 0
-        assert(more is not None, String("more is None"))
-        var n = len(more.value()s)
-        while i < n:
-            self.append(more.value()s[i], more.valid.get(i))
+        while i < len(self.data):
+            out_data.append(self.data[i])
             i += 1
-fn set(mut self, i: Int, value: Bool, is_valid: Bool = True):
+        var out_valid = Bitmap(self.valid.len(), True)
+        var j = 0
+        while j < self.valid.len():
+            _ = out_valid.set(j, self.valid.get(j))
+            j += 1
+        return SeriesBool(out_data, self.name, out_valid)
+
+    fn copy(self) -> SeriesBool:
+        return self.clone()
+
+    # Basic API
+    fn len(self) -> Int:
+        return len(self.data)
+
+    fn get(self, i: Int) -> Bool:
+        return self.data[i]
+
+    fn set(mut self, i: Int, value: Bool, is_valid: Bool = True):
         if i < 0 or i >= self.len():
             return
-        assert(self is not None, String("self is None"))
-        self.value()s[i] = value
+        self.data[i] = value
         _ = self.valid.set(i, is_valid)
-fn set_null(mut self, i: Int):
-        if i < 0 or i >= self.len():
-            return
-        _ = self.valid.set(i, False)
 
-    # -------------------------
-    # Selection
-    # -------------------------
-fn gather(self, mask: Bitmap) -> SeriesBool:
-        var out = List[Bool]()
-        var i = 0
-        assert(self is not None, String("self is None"))
-        var n = len(self.value()s)
-        while i < n:
-            if mask.get(i) and self.valid.get(i):
-                assert(self is not None, String("self is None"))
-                out.append(self.value()s[i])
-            i += 1
-        return SeriesBool(self.name, out)
-fn take(self, idxs: List[Int]) -> SeriesBool:
-        var out = List[Bool]()
-        var i = 0
-        var n = len(idxs)
-        while i < n:
-            var j = idxs[i]
-            assert(self is not None, String("self is None"))
-            if j >= 0 and j < len(self.value()s) and self.valid.get(j):
-                out.append(self.value()s[j])
-            i += 1
-        return SeriesBool(self.name, out)
+    fn is_valid(self, i: Int) -> Bool:
+        if i >= 0 and i < self.len():
+            return self.valid.get(i)
+        return False
 
-    # -------------------------
-    # Slicing / Views
-    # -------------------------
-fn slice(self, start: Int, end: Int) -> SeriesBool:
-        var n = self.len()
-        var s = start
-        if s < 0:
-            s = 0
-        var e = end
-        if e > n:
-            e = n
-        if e <= s:
-            return SeriesBool(self.name, List[Bool]())
+    fn set_name(mut self, name: String):
+        self.name = name
+
+    fn get_name(self) -> String:
+        return self.name
+
+    fn values(self) -> List[Bool]:
+        return self.data
+
+    fn head(self, k: Int) -> SeriesBool:
         var out_vals = List[Bool]()
-        var out_valid = Bitmap(e - s, True)
-        var i = s
-        var k = 0
-        while i < e:
-            assert(self is not None, String("self is None"))
-            out_vals.append(self.value()s[i])
-            if not self.valid.get(i):
-                _ = out_valid.set(k, False)
-            i += 1
-            k += 1
-        return SeriesBool(self.name, out_vals, out_valid)
-fn head(self, k: Int) -> SeriesBool:
-        var m = k
-        if m < 0:
-            m = 0
-        var n = self.len()
-        var e = m
-        if e > n:
-            e = n
-        return self.slice(0, e)
-fn tail(self, k: Int) -> SeriesBool:
-        var n = self.len()
-        var m = k
-        if m < 0:
-            m = 0
-        var s = 0
-        if m < n:
-            s = n - m
-        return self.slice(s, n)
-
-    # -------------------------
-    # Conversion
-    # -------------------------
-fn to_list(self) -> List[Bool]:
-        var out = List[Bool]()
         var i = 0
         var n = self.len()
-        while i < n:
-            assert(self is not None, String("self is None"))
-            out.append(self.value()s[i])
+        while i < k and i < n:
+            out_vals.append(self.data[i])
             i += 1
-        return out
+        var out_valid = Bitmap(len(out_vals), True)
+        return SeriesBool(out_vals, self.name, out_valid)
 
-    # -------------------------
-    # Logical ops (NULL-aware)
-    # -------------------------
-fn logical_not(self) -> SeriesBool:
+    fn append(mut self, value: Bool, is_valid: Bool = True):
+        self.data.append(value)
+        self.valid.resize(len(self.data), True)
+        _ = self.valid.set(len(self.data) - 1, is_valid)
+
+    fn take(self, idxs: List[Int]) -> SeriesBool:
+        var out_vals = List[Bool]()
+        var i = 0
+        while i < len(idxs):
+            var j = idxs[i]
+            if j >= 0 and j < len(self.data):
+                out_vals.append(self.data[j])
+            else:
+                out_vals.append(False)
+            i += 1
+        var out_valid = Bitmap(len(out_vals), True)
+        return SeriesBool(out_vals, self.name, out_valid)
+
+    fn gather(self, mask: Bitmap) -> SeriesBool:
+        var out_vals = List[Bool]()
+        var out_valid = Bitmap(0, True)
+        var i = 0
+        while i < len(mask):
+            if mask.get(i):
+                out_vals.append(self.data[i])
+                out_valid.resize(len(out_vals), True)
+            i += 1
+        return SeriesBool(out_vals, self.name, out_valid)
+
+    # Aggregations / counts
+    fn count_valid(self) -> Int:
+        var i = 0
+        var n = self.len()
+        var c = 0
+        while i < n:
+            if self.valid.get(i):
+                c += 1
+            i += 1
+        return c
+
+    fn sum_true(self) -> Int:
+        var i = 0
+        var n = self.len()
+        var c = 0
+        while i < n:
+            if self.valid.get(i) and self.data[i]:
+                c += 1
+            i += 1
+        return c
+
+    # Logical ops
+    fn logical_not(self) -> SeriesBool:
         var n = self.len()
         var out_vals = List[Bool]()
         var out_valid = Bitmap(n, True)
         var i = 0
         while i < n:
             if self.valid.get(i):
-                assert(self is not None, String("self is None"))
-                out_vals.append(not self.value()s[i])
+                out_vals.append(not self.data[i])
             else:
                 out_vals.append(False)
                 _ = out_valid.set(i, False)
             i += 1
-        return SeriesBool(self.name, out_vals, out_valid)
-fn logical_and(self, other: SeriesBool) -> SeriesBool:
+        return SeriesBool(out_vals, self.name, out_valid)
+
+    fn _binary_op(self, other: SeriesBool, op_id: Int) -> SeriesBool:
         var n = self.len()
-        var m = other.len()
-        var L = n
-        if m < L:
-            L = m
         var out_vals = List[Bool]()
-        var out_valid = Bitmap(L, True)
+        var out_valid = Bitmap(n, True)
         var i = 0
-        while i < L:
-            if self.valid.get(i) and other.valid.get(i):
-                assert(self is not None, String("self is None"))
-                out_vals.append(self.value()s[i] and other.value()s[i])
+        while i < n:
+            var valid_i = self.valid.get(i) and other.valid.get(i)
+            if valid_i:
+                var a = self.data[i]
+                var b = other.data[i]
+                var v = False
+                if op_id == 0:
+                    v = (a and b)
+                elif op_id == 1:
+                    v = (a or b)
+                else:
+                    v = ((a and not b) or (not a and b))
+                out_vals.append(v)
             else:
                 out_vals.append(False)
                 _ = out_valid.set(i, False)
             i += 1
-        return SeriesBool(self.name, out_vals, out_valid)
-fn logical_or(self, other: SeriesBool) -> SeriesBool:
-        var n = self.len()
-        var m = other.len()
-        var L = n
-        if m < L:
-            L = m
-        var out_vals = List[Bool]()
-        var out_valid = Bitmap(L, True)
-        var i = 0
-        while i < L:
-            if self.valid.get(i) and other.valid.get(i):
-                assert(self is not None, String("self is None"))
-                out_vals.append(self.value()s[i] or other.value()s[i])
-            else:
-                out_vals.append(False)
-                _ = out_valid.set(i, False)
-            i += 1
-        return SeriesBool(self.name, out_vals, out_valid)
-fn logical_xor(self, other: SeriesBool) -> SeriesBool:
-        var n = self.len()
-        var m = other.len()
-        var L = n
-        if m < L:
-            L = m
-        var out_vals = List[Bool]()
-        var out_valid = Bitmap(L, True)
-        var i = 0
-        while i < L:
-            if self.valid.get(i) and other.valid.get(i):
-                assert(self is not None, String("self is None"))
-                out_vals.append(self.value()s[i] != other.value()s[i])
-            else:
-                out_vals.append(False)
-                _ = out_valid.set(i, False)
-            i += 1
-        return SeriesBool(self.name, out_vals, out_valid)
+        return SeriesBool(out_vals, self.name, out_valid)
+
+    fn logical_and(self, other: SeriesBool) -> SeriesBool:
+        return self._binary_op(other, 0)
+
+    fn logical_or(self, other: SeriesBool) -> SeriesBool:
+        return self._binary_op(other, 1)
+
+    fn logical_xor(self, other: SeriesBool) -> SeriesBool:
+        return self._binary_op(other, 2)
+
