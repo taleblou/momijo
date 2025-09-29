@@ -1,298 +1,386 @@
-# Project:      Momijo
-# Module:       src.momijo.vision.image
-# File:         image.mojo
-# Path:         src/momijo/vision/image.mojo
-#
-# Description:  src.momijo.vision.image — focused Momijo functionality with a stable public API.
-#               Composable building blocks intended for reuse.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo 
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Structs: ChannelOrder, Layout, AlphaMode, Image
-#   - Key functions: __init__, GRAY, RGB, BGR, RGBA, BGRA, ARGB, __eq__ ...
-#   - Static methods present.
+# Project: momijo.vision
+# File: src/momijo/vision/image.mojo
+
+from momijo.vision.dtypes import DType, Layout, ColorSpace
+from momijo.vision.tensor import Tensor, packed_hwc_strides
+from momijo.vision.memory import alloc_u8
+
+# -----------------------------------------------------------------------------
+# Image metadata
+# -----------------------------------------------------------------------------
+
+ 
+struct ImageMeta(ExplicitlyCopyable, Movable):
+    var _layout: Layout
+    var _cs: ColorSpace
+    var _alpha_premultiplied: Bool
+
+    # Provide a default constructor so ImageMeta() works.
+    fn __init__(out self,
+                layout: Layout = Layout.HWC(),
+                cs: ColorSpace = ColorSpace.SRGB(),
+                alpha_premultiplied: Bool = False):
+        self._layout = layout
+        self._cs = cs
+        self._alpha_premultiplied = alpha_premultiplied
+
+    fn __copyinit__(out self, other: Self):
+        self._layout = other._layout
+        self._cs = other._cs
+        self._alpha_premultiplied = other._alpha_premultiplied
+
+    fn layout(self) -> Layout:
+        return self._layout
+
+    fn colorspace(self) -> ColorSpace:
+        return self._cs
+
+    fn is_premultiplied(self) -> Bool:
+        return self._alpha_premultiplied
+
+    fn with_colorspace(self, cs: ColorSpace) -> ImageMeta:
+        return ImageMeta(self._layout, cs, self._alpha_premultiplied)
+
+    fn with_layout(self, layout: Layout) -> ImageMeta:
+        return ImageMeta(layout, self._cs, self._alpha_premultiplied)
+
+    fn set_premultiplied(mut self, v: Bool):
+        self._alpha_premultiplied = v
+
+# -----------------------------------------------------------------------------
+# Image wrapper around a Tensor
+# -----------------------------------------------------------------------------
+@fieldwise_init
+struct Image(ExplicitlyCopyable, Movable):
+    var _tensor: Tensor
+    var _meta: ImageMeta
+
+    fn __init__(out self, meta: ImageMeta, tensor: Tensor):
+        self._meta = meta
+        self._tensor = tensor
+
+    fn __copyinit__(out self, other: Self):
+        self._tensor = other._tensor
+        self._meta = other._meta
+
+    # --- basic getters ---
+    fn tensor(self) -> Tensor:
+        return self._tensor
+
+    fn meta(self) -> ImageMeta:
+        return self._meta
+
+    fn height(self) -> Int:
+        return self._tensor.height()
+
+    fn width(self) -> Int:
+        return self._tensor.width()
+
+    fn channels(self) -> Int:
+        return self._tensor.channels()
+
+    fn dtype(self) -> DType:
+        return self._tensor.dtype()
+
+    fn colorspace(self) -> ColorSpace:
+        return self._meta.colorspace()
+
+    fn layout(self) -> Layout:
+        return self._meta.layout()
+
+    # --- layout / contiguity helpers ---
+    fn is_empty(self) -> Bool:
+        return self.height() <= 0 or self.width() <= 0 or self.channels() <= 0
+
+    fn is_hwc(self) -> Bool:
+        return self._meta.layout() == Layout.HWC()
+
+    fn is_u8(self) -> Bool:
+        return self._tensor.dtype() == DType.UInt8()
+
+    fn is_contiguous_hwc_u8(self) -> Bool:
+        return self.is_hwc() and self.is_u8() and self._tensor.is_contiguous_hwc_u8()
+
+    # Returns a copy that is packed HWC/u8 if copy_if_needed is True; otherwise returns self unchanged.
+    fn ensure_packed_hwc_u8(self, copy_if_needed: Bool = True) -> Image:
+        if self.is_contiguous_hwc_u8():
+            return self
+        if copy_if_needed:
+            var t = self._tensor.copy_to_packed_hwc()
+            return Image(t, self._meta)
+        return self
+
+    # --- cloning / views ---
+    fn clone(self) -> Image:
+        var copied = self._tensor.clone()      # deep copy
+        return Image(self._meta, copied)       # دقت: (meta, tensor)
 
 
-struct ChannelOrder(Copyable, Movable):
-    var id: Int
-fn __init__(out self, id: Int) -> None:
-        self.id = id
+    fn roi(self, y: Int, x: Int, h: Int, w: Int) -> Image:
+        # Safe ROI for HWC layout; clamps to image bounds.
+        if not self.is_hwc():
+            return self
+
+        var H = self.height()
+        var W = self.width()
+        if H <= 0 or W <= 0:
+            return self
+
+        var y0 = y
+        if y0 < 0: y0 = 0
+        if y0 >= H: y0 = H - 1
+
+        var x0 = x
+        if x0 < 0: x0 = 0
+        if x0 >= W: x0 = W - 1
+
+        var y1 = y + h
+        if y1 <= y0 + 1: y1 = y0 + 1
+        if y1 > H: y1 = H
+
+        var x1 = x + w
+        if x1 <= x0 + 1: x1 = x0 + 1
+        if x1 > W: x1 = W
+
+        var hh = y1 - y0
+        var ww = x1 - x0
+        # Use copy-based ROI since Tensor has copy_roi.
+        var v = self._tensor.copy_roi(y0, x0, hh, ww)
+        return Image(v, self._meta)
+
+    # Keep API parity; currently returns self since zero-copy view not supported.
+    fn as_hwc_view(self, h: Int, w: Int, c: Int, s0: Int, s1: Int, s2: Int) -> Image:
+        return self
+
+    # --- meta transforms ---
+    fn with_meta(self, meta: ImageMeta) -> Image:
+        return Image(self._tensor, meta)
+
+    fn with_colorspace(self, cs: ColorSpace) -> Image:
+        var m = self._meta.with_colorspace(cs)
+        return Image(self._tensor, m)
+
+    # --- pixel access (requires packed HWC/UInt8). No asserts; early returns. ---
+    fn set_u8(self, y: Int, x: Int, ch: Int, v: UInt8):
+        # Guards
+        if not self.is_contiguous_hwc_u8():
+            return
+        var H = self.height()
+        var W = self.width()
+        var C = self.channels()
+        if y < 0 or y >= H:
+            return
+        if x < 0 or x >= W:
+            return
+        if ch < 0 or ch >= C:
+            return
+
+        # Flat HWC index
+        var idx = (y * W + x) * C + ch
+
+        # Write via raw pointer (no field reassign → no mut self needed)
+        var p = self._tensor.data()   # UnsafePointer[UInt8]
+        p[idx] = v
+
+
+    # Read one u8 channel at (y, x, ch) from a contiguous HWC/u8 image.
+    fn at_u8(self, y: Int, x: Int, ch: Int) -> UInt8:
+        # Guards
+        if not self.is_contiguous_hwc_u8():
+            return UInt8(0)
+
+        var H = self.height()
+        var W = self.width()
+        var C = self.channels()
+
+        if y < 0 or y >= H:
+            return UInt8(0)
+        if x < 0 or x >= W:
+            return UInt8(0)
+        if ch < 0 or ch >= C:
+            return UInt8(0)
+
+        # Flat HWC index
+        var idx = (y * W + x) * C + ch
+
+        # Read via underlying tensor pointer
+        var t = self._tensor
+        return t.load_u8_at(idx)
+
+
+    fn get_u8(self, y: Int, x: Int, ch: Int) -> UInt8:
+        if not self.is_contiguous_hwc_u8(): return UInt8(0)
+        if y < 0 or y >= self.height(): return UInt8(0)
+        if x < 0 or x >= self.width(): return UInt8(0)
+        if ch < 0 or ch >= self.channels(): return UInt8(0)
+        var idx = (y * self.width() + x) * self.channels() + ch
+        return self._tensor.load_u8_at(idx)
+
+    fn set_rgb_u8(mut self, y: Int, x: Int, r: UInt8, g: UInt8, b: UInt8):
+        self.set_u8(y, x, 0, r)
+        self.set_u8(y, x, 1, g)
+        self.set_u8(y, x, 2, b)
+
+    # --- alpha utilities (only when channels == 4, packed HWC/UInt8) ---
+    fn premultiply_alpha(self) -> Image:
+        if not self.is_contiguous_hwc_u8(): return self
+        if self.channels() != 4: return self
+
+        var out = self.clone()
+        var h = out.height()
+        var w = out.width()
+        var y = 0
+        while y < h:
+            var x = 0
+            while x < w:
+                var a = out.get_u8(y, x, 3)
+                var r = out.get_u8(y, x, 0)
+                var g = out.get_u8(y, x, 1)
+                var b = out.get_u8(y, x, 2)
+
+                var rr = (Int(r) * Int(a) + 127) // 255
+                var gg = (Int(g) * Int(a) + 127) // 255
+                var bb = (Int(b) * Int(a) + 127) // 255
+
+                if rr > 255: rr = 255
+                if gg > 255: gg = 255
+                if bb > 255: bb = 255
+
+                out.set_u8(y, x, 0, UInt8(rr))
+                out.set_u8(y, x, 1, UInt8(gg))
+                out.set_u8(y, x, 2, UInt8(bb))
+                x += 1
+            y += 1
+        return out
+
+    fn unpremultiply_alpha(self) -> Image:
+        if not self.is_contiguous_hwc_u8(): return self
+        if self.channels() != 4: return self
+
+        var out = self.clone()
+        var h = out.height()
+        var w = out.width()
+        var y = 0
+        while y < h:
+            var x = 0
+            while x < w:
+                var a = out.get_u8(y, x, 3)
+                if a != UInt8(0):
+                    var r = out.get_u8(y, x, 0)
+                    var g = out.get_u8(y, x, 1)
+                    var b = out.get_u8(y, x, 2)
+
+                    var rr = (Int(r) * 255 + Int(a) // 2) // Int(a)
+                    var gg = (Int(g) * 255 + Int(a) // 2) // Int(a)
+                    var bb = (Int(b) * 255 + Int(a) // 2) // Int(a)
+
+                    if rr > 255: rr = 255
+                    if gg > 255: gg = 255
+                    if bb > 255: bb = 255
+
+                    out.set_u8(y, x, 0, UInt8(rr))
+                    out.set_u8(y, x, 1, UInt8(gg))
+                    out.set_u8(y, x, 2, UInt8(bb))
+                x += 1
+            y += 1
+        return out
+
+    # --- factory: create packed HWC/UInt8 image filled with a constant ---
     @staticmethod
-fn GRAY() -> ChannelOrder: return ChannelOrder(1)
+    fn new_hwc_u8(h: Int, w: Int, c: Int,
+                  value: UInt8 = UInt8(0),
+                  cs: ColorSpace = ColorSpace.SRGB(),
+                  layout: Layout = Layout.HWC()) -> Image:
+        var t = _alloc_tensor_u8(h, w, c, value)
+        var m = ImageMeta(layout, cs, False)
+        return Image(t, m)
+
     @staticmethod
-fn RGB() -> ChannelOrder:  return ChannelOrder(2)
+    fn full_hwc_u8(h: Int, w: Int, c: Int, value: UInt8) -> Image:
+        return Image.new_hwc_u8(h, w, c, value)
+
     @staticmethod
-fn BGR() -> ChannelOrder:  return ChannelOrder(3)
-    @staticmethod
-fn RGBA() -> ChannelOrder: return ChannelOrder(4)
-    @staticmethod
-fn BGRA() -> ChannelOrder: return ChannelOrder(5)
-    @staticmethod
-fn ARGB() -> ChannelOrder: return ChannelOrder(6)
-fn __eq__(self, other: ChannelOrder) -> Bool: return self.id == other.id
-fn to_string(self) -> String:
-        if self.id == 1: return String("GRAY")
-        if self.id == 2: return String("RGB")
-        if self.id == 3: return String("BGR")
-        if self.id == 4: return String("RGBA")
-        if self.id == 5: return String("BGRA")
-        if self.id == 6: return String("ARGB")
-        return String("UNKNOWN")
+    fn zeros_hwc_u8(h: Int, w: Int, c: Int) -> Image:
+        return Image.new_hwc_u8(h, w, c, UInt8(0))
 
-@staticmethod
-fn has_alpha(order: ChannelOrder) -> Bool:
-    return order == ChannelOrder.RGBA() or order == ChannelOrder.BGRA() or order == ChannelOrder.ARGB()
+# -----------------------------------------------------------------------------
+# Helpers / factory functions
+# -----------------------------------------------------------------------------
 
-@staticmethod
-fn num_channels(order: ChannelOrder) -> Int:
-    if order == ChannelOrder.GRAY(): return 1
-    if order == ChannelOrder.RGB() or order == ChannelOrder.BGR(): return 3
-    return 4
+# Allocate a Tensor that is packed HWC/UInt8 and optionally filled with 'value'
+fn _alloc_tensor_u8(h: Int, w: Int, c: Int, value: UInt8) -> Tensor:
+    var hh = h
+    if hh <= 0:
+        hh = 1
 
-struct Layout(Copyable, Movable):
-    var id: Int
-fn __init__(out self, id: Int) -> None:
-        self.id = id
-    @staticmethod
-fn HWC() -> Layout: return Layout(1)
-    @staticmethod
-fn CHW() -> Layout: return Layout(2)
-fn __eq__(self, other: Layout) -> Bool: return self.id == other.id
-fn to_string(self) -> String:
-        if self.id == 1: return String("HWC")
-        if self.id == 2: return String("CHW")
-        return String("UNKNOWN")
+    var ww = w
+    if ww <= 0:
+        ww = 1
 
-struct AlphaMode(Copyable, Movable):
-    var id: Int
-fn __init__(out self, id: Int) -> None:
-        self.id = id
-    @staticmethod
-fn NONE() -> AlphaMode:          return AlphaMode(0)
-    @staticmethod
-fn STRAIGHT() -> AlphaMode:      return AlphaMode(1)
-    @staticmethod
-fn PREMULTIPLIED() -> AlphaMode: return AlphaMode(2)
-fn __eq__(self, other: AlphaMode) -> Bool: return self.id == other.id
-fn to_string(self) -> String:
-        if self.id == 0: return String("NONE")
-        if self.id == 1: return String("STRAIGHT")
-        if self.id == 2: return String("PREMULTIPLIED")
-        return String("UNKNOWN")
+    var cc = c
+    if cc <= 0:
+        cc = 1
 
-# -------------------------
-# Image container: UInt8 HWC with metadata
-# -------------------------
-struct Image(Copyable, Movable):
-    var h: Int
-    var w: Int
-    var order: ChannelOrder
-    var alpha: AlphaMode
-    var layout: Layout   # always HWC for storage
-    var data: List[UInt8]
-fn __init__(out self, h: Int, w: Int, order: ChannelOrder, alpha: AlphaMode, data: List[UInt8]) -> None:
-        self.h = h
-        self.w = w
-        self.order = order
-        self.alpha = alpha
-        self.layout = Layout.HWC()
-        var c = num_channels(order)
-        # Validate data length; if mismatch, zero-fill conservatively
-        var expected = h * w * c
-        if len(data) != expected:
-            var fixed: List[UInt8] = List[UInt8]()
-            var i = 0
-            while i < expected:
-                fixed.append(0)
-                i += 1
-            self.data = fixed
-        else:
-            self.data = data
+    var (s0, s1, s2) = packed_hwc_strides(hh, ww, cc)
+    var n = hh * ww * cc
+    var buf = alloc_u8(n)
 
-    # Convenience constructor: zeros
-    @staticmethod
-fn zeros(h: Int, w: Int, order: ChannelOrder, alpha: AlphaMode) -> Image:
-        var c = num_channels(order)
-        var total = h * w * c
-        var buf: List[UInt8] = List[UInt8]()
-        var i = 0
-        while i < total:
-            buf.append(0)
-            i += 1
-        return Image(h, w, order, alpha, buf)
+    var i = 0
+    while i < n:
+        buf[i] = value
+        i += 1
 
-    # read-only metadata
-fn height(self) -> Int: return self.h
-fn width(self) -> Int:  return self.w
-fn channels(self) -> Int: return num_channels(self.order)
-fn size(self) -> Int: return self.h * self.w * self.channels()
-fn is_hwc(self) -> Bool: return self.layout == Layout.HWC()
+    return Tensor(buf, n, hh, ww, cc, s0, s1, s2, DType.UInt8())
 
-# -------------------------
-# Pixel addressing and get/set
-# -------------------------
-@staticmethod
-fn _offset(h: Int, w: Int, c: Int, x: Int, y: Int, ch: Int) -> Int:
-    # Row-major HWC
-    return ((y * w) + x) * c + ch
 
-@staticmethod
-fn get_px(img: Image, x: Int, y: Int, ch: Int) -> UInt8:
-    var idx = _offset(img.h, img.w, img.channels(), x, y, ch)
-    return img.data[idx]
+# Wrap an existing UInt8 buffer in packed HWC
+fn make_u8_hwc(out img: Image, data: UnsafePointer[UInt8], h: Int, w: Int, c: Int, cs: ColorSpace):
+    if h <= 0 or w <= 0 or c <= 0:
+        # Produce an empty image if shape is invalid
+        var empty_t = Tensor(UnsafePointer[UInt8](), 0, 0, 0, 0, 0, 0, 0, DType.UInt8(), False)
+        var empty_m = ImageMeta(Layout.HWC(), cs, False)
+        img = Image(empty_t, empty_m)
+        return
 
-@staticmethod
-fn set_px(mut img: Image, x: Int, y: Int, ch: Int, v: UInt8) -> Image:
-    var idx = _offset(img.h, img.w, img.channels(), x, y, ch)
-    img.data[idx] = v
-    return img
+    var (s0, s1, s2) = packed_hwc_strides(h, w, c)
+    var byte_len = h * w * c
+    # owns = False because 'data' is external
+    var t = Tensor(data, byte_len, h, w, c, s0, s1, s2, DType.UInt8(), False)
+    var m = ImageMeta(Layout.HWC(), cs, False)
+    img = Image(t, m)
 
-# -------------------------
-# Common transforms
-# -------------------------
-@staticmethod
-fn rgb_to_gray(img: Image) -> Image:
-    # For RGB/BGR 3-channel; pass-through otherwise
-    var c = img.channels()
-    if c != 3:
-        return img
-    var out = Image.zeros(img.h, img.w, ChannelOrder.GRAY(), AlphaMode.NONE())
-    var y = 0
-    while y < img.h:
-        var x = 0
-        while x < img.w:
-            var r: UInt8 = 0
-            var g: UInt8 = 0
-            var b: UInt8 = 0
-            if img.order == ChannelOrder.RGB():
-                r = get_px(img, x, y, 0)
-                g = get_px(img, x, y, 1)
-                b = get_px(img, x, y, 2)
-            else:
-                # BGR
-                b = get_px(img, x, y, 0)
-                g = get_px(img, x, y, 1)
-                r = get_px(img, x, y, 2)
-            # integer-approx luma: (77, 150, 29)/256
-            var gray_u16 = UInt16(77) * UInt16(r) + UInt16(150) * UInt16(g) + UInt16(29) * UInt16(b)
-            var gray = UInt8((gray_u16 >> UInt8(8)) & UInt16(0xFF))
-            out = set_px(out, x, y, 0, gray)
-            x += 1
-        y += 1
-    return out
+# Allocate a fresh zero-initialized u8 HWC buffer and wrap as Image
+fn make_zero_u8_hwc(h: Int, w: Int, c: Int, cs: ColorSpace) -> Image:
+    if h <= 0 or w <= 0 or c <= 0:
+        var empty_t = Tensor(UnsafePointer[UInt8](), 0, 0, 0, 0, 0, 0, 0, DType.UInt8(), False)
+        var empty_m = ImageMeta(Layout.HWC(), cs, False)
+        return Image(empty_t, empty_m)
 
-@staticmethod
-fn drop_alpha(img: Image) -> Image:
-    # If alpha present, return image without alpha channel (RGB/BGR); else pass-through.
-    if not has_alpha(img.order):
-        return img
-    var base_order = ChannelOrder.RGB()
-    if img.order == ChannelOrder.BGRA() or img.order == ChannelOrder.ARGB():
-        base_order = ChannelOrder.BGR()
-    # Map channel indices based on order:
-    # RGBA -> RGB (0,1,2)
-    # BGRA -> BGR (0,1,2)
-    # ARGB -> RGB (1,2,3)
-    var out = Image.zeros(img.h, img.w, base_order, AlphaMode.NONE())
-    var y = 0
-    while y < img.h:
-        var x = 0
-        while x < img.w:
-            if img.order == ChannelOrder.RGBA():
-                out = set_px(out, x, y, 0, get_px(img, x, y, 0))
-                out = set_px(out, x, y, 1, get_px(img, x, y, 1))
-                out = set_px(out, x, y, 2, get_px(img, x, y, 2))
-            elif img.order == ChannelOrder.BGRA():
-                out = set_px(out, x, y, 0, get_px(img, x, y, 0))
-                out = set_px(out, x, y, 1, get_px(img, x, y, 1))
-                out = set_px(out, x, y, 2, get_px(img, x, y, 2))
-            else:
-                # ARGB
-                out = set_px(out, x, y, 0, get_px(img, x, y, 1))
-                out = set_px(out, x, y, 1, get_px(img, x, y, 2))
-                out = set_px(out, x, y, 2, get_px(img, x, y, 3))
-            x += 1
-        y += 1
-    return out
+    var (s0, s1, s2) = packed_hwc_strides(h, w, c)
+    var n = h * w * c
+    var buf = alloc_u8(n)
+    var i = 0
+    while i < n:
+        buf[i] = 0
+        i += 1
+    var t = Tensor(buf, n, h, w, c, s0, s1, s2, DType.UInt8(), True)
+    var m = ImageMeta(Layout.HWC(), cs, False)
+    return Image(t, m)
 
-@staticmethod
-fn bgr_to_rgb(img: Image) -> Image:
-    if img.channels() != 3 or not (img.order == ChannelOrder.BGR() or img.order == ChannelOrder.RGB()):
-        return img
-    if img.order == ChannelOrder.RGB():
-        return img
-    var out = Image.zeros(img.h, img.w, ChannelOrder.RGB(), img.alpha)
-    var y = 0
-    while y < img.h:
-        var x = 0
-        while x < img.w:
-            out = set_px(out, x, y, 0, get_px(img, x, y, 2)) # R <- B
-            out = set_px(out, x, y, 1, get_px(img, x, y, 1)) # G <- G
-            out = set_px(out, x, y, 2, get_px(img, x, y, 0)) # B <- R
-            x += 1
-        y += 1
-    return out
-
-@staticmethod
-fn resize_nearest(img: Image, oh: Int, ow: Int) -> Image:
-    var out = Image.zeros(oh, ow, img.order, img.alpha)
-    var c = img.channels()
-    var y = 0
-    while y < oh:
-        var sy = (y * img.h) // oh
-        var x = 0
-        while x < ow:
-            var sx = (x * img.w) // ow
-            var ch = 0
-            while ch < c:
-                out = set_px(out, x, y, ch, get_px(img, sx, sy, ch))
-                ch += 1
-            x += 1
-        y += 1
-    return out
-
-# -------------------------
-# String summary (for logging)
-# -------------------------
-@staticmethod
-fn summary(img: Image) -> String:
-    var s = String("Image(") + String(img.h) + String("x") + String(img.w) + String("x") + String(img.channels()) + String(", ")
-    s = s + img.layout.to_string() + String(", ") + img.order.to_string() + String(", alpha=") + img.alpha.to_string() + String(")")
-    return s
-
-# -------------------------
-# Minimal smoke test
-# -------------------------
-@staticmethod
-fn __self_test__() -> Bool:
-    # Build 2x2 RGB pattern
-    var data: List[UInt8] = List[UInt8]()
-    # (255,0,0) (0,255,0)
-    data.append(255); data.append(0);   data.append(0)
-    data.append(0);   data.append(255); data.append(0)
-    # (0,0,255) (255,255,255)
-    data.append(0);   data.append(0);   data.append(255)
-    data.append(255); data.append(255); data.append(255)
-
-    var img = Image(2, 2, ChannelOrder.RGB(), AlphaMode.NONE(), data)
-    if img.size() != 12: return False
-
-    var gray = rgb_to_gray(img)
-    if gray.channels() != 1: return False
-    var rsz = resize_nearest(gray, 4, 4)
-    if rsz.h != 4 or rsz.w != 4: return False
-
-    var bgr = bgr_to_rgb(Image(2, 2, ChannelOrder.BGR(), AlphaMode.NONE(), data))
-    if bgr.order != ChannelOrder.RGB(): return False
-
-    var noalpha = drop_alpha(Image.zeros(2, 2, ChannelOrder.RGBA(), AlphaMode.STRAIGHT()))
-    if noalpha.channels() != 3: return False
-
+# Validate basic invariants; returns True if OK (no assertions)
+fn validate_image(self: Image) -> Bool:
+    if self.height() <= 0: return False
+    if self.width()  <= 0: return False
+    if self.channels() <= 0: return False
+    if not (self.layout() == Layout.HWC()): return False
+    if not (self.dtype() == DType.UInt8()): return False
     return True
