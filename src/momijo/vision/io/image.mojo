@@ -1,252 +1,172 @@
-# Project:      Momijo
-# Module:       src.momijo.vision.io.image
-# File:         image.mojo
-# Path:         src/momijo/vision/io/image.mojo
-#
-# Description:  src.momijo.vision.io.image — focused Momijo functionality with a stable public API.
-#               Composable building blocks intended for reuse.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License 
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
-#
-# Notes:
-#   - Structs: ChannelOrder, AlphaMode, Layout, Image
-#   - Key functions: __init__, GRAY, RGB, BGR, RGBA, BGRA, ARGB, __eq__ ...
-#   - Static methods present.
+# Project: momijo.vision | File: src/momijo/vision/io/image.mojo
 
+from momijo.vision.tensor import Tensor, packed_hwc_strides
+from momijo.vision.dtypes import DType
+from momijo.vision.image import Image, ColorSpace, ImageMeta
+from momijo.vision.transforms.array import full
+from momijo.vision.io.ppm import read_ppm, write_ppm
+from momijo.vision.io.png import read_png, write_png, has_png_codec
+from momijo.vision.io.jpeg import read_jpeg, write_jpeg, has_jpeg_codec
+from stdlib.pathlib import Path
+from stdlib.os import mkdir, stat, ENOENT
+# -------------------------------------------------------------------------
+# Primary API (delegates to registry implementation)
+# -------------------------------------------------------------------------
 
-struct ChannelOrder(Copyable, Movable):
-    var id: Int
-fn __init__(out self, id: Int) -> None: self.id = id
-    @staticmethod fn GRAY() -> ChannelOrder: return ChannelOrder(1)
-    @staticmethod fn RGB()  -> ChannelOrder: return ChannelOrder(2)
-    @staticmethod fn BGR()  -> ChannelOrder: return ChannelOrder(3)
-    @staticmethod fn RGBA() -> ChannelOrder: return ChannelOrder(4)
-    @staticmethod fn BGRA() -> ChannelOrder: return ChannelOrder(5)
-    @staticmethod fn ARGB() -> ChannelOrder: return ChannelOrder(6)
-fn __eq__(self, other: ChannelOrder) -> Bool: return self.id == other.id
-fn to_string(self) -> String:
-        if self.id == 1: return String("GRAY")
-        if self.id == 2: return String("RGB")
-        if self.id == 3: return String("BGR")
-        if self.id == 4: return String("RGBA")
-        if self.id == 5: return String("BGRA")
-        if self.id == 6: return String("ARGB")
-        return String("UNKNOWN")
+fn read_image(path: String) -> (Bool, Tensor):
+    var img = read_image_any(path)
+    return (True, img.tensor())
 
-@staticmethod
-fn num_channels(order: ChannelOrder) -> Int:
-    if order == ChannelOrder.GRAY(): return 1
-    if order == ChannelOrder.RGB() or order == ChannelOrder.BGR(): return 3
-    return 4
+# -------------------------------------------------------------------------
+# Fallback helpers
+# -------------------------------------------------------------------------
 
-struct AlphaMode(Copyable, Movable):
-    var id: Int
-fn __init__(out self, id: Int) -> None: self.id = id
-    @staticmethod fn NONE() -> AlphaMode:          return AlphaMode(0)
-    @staticmethod fn STRAIGHT() -> AlphaMode:      return AlphaMode(1)
-    @staticmethod fn PREMULTIPLIED() -> AlphaMode: return AlphaMode(2)
-fn __eq__(self, other: AlphaMode) -> Bool: return self.id == other.id
-fn to_string(self) -> String:
-        if self.id == 0: return String("NONE")
-        if self.id == 1: return String("STRAIGHT")
-        if self.id == 2: return String("PREMULTIPLIED")
-        return String("UNKNOWN")
-
-struct Layout(Copyable, Movable):
-    var id: Int
-fn __init__(out self, id: Int) -> None: self.id = id
-    @staticmethod fn HWC() -> Layout: return Layout(1)
-    @staticmethod fn CHW() -> Layout: return Layout(2)
-fn __eq__(self, other: Layout) -> Bool: return self.id == other.id
-fn to_string(self) -> String:
-        if self.id == 1: return String("HWC")
-        if self.id == 2: return String("CHW")
-        return String("UNKNOWN")
-
-# -------------------------
-# Image container (U8/HWC storage)
-# -------------------------
-struct Image(Copyable, Movable):
-    var h: Int
-    var w: Int
-    var order: ChannelOrder
-    var alpha: AlphaMode
-    var layout: Layout      # always HWC for storage
-    var data: List[UInt8]
-fn __init__(out self, h: Int, w: Int, order: ChannelOrder, alpha: AlphaMode, data: List[UInt8]) -> None:
-        self.h = h; self.w = w; self.order = order; self.alpha = alpha
-        self.layout = Layout.HWC()
-        var c = num_channels(order)
-        var expected = h * w * c
-        if len(data) != expected:
-            var fixed: List[UInt8] = List[UInt8]()
-            var i = 0
-            while i < expected:
-                fixed.append(0)
-                i += 1
-            self.data = fixed
-        else:
-            self.data = data
-
-    @staticmethod
-fn zeros(h: Int, w: Int, order: ChannelOrder, alpha: AlphaMode) -> Image:
-        var c = num_channels(order)
-        var total = h * w * c
-        var buf: List[UInt8] = List[UInt8]()
-        var i = 0
-        while i < total:
-            buf.append(0)
-            i += 1
-        return Image(h, w, order, alpha, buf)
-
-    # metadata
-fn height(self) -> Int: return self.h
-fn width(self)  -> Int: return self.w
-fn channels(self) -> Int: return num_channels(self.order)
-fn size(self) -> Int: return self.h * self.w * self.channels()
-fn is_hwc(self) -> Bool: return self.layout == Layout.HWC()
-
-# -------------------------
-# Basic pixel helpers
-# -------------------------
-@staticmethod
-fn _offset(w: Int, c: Int, x: Int, y: Int, ch: Int) -> Int:
-    return ((y * w) + x) * c + ch
-
-@staticmethod
-fn get_px(img: Image, x: Int, y: Int, ch: Int) -> UInt8:
-    return img.data[_offset(img.w, img.channels(), x, y, ch)]
-
-@staticmethod
-fn set_px(mut img: Image, x: Int, y: Int, ch: Int, v: UInt8) -> Image:
-    img.data[_offset(img.w, img.channels(), x, y, ch)] = v
-    return img
-
-# -------------------------
-# Construction helpers (simulating decoders)
-# -------------------------
-@staticmethod
-fn read_image_from_rgb_u8(h: Int, w: Int, buf: List[UInt8]) -> Image:
-    # Treat buf as packed RGB (HWC) data
-    return Image(h, w, ChannelOrder.RGB(), AlphaMode.NONE(), buf)
-
-@staticmethod
-fn read_image_from_bgr_u8(h: Int, w: Int, buf: List[UInt8]) -> Image:
-    return Image(h, w, ChannelOrder.BGR(), AlphaMode.NONE(), buf)
-
-@staticmethod
-fn read_image_from_rgba_u8(h: Int, w: Int, buf: List[UInt8]) -> Image:
-    return Image(h, w, ChannelOrder.RGBA(), AlphaMode.STRAIGHT(), buf)
-
-@staticmethod
-fn read_image_from_bgra_u8(h: Int, w: Int, buf: List[UInt8]) -> Image:
-    return Image(h, w, ChannelOrder.BGRA(), AlphaMode.STRAIGHT(), buf)
-
-@staticmethod
-fn read_image_from_gray_u8(h: Int, w: Int, buf: List[UInt8]) -> Image:
-    return Image(h, w, ChannelOrder.GRAY(), AlphaMode.NONE(), buf)
-
-# Placeholder for path-based read. Returns a zero image with failure flag.
-@staticmethod
-fn read_image(path: String) -> (Bool, Image):
-    var img = Image.zeros(0, 0, ChannelOrder.RGB(), AlphaMode.NONE())
-    return (False, img)
-
-# -------------------------
-# Export helpers (encode to raw channel-major buffers)
-# -------------------------
-@staticmethod
-fn encode_to_rgb_u8(img: Image) -> List[UInt8]:
-    # If already RGB with 3 channels, return a copy; if BGR swap; if GRAY repeat channel; if RGBA drop alpha.
-    var c = img.channels()
-    if img.order == ChannelOrder.RGB() and c == 3:
-        var out: List[UInt8] = List[UInt8]()
-        var i = 0; var n = img.h * img.w * 3
-        while i < n:
-            out.append(img.data[i]); i += 1
-        return out
-
-    # allocate
-    var out2: List[UInt8] = List[UInt8]()
-    var total = img.h * img.w * 3
-    var j = 0
-    while j < total: out2.append(0); j += 1
-
+fn make_dummy_u8_hwc_tensor(h: Int, w: Int, c: Int) -> Tensor:
+    var (s0, s1, s2) = packed_hwc_strides(h, w, c)
+    var n = h * w * c
+    var buf = UnsafePointer[UInt8].alloc(n)
     var y = 0
-    while y < img.h:
+    while y < h:
         var x = 0
-        while x < img.w:
-            if img.order == ChannelOrder.BGR() and c == 3:
-                var b = get_px(img, x, y, 0)
-                var g = get_px(img, x, y, 1)
-                var r = get_px(img, x, y, 2)
-                var base = _offset(img.w, 3, x, y, 0)
-                out2[base+0] = r; out2[base+1] = g; out2[base+2] = b
-            elif img.order == ChannelOrder.RGBA() and c == 4:
-                var base3 = _offset(img.w, 4, x, y, 0)
-                var base = _offset(img.w, 3, x, y, 0)
-                out2[base+0] = img.data[base3+0]
-                out2[base+1] = img.data[base3+1]
-                out2[base+2] = img.data[base3+2]
-            elif img.order == ChannelOrder.BGRA() and c == 4:
-                var base4 = _offset(img.w, 4, x, y, 0)
-                var baseB = _offset(img.w, 3, x, y, 0)
-                out2[baseB+0] = img.data[base4+2]
-                out2[baseB+1] = img.data[base4+1]
-                out2[baseB+2] = img.data[base4+0]
-            elif img.order == ChannelOrder.GRAY() and c == 1:
-                var g1 = get_px(img, x, y, 0)
-                var baseG = _offset(img.w, 3, x, y, 0)
-                out2[baseG+0] = g1; out2[baseG+1] = g1; out2[baseG+2] = g1
-            else:
-                # Fallback: just copy first 3 channels if present, else zeros
-                var k = 0
-                while k < 3:
-                    var v: UInt8 = 0
-                    if k < c: v = get_px(img, x, y, k)
-                    out2[_offset(img.w, 3, x, y, k)] = v
-                    k += 1
+        while x < w:
+            var ch = 0
+            while ch < c:
+                var v = (y + x + ch * 32) % 256
+                buf[y * s0 + x * s1 + ch * s2] = UInt8(v)
+                ch += 1
             x += 1
         y += 1
-    return out2
+    return Tensor(buf, n, h, w, c, s0, s1, s2, DType.UInt8)
 
-# -------------------------
-# String summary
-# -------------------------
-@staticmethod
-fn summary(img: Image) -> String:
-    var s = String("Image(") + String(img.h) + String("x") + String(img.w) + String("x") + String(img.channels()) + String(", ")
-    s = s + img.layout.to_string() + String(", ") + img.order.to_string() + String(", alpha=") + img.alpha.to_string() + String(")")
+fn read_image_with_fallback(path: String, fallback_h: Int = 64, fallback_w: Int = 64, fallback_c: Int = 3) -> (Bool, Tensor):
+    var (ok, t) = read_image(path)
+    if ok: return (True, t)
+    return (False, make_dummy_u8_hwc_tensor(fallback_h, fallback_w, fallback_c))
+
+fn ensure_outdir(path: String) -> Bool:
+    var p = Path(path)
+    var parent = p.parent()
+    if parent.to_string() == "":
+        return True  # No parent → assume current dir
+
+    try:
+        var info = stat(parent)
+        return True  # Exists
+    except err:
+        if err.errno() == ENOENT:
+            try:
+                return mkdir(parent, recursive=True)
+            except _:
+                return False
+        else:
+            return False
+
+# -------------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------------
+
+fn _to_lower(s: String) -> String:
+    var out = String()
+    var i = 0
+
+    while i < s.__len__():
+        var ch = s[i]
+        try:
+            var code = Int(ch)
+            var upper_a = Int('A')
+            var upper_z = Int('Z')
+            var delta = Int('a') - Int('A')
+
+            if code >= upper_a and code <= upper_z:
+                # تبدیل دستی به lowercase: با آرایه تک‌بایتی
+                var b = UnsafePointer[UInt8].alloc(1)
+                b[0] = UInt8(code + delta)
+                var low = String(b, 1)
+                UnsafePointer[UInt8].free(b)
+                out = out + low
+            else:
+                out = out + ch  # ch is StringSlice
+        except _:
+            out = out + ch
+        i += 1
+
+    return out
+
+
+
+fn unsafe_char_from_code(code: Int) -> String:
+    var b = UnsafePointer[UInt8].alloc(1)
+    b[0] = UInt8(code)
+    var s = String(b, 1)
+    UnsafePointer[UInt8].free(b)
     return s
 
-# -------------------------
-# Minimal smoke test
-# -------------------------
-@staticmethod
-fn __self_test__() -> Bool:
-    # Build 2x2 RGB buffer
-    var data: List[UInt8] = List[UInt8]()
-    data.append(255); data.append(0);   data.append(0)
-    data.append(0);   data.append(255); data.append(0)
-    data.append(0);   data.append(0);   data.append(255)
-    data.append(255); data.append(255); data.append(255)
 
-    var img = read_image_from_rgb_u8(2, 2, data)
-    if img.size() != 12: return False
-    var rgb = encode_to_rgb_u8(img)
-    if len(rgb) != 12: return False
-
-    var bgr = read_image_from_bgr_u8(2, 2, data)
-    var rgb2 = encode_to_rgb_u8(bgr)
-    if len(rgb2) != 12: return False
-
-    var g = read_image_from_gray_u8(2, 2, List[UInt8]())
-    if g.channels() != 1: return False
-
+fn _ends_with(s: String, suffix: String) -> Bool:
+    var n = s.__len__()
+    var m = suffix.__len__()
+    if m > n: return False
+    var i = 0
+    while i < m:
+        if s[n - m + i] != suffix[i]:
+            return False
+        i += 1
     return True
+
+# -------------------------------------------------------------------------
+# Format dispatch
+# -------------------------------------------------------------------------
+
+fn read_image_any(path: String) -> Image:
+    var p = _to_lower(path)
+
+    if _ends_with(p, ".ppm"):
+        return read_ppm(path)
+
+    if _ends_with(p, ".png"):
+        if has_png_codec():
+            var (ok, tensor) = read_png(path)
+            if ok:
+                var meta = ImageMeta().with_colorspace(ColorSpace.SRGB())
+                return Image(tensor, meta)
+            else:
+                return full((128, 128, 3), UInt8(127))
+        else:
+            return full((128, 128, 3), UInt8(127))
+
+    if _ends_with(p, ".jpg") or _ends_with(p, ".jpeg"):
+        if has_jpeg_codec():
+            var (okj, tj) = read_jpeg(path)
+            if okj:
+                var meta_j = ImageMeta().with_colorspace(ColorSpace.SRGB())
+                return Image(tj, meta_j)
+            else:
+                return full((160, 120, 3), UInt8(127))
+        else:
+            return full((160, 120, 3), UInt8(127))
+
+    return full((32, 32, 3), UInt8(127))
+
+fn write_image_any(path: String, img: Image) -> Bool:
+    var p = _to_lower(path)
+    if _ends_with(p, ".ppm"):
+        return write_ppm(path, img)
+
+    if _ends_with(p, ".png"):
+        # if has_png_codec():
+            return write_png(path, img.tensor())
+        # else:
+        #     var alt = path + String(".ppm")
+        #     return write_ppm(alt, img)
+
+    if _ends_with(p, ".jpg") or _ends_with(p, ".jpeg"):
+        # if has_jpeg_codec():
+            return write_jpeg(path, img.tensor())
+        # else:
+        #     var alt = path + String(".ppm")
+        #     return write_ppm(alt, img)
+
+    #var alt2 = path + String(".ppm")
+    return False #rite_ppm(path, img)
