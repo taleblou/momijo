@@ -1,58 +1,21 @@
-# Project:      Momijo
-# Module:       src.momijo.tensor.ops.elementwise
-# File:         elementwise.mojo
-# Path:         src/momijo/tensor/ops/elementwise.mojo
-#
-# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
-#               element-wise ops, and foundational kernels.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Key functions: argmax_index, argmin_index, __module_name__, _same_len_min, ew_add, ew_sub, ew_mul, ew_div ...
-#   - Uses generic functions/types with explicit trait bounds.
+# Project: momijo.tensor.ops
+# File: src/momijo/tensor/ops/elementwise.mojo
 
+ 
+ 
+from math import exp, log, tanh, sqrt
 
-from math import exp, log, sqrt, tanh
-from momijo.tensor.registry import add as registry_add
-from momijo.tensor.tensor import Tensor
-
-fn argmax_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] > best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-fn argmin_index(xs: List[Float64]) -> Int:
-    if len(xs) == 0:
-        return -1
-    var best = xs[0]
-    var idx = 0
-    var i = 1
-    while i < len(xs):
-        if xs[i] < best:
-            best = xs[i]
-            idx = i
-        i += 1
-    return idx
-
-fn ensure_not_empty[T: Copyable & Movable](xs: List[T]) -> Bool:
-    return len(xs) > 0
-fn __module_name__() -> String:
-    return String("momijo/tensor/ops/elementwise.mojo")
-
+ 
 # ---------- Elementwise (List[Float64]) ----------
 
 @always_inline
@@ -60,6 +23,7 @@ fn _same_len_min(a_len: Int, b_len: Int) -> Int:
     if a_len < b_len:
         return a_len
     return b_len
+
 fn ew_add(a: List[Float64], b: List[Float64]) -> List[Float64]:
     var n = _same_len_min(len(a), len(b))
     var out = List[Float64]()
@@ -68,6 +32,7 @@ fn ew_add(a: List[Float64], b: List[Float64]) -> List[Float64]:
         out.append(a[i] + b[i])
         i += 1
     return out
+
 fn ew_sub(a: List[Float64], b: List[Float64]) -> List[Float64]:
     var n = _same_len_min(len(a), len(b))
     var out = List[Float64]()
@@ -76,6 +41,7 @@ fn ew_sub(a: List[Float64], b: List[Float64]) -> List[Float64]:
         out.append(a[i] - b[i])
         i += 1
     return out
+
 fn ew_mul(a: List[Float64], b: List[Float64]) -> List[Float64]:
     var n = _same_len_min(len(a), len(b))
     var out = List[Float64]()
@@ -84,6 +50,7 @@ fn ew_mul(a: List[Float64], b: List[Float64]) -> List[Float64]:
         out.append(a[i] * b[i])
         i += 1
     return out
+
 fn ew_div(a: List[Float64], b: List[Float64], eps: Float64 = 0.0) -> List[Float64]:
     var n = _same_len_min(len(a), len(b))
     var out = List[Float64]()
@@ -98,6 +65,7 @@ fn ew_div(a: List[Float64], b: List[Float64], eps: Float64 = 0.0) -> List[Float6
         out.append(a[i] / denom)
         i += 1
     return out
+
 fn ew_max(a: List[Float64], b: List[Float64]) -> List[Float64]:
     var n = _same_len_min(len(a), len(b))
     var out = List[Float64]()
@@ -111,6 +79,7 @@ fn ew_max(a: List[Float64], b: List[Float64]) -> List[Float64]:
         out.append(m)
         i += 1
     return out
+
 fn ew_min(a: List[Float64], b: List[Float64]) -> List[Float64]:
     var n = _same_len_min(len(a), len(b))
     var out = List[Float64]()
@@ -124,6 +93,7 @@ fn ew_min(a: List[Float64], b: List[Float64]) -> List[Float64]:
         out.append(m)
         i += 1
     return out
+
 fn ew_clamp(xs: List[Float64], lo: Float64, hi: Float64) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -136,6 +106,7 @@ fn ew_clamp(xs: List[Float64], lo: Float64, hi: Float64) -> List[Float64]:
         out.append(v)
         i += 1
     return out
+
 fn ew_relu(xs: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -146,6 +117,7 @@ fn ew_relu(xs: List[Float64]) -> List[Float64]:
         out.append(v)
         i += 1
     return out
+
 fn ew_abs(xs: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -156,6 +128,7 @@ fn ew_abs(xs: List[Float64]) -> List[Float64]:
         out.append(v)
         i += 1
     return out
+
 fn ew_sign(xs: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -170,6 +143,7 @@ fn ew_sign(xs: List[Float64]) -> List[Float64]:
         out.append(s)
         i += 1
     return out
+
 fn ew_sigmoid(xs: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -183,6 +157,7 @@ fn ew_sigmoid(xs: List[Float64]) -> List[Float64]:
             out.append(z / (1.0 + z))
         i += 1
     return out
+
 fn ew_tanh(xs: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -190,6 +165,7 @@ fn ew_tanh(xs: List[Float64]) -> List[Float64]:
         out.append(tanh(xs[i]))
         i += 1
     return out
+
 fn ew_exp(xs: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -197,6 +173,7 @@ fn ew_exp(xs: List[Float64]) -> List[Float64]:
         out.append(exp(xs[i]))
         i += 1
     return out
+
 fn ew_log(xs: List[Float64], eps: Float64 = 0.0) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -210,6 +187,8 @@ fn ew_log(xs: List[Float64], eps: Float64 = 0.0) -> List[Float64]:
         out.append(log(v))
         i += 1
     return out
+
+# TODO: translate to English (was non-English comment)
 fn ew_pow(xs: List[Float64], p: Int) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
@@ -235,6 +214,7 @@ fn ew_pow(xs: List[Float64], p: Int) -> List[Float64]:
     return out
 
 # ---------- Reductions & normalizations ----------
+
 fn sum_list(xs: List[Float64]) -> Float64:
     var s = 0.0
     var i = 0
@@ -242,11 +222,13 @@ fn sum_list(xs: List[Float64]) -> Float64:
         s += xs[i]
         i += 1
     return s
+
 fn mean_list(xs: List[Float64]) -> Float64:
     var n = len(xs)
     if n == 0:
         return 0.0
     return sum_list(xs) / Float64(n)
+
 fn var_list(xs: List[Float64], ddof: Int = 0) -> Float64:
     var n = len(xs)
     var denom = n - ddof
@@ -260,8 +242,10 @@ fn var_list(xs: List[Float64], ddof: Int = 0) -> Float64:
         acc += d * d
         i += 1
     return acc / Float64(denom)
+
 fn std_list(xs: List[Float64], ddof: Int = 0) -> Float64:
     return sqrt(var_list(xs, ddof))
+
 fn normalize_l2(xs: List[Float64], eps: Float64 = 1e-12) -> List[Float64]:
     var s2 = 0.0
     var i = 0
@@ -275,6 +259,7 @@ fn normalize_l2(xs: List[Float64], eps: Float64 = 1e-12) -> List[Float64]:
         out.append(xs[i] / denom)
         i += 1
     return out
+
 fn softmax(xs: List[Float64]) -> List[Float64]:
     var n = len(xs)
     if n == 0:
@@ -297,8 +282,16 @@ fn softmax(xs: List[Float64]) -> List[Float64]:
     return out
 
 # ---------- Tensor-level wrappers (registry) ----------
+# TODO: translate to English (was non-English comment)
+
+from momijo.tensor.tensor import Tensor
+from momijo.tensor.registry import add as registry_add
+
+alias F64Tensor = Tensor[Float64]
 
 fn add_f64(a: F64Tensor, b: F64Tensor) -> F64Tensor:
+# TODO: translate to English (was non-English comment)
+# TODO: translate to English (was non-English comment)
     #   return registry_add[Float64](a, b)
     return registry_add(a, b)
 
