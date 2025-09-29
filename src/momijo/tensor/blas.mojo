@@ -1,24 +1,19 @@
-# Project:      Momijo
-# Module:       src.momijo.tensor.blas
-# File:         blas.mojo
-# Path:         src/momijo/tensor/blas.mojo
-#
-# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
-#               element-wise ops, and foundational kernels.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Key functions: _check_sgemm_contract, _ensure_contiguous, _zero_out, _sgemm_tiled, _sgemm_tiled_alpha_beta, _sgemm_via_blas, sgemm
+# Project: momijo.tensor
+# File: src/momijo/tensor/blas.mojo
+ 
+from momijo.tensor.tensor import Tensor  # generic in your codebase
 
-
-from momijo.tensor.tensor import Tensor
+# --- helpers (no-op stubs to keep file compiling) -----------------------------
 
 fn _check_sgemm_contract(
     a: Tensor[Float32],
@@ -27,10 +22,12 @@ fn _check_sgemm_contract(
 ) -> Bool:
     # TODO: add real shape/dtype checks once Tensor API is stable
     return True
+
 fn _ensure_contiguous(x: Tensor[Float32]) -> Tensor[Float32]:
     # TODO: if you later add x.is_contiguous()/x.contiguous(), branch here
     return x
-fn _zero_out(c: Tensor[Float32]) -> None:
+
+fn _zero_out(c: Tensor[Float32]):
     # TODO: implement c.fill(0.0f32) once available
     pass
 
@@ -65,6 +62,7 @@ fn _sgemm_via_blas(
     return False
 
 # --- public API ---------------------------------------------------------------
+
 fn sgemm(
     a: Tensor[Float32],
     b: Tensor[Float32],
