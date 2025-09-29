@@ -1,41 +1,31 @@
-# Project:      Momijo
-# Module:       src.momijo.tensor.broadcast
-# File:         broadcast.mojo
-# Path:         src/momijo/tensor/broadcast.mojo
-#
-# Description:  Core tensor/ndarray components: shapes/strides, broadcasting rules,
-#               element-wise ops, and foundational kernels.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
+# MIT License
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Project: momijo  |  Source: https://github.com/taleblou/momijo
+# This file is part of the Momijo project. See the LICENSE file at the repository root.
+# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
+# Website: https://taleblou.ir/
+# Repository: https://github.com/taleblou/momijo
 #
-# Notes:
-#   - Structs: BroadcastMapper
-#   - Key functions: _prod, _row_major_strides, _align_right, can_broadcast, broadcast_shape, _ravel_index, _unravel_index, _map_indices ...
-#   - Uses generic functions/types with explicit trait bounds.
+# Project: momijo.tensor
+# File: src/momijo/tensor/broadcast.mojo
 
-
-from momijo.core.version import major
-from momijo.dataframe.diagnostics import safe
-from momijo.dataframe.helpers import pad2
-from momijo.dist.process_group import broadcast
-from momijo.io.checkpoints.weights import __setitem__
+ 
+ 
+from momijo.tensor.tensor_base import strides  # chosen by proximity
 from momijo.tensor.tensor import index
-from momijo.utils.result import g
-from pathlib import Path
-from pathlib.path import Path
-from sys import version
+from momijo.tensor.tensor import Tensor   # keep generic if your Tensor is generic
+from momijo.tensor.layout import Shape    # optional; kept for readability
+
+# -------------------- small utils --------------------
 
 fn _prod(xs: List[Int]) -> Int:
     var p: Int = 1
     for v in xs:
         p = p * v
     return p
+
 fn _row_major_strides(shape: List[Int]) -> List[Int]:
     # e.g., shape [s0, s1, ..., sn-1] -> strides [s1*s2*...*sn-1, ..., 1]
     var n: Int = len(shape)
@@ -56,6 +46,7 @@ fn _row_major_strides(shape: List[Int]) -> List[Int]:
         r.append(strides[j])
         j = j - 1
     return r
+
 fn _align_right(a: List[Int], b: List[Int]) -> (List[Int], List[Int]):
     # Pad the shorter shape with leading 1s so len(a)==len(b)
     var la: Int = len(a)
@@ -82,6 +73,7 @@ fn _align_right(a: List[Int], b: List[Int]) -> (List[Int], List[Int]):
         for v2 in b:
             out_b.append(v2)
         return (a, out_b)
+
 fn can_broadcast(a: List[Int], b: List[Int]) -> Bool:
     var aa: List[Int]
     var bb: List[Int]
@@ -95,6 +87,7 @@ fn can_broadcast(a: List[Int], b: List[Int]) -> Bool:
             return False
         i += 1
     return True
+
 fn broadcast_shape(a: List[Int], b: List[Int]) -> List[Int]:
     var aa: List[Int]
     var bb: List[Int]
@@ -126,6 +119,7 @@ fn _ravel_index(indices: List[Int], shape: List[Int]) -> Int:
         idx = idx + indices[i] * strides[i]
         i += 1
     return idx
+
 fn _unravel_index(flat: Int, shape: List[Int]) -> List[Int]:
     # inverse of ravel; row-major
     var strides = _row_major_strides(shape)
@@ -175,25 +169,31 @@ struct BroadcastMapper(Copyable, Movable):
     var out_shape: List[Int]
     var total: Int
     var index: Int
-fn __init__(out self, shape_a: List[Int], shape_b: List[Int]) -> None:
+
+    fn __init__(out self, shape_a: List[Int], shape_b: List[Int]):
         self.shape_a = shape_a
         self.shape_b = shape_b
         self.out_shape = broadcast_shape(shape_a, shape_b)
         self.total = _prod(self.out_shape)
         self.index = 0
-fn __copyinit__(out self, other: Self) -> None:
+
+    fn __copyinit__(out self, other: Self):
         self.shape_a = other.shape_a
         self.shape_b = other.shape_b
         self.out_shape = other.out_shape
         self.total = other.total
         self.index = other.index
-fn __len__(self) -> Int:
+
+    fn __len__(self) -> Int:
         return self.total
-fn reset(mut self) -> None:
+
+    fn reset(mut self):
         self.index = 0
-fn valid(self) -> Bool:
+
+    fn valid(self) -> Bool:
         return self.index < self.total
-fn next(mut self) -> (Int, Int, Int):
+
+    fn next(mut self) -> (Int, Int, Int):
         # returns (out_flat, a_flat, b_flat)
         var out_flat: Int = self.index
         var out_idx = _unravel_index(out_flat, self.out_shape)
@@ -204,6 +204,7 @@ fn next(mut self) -> (Int, Int, Int):
         return (out_flat, a_flat, b_flat)
 
 # -------------------- Apply (stub) --------------------------------------------
+
 fn apply_broadcast_binary_float32(
     a: Tensor[Float32],
     b: Tensor[Float32],
