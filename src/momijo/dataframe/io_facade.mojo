@@ -19,8 +19,9 @@
 #   - Structs: —
 #   - Key functions: to_csv, read_csv, to_json, read_json, to_json_lines, read_json_lines
 
-from pathlib.path import Path
 
+
+from pathlib.path import Path
 from momijo.dataframe import api as mdf
 
 
