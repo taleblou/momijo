@@ -19,6 +19,8 @@
 #   - Structs: Categorical
 #   - Key functions: __init__, __copyinit__, __len__, __str__, get, categories, codes_list, unique, values, value_counts, astype, reorder, remove_unused, to_category
 
+
+
 from momijo.dataframe.column import Column,from_list_int
 
 
@@ -110,19 +112,19 @@ struct Categorical(Copyable, Movable):
             i += 1
         return counts
 
-# Casting
+    # Casting
     fn astype(self, target: String) -> List[String]:
-# Currently supports: "string" -> decode to List[String]
-# Other targets can be added later (e.g., int codes).
+        # Currently supports: "string" -> decode to List[String]
+        # Other targets can be added later (e.g., int codes).
         if target == String("string") or target == String("str") or target == String("object"):
             return self.values()
-# Default: return decoded values to be safe for downstream usage
+        # Default: return decoded values to be safe for downstream usage
         return self.values()
 
-# Category operations
+    # Category operations
     fn reorder(self, new_cats: List[String]) -> Categorical:
-# Produce a new Categorical with categories reordered to new_cats.
-# Codes are remapped; values not in new_cats are mapped to -1 then to "" on decode.
+        # Produce a new Categorical with categories reordered to new_cats.
+        # Codes are remapped; values not in new_cats are mapped to -1 then to "" on decode.
         var rev = Dict[String, Int]()
         var i = 0
         while i < len(new_cats):
@@ -148,11 +150,11 @@ struct Categorical(Copyable, Movable):
         return out
 
     fn remove_unused(self) -> Categorical:
-# Remove categories that are not referenced by any code.
+        # Remove categories that are not referenced by any code.
         var used = Dict[Int, Int]()  # old_code -> new_code
         var new_cats = List[String]()
 
-# Mark used categories
+        # Mark used categories
         var i = 0
         while i < len(self.codes):
             var c = self.codes[i]
@@ -162,7 +164,7 @@ struct Categorical(Copyable, Movable):
                     new_cats.append(self.cats[c])
             i += 1
 
-# Remap codes
+        # Remap codes
         var new_codes = List[Int]()
         var j = 0
         while j < len(self.codes):
@@ -179,24 +181,7 @@ struct Categorical(Copyable, Movable):
         return out
  
 
-# Build categorical (cats, codes) purely as tuple without importing Categorical
-# fn to_category(col: Column) -> (List[String], List[Int]):
-#     var cats = List[String]()
-#     var index = Dict[String, Int]()
-#     var codes = List[Int]()
-#     var n = col.len()
-#     var i = 0
-#     while i < n:
-#         var v = col.get_str(i)
-#         if v in index:
-#             codes.append(index[v])
-#         else:
-#             var cid = len(cats)
-#             index[v] = cid
-#             cats.append(v)
-#             codes.append(cid)
-#         i += 1
-#     return (cats, codes)
+ 
 
 # Column-level overload with options
 # Helper: works when you already have a Column object
