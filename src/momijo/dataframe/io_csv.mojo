@@ -1,14 +1,32 @@
 # Project:      Momijo
 # Module:       dataframe.io_csv
 # File:         io_csv.mojo
+# Path:         dataframe/io_csv.mojo
 #
-# Description:  Io Csv module for Momijo DataFrame.
-#               Implements CSV read/write helpers for Momijo DataFrame.
+# Description:  dataframe.io_csv — CSV I/O helpers for Momijo DataFrame.
+#               RFC4180-ish read/write: cell escaping (quotes/newlines), header parsing,
+#               row-width normalization/padding, and text file I/O wrappers; converts
+#               between DataFrame and CSV strings for simple interoperability.
+#               Implements core data structures, algorithms, and convenience APIs for production use.
+#               Designed as a stable, composable building block within the Momijo public API.
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
-# License:      MIT
+# Website:      https://taleblou.ir/
+# Repository:   https://github.com/taleblou/momijo
+#
+# License:      MIT License
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
+#
+# Notes:
+#   - Structs: —
+#   - Key functions: write_text, read_text, csv_escape, row_to_csv_line, to_csv_string,
+#                    parse_csv_line, write_csv, read_csv, read_csv_from_string
+
+
+
+
+
 
 from collections.list import List
 from pathlib.path import Path
