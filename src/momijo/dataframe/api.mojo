@@ -19,6 +19,8 @@
 #   - Structs: —
 #   - Key functions: _find_col, df_from_columns, df_from_pairs, df_make, col_str, df_head, df_shape, df_dtypes, df_describe, df_rename, df_set_index, df_reset_index, make_pairs, pairs_append, df_nlargest, df_nsmallest, df_clip, df_fillna_i64
 
+
+
 from momijo.dataframe.column import ColumnTag,get_string
 from momijo.dataframe.selection import RowRange, ColRange, loc, iloc, select
 from momijo.dataframe._groupby_core import groupby_agg, groupby_transform
@@ -96,7 +98,7 @@ fn col_str(name: String, values: List[String]) -> (String, List[String]):
 
 # Introspection
 fn df_head(df: DataFrame, n: Int) -> DataFrame:
-# Return first n rows (or all rows if n >= nrows)
+    # Return first n rows (or all rows if n >= nrows)
     var rows = df.nrows()
     var k = n
     if k > rows:
@@ -106,14 +108,14 @@ fn df_head(df: DataFrame, n: Int) -> DataFrame:
     out.index_name = df.index_name
     out.index_vals = List[String]()
 
-# Copy index values if they exist and lengths match
+    # Copy index values if they exist and lengths match
     if len(df.index_vals) == rows:
         var r = 0
         while r < k:
             out.index_vals.append(String(df.index_vals[r]))
             r += 1
 
-# Copy columns
+    # Copy columns
     var c = 0
     while c < df.ncols():
         out.col_names.append(String(df.col_names[c]))
@@ -438,8 +440,7 @@ fn pairs_append(pairs: List[ColPair], name: String, values: List[Float64]) -> Li
  
  
 
-
-# ---- Drop NA (any) ----
+ 
 
 
 # ---- Categorical helper ----
@@ -730,25 +731,25 @@ fn take_rows(df0: DataFrame, idxs: List[Int]) -> DataFrame:
 
 # [moved] concat_rows
 fn concat_rows(dfs: List[DataFrame], ignore_index: Bool) -> DataFrame:
-# empty input -> empty DataFrame
+    # empty input -> empty DataFrame
     if len(dfs) == 0:
         return DataFrame()
 
-# copy column names from the first frame
+    # copy column names from the first frame
     var col_names = List[String]()
     var c = 0
     while c < dfs[0].ncols():
         col_names.append(String(dfs[0].col_names[c]))
         c += 1
 
-# allocate output columns (one list per column)
+    #   allocate output columns (one list per column)
     var cols = List[List[String]]()
     c = 0
     while c < len(col_names):
         cols.append(List[String]())
         c += 1
 
-# append all rows from all input frames column-wise
+    # append all rows from all input frames column-wise
     var total_rows = 0
     var di = 0
     while di < len(dfs):
@@ -763,18 +764,18 @@ fn concat_rows(dfs: List[DataFrame], ignore_index: Bool) -> DataFrame:
         total_rows += df.nrows()
         di += 1
 
-# build output index
+    # build output index
     var out_index = List[String]()
     var out_index_name = String("")
     if ignore_index:
-# create a fresh 0..N-1 index as strings
+    # create a fresh 0..N-1 index as strings
         var r2 = 0
         while r2 < total_rows:
             out_index.append(String(r2))
             r2 += 1
         out_index_name = String("")
     else:
-# preserve and concatenate existing indices in order
+    # preserve and concatenate existing indices in order
         out_index_name = String(dfs[0].index_name)
         di = 0
         while di < len(dfs):
@@ -785,7 +786,7 @@ fn concat_rows(dfs: List[DataFrame], ignore_index: Bool) -> DataFrame:
                 k += 1
             di += 1
 
-# construct the final DataFrame
+    # construct the final DataFrame
     return DataFrame(col_names, cols, out_index, out_index_name)
 
 
@@ -868,7 +869,7 @@ fn rename(
 ) -> DataFrame:
     var out = frame.copy()
 
-# Rename columns according to cols_map
+    # Rename columns according to cols_map
     var i = 0
     while i < out.ncols():
         var old_name = out.col_names[i]
@@ -883,7 +884,7 @@ fn rename(
 
         i += 1
 
-# Set index name only if provided
+    # Set index name only if provided
     if len(index_name) > 0:
         out.index_name = index_name
 
