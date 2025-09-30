@@ -19,6 +19,7 @@
 #   - Structs: ModuleState
 #   - Key functions: __dict_contains, __init__, make_module_state, contains_string, unique_strings_list, list_union, list_difference, symdiff, union, between_i64, isna, take_i64, take_f64, take_str, take_bool, argsort_f64, argsort_i64, rank_dense_f64
 
+
 from collections.list import List
 from momijo.dataframe.frame import DataFrame
 from momijo.dataframe.io_bytes import str_to_bytes, bytes_to_string
@@ -28,7 +29,7 @@ from momijo.dataframe._groupby_core import groupby_agg      # kept-for-future
 from momijo.arrow_core.poly_column import get_string        # kept, project-wide
 # helper: check key existence without raising
 fn __dict_contains(m: Dict[String, List[Int]], key: String) -> Bool:
-# Dict exposes keys(); we check by iterating
+    # Dict exposes keys(); we check by iterating
     for k in m.keys():
         if k == key:
             return True
