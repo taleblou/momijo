@@ -19,6 +19,7 @@
 #   - Structs: SeriesI64
 #   - Key functions: __init__, len, head, get, set_name, count_valid, sum, mean_as_f64
 
+
 from momijo.dataframe.bitmap import Bitmap
 
 # Integer series (64-bit semantic), aligned with SeriesStr API style
