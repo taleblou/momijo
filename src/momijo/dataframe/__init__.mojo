@@ -3,7 +3,7 @@
 # File:         __init__.mojo
 # Path:         dataframe/__init__.mojo
 #
-# Description:  dataframe.__init__ —   Init   module for Momijo DataFrame.
+# Description:  dataframe.__init__ — Init module for Momijo Dataframe.
 #               Implements core data structures, algorithms, and convenience APIs for production use.
 #               Designed as a stable, composable building block within the Momijo public API.
 #
@@ -18,6 +18,7 @@
 # Notes:
 #   - Structs: —
 #   - Key functions: —
+
 
 from momijo.dataframe.api import df_make as _df_make
 from momijo.dataframe.column import Column as Column
@@ -148,4 +149,3 @@ from momijo.dataframe.io_json_min import read_json as read_json
 from momijo.dataframe.io_json_min import write_json as to_json
 from momijo.dataframe.io_json_min import write_json as to_json_lines
 from momijo.dataframe.io_json_min import read_json as read_json_lines
-
