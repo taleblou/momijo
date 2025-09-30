@@ -19,6 +19,8 @@
 #   - Structs: SeriesBool
 #   - Key functions: __init__, len, get, set, set_name, values, head, count_valid, sum_true, logical_not, _binary_op, logical_and, logical_or, logical_xor
 
+
+
 from momijo.dataframe.bitmap import Bitmap
 
 struct SeriesBool(Copyable, Movable):
