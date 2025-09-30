@@ -19,6 +19,8 @@
 #   - Structs: —
 #   - Key functions: cumsum_i64, corr_f64, sqrt_f64, value_counts_str, str_replace_all, col_mean, fillna_value, interpolate_numeric, cut_numeric, _parse_f64, _label_for
 
+
+
 from momijo.dataframe.helpers import sqrt
 from momijo.dataframe.series_bool import append
 from momijo.dataframe.api import col_i64, col_str, df_make
@@ -212,15 +214,15 @@ fn interpolate_numeric(df0: DataFrame, col: String) -> DataFrame:
                         break
                     has_dot = True
                 elif (ch == "0") or (ch == "1") or (ch == "2") or (ch == "3") or (ch == "4") or (ch == "5") or (ch == "6") or (ch == "7") or (ch == "8") or (ch == "9"):
-# ok
+                    # ok
                     pass
                 else:
                     ok = False
                     break
                 j += 1
             if ok:
-# convert
-# minimal parse without pow10 accumulation: split by '.'
+                # convert
+                # minimal parse without pow10 accumulation: split by '.'
                 var neg = False
                 var k = 0
                 if (len(s) > 0) and (s[0] == "-"):
