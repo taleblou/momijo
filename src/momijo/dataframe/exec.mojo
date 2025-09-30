@@ -19,6 +19,8 @@
 #   - Structs: —
 #   - Key functions: execute, exec_aggregate, groupby_multi, agg_on_col, agg_on_col_rows
 
+
+پ
 from pathlib import Path
 from pathlib.path import Path
 
@@ -46,18 +48,18 @@ from momijo.visual.scene.facet import LogicalPlan, PLAN_AGGREGATE, PLAN_FILTER, 
 
 fn execute(plan: LogicalPlan) -> DataFrame:
     if plan.kind == PLAN_SCAN:
-# Return the already materialized DataFrame
+        # Return the already materialized DataFrame
         return plan.df
 
     elif plan.kind == PLAN_FILTER:
         var df = execute(plan.child)
-# expr must evaluate to a boolean mask aligned with df rows
+        # expr must evaluate to a boolean mask aligned with df rows
         var mask = eval_expr(df, plan.expr)
         return df.filter_by_mask(mask)
 
     elif plan.kind == PLAN_PROJECT:
         var df = execute(plan.child)
-# Select/reorder a subset of columns
+        # Select/reorder a subset of columns
         return df.select_columns(plan.columns)
 
     elif plan.kind == PLAN_AGGREGATE:
@@ -66,15 +68,15 @@ fn execute(plan: LogicalPlan) -> DataFrame:
 
     elif plan.kind == PLAN_SORT:
         var df = execute(plan.child)
-# Multi-key, multi-order sort
+        # Multi-key, multi-order sort
         return df.sort_by_multi(plan.sort_keys, plan.sort_asc)
 
     elif plan.kind == PLAN_JOIN:
-# Evaluate both sides first (left-deep or bushy trees both OK)
+        # Evaluate both sides first (left-deep or bushy trees both OK)
         var left_df = execute(plan.child)
         var right_df = execute(plan.right)
 
-# Stable string-based dispatch on join kind
+        # Stable string-based dispatch on join kind
         if plan.join_kind == String("inner"):
             return join_inner(left_df, right_df, plan.left_keys, plan.right_keys, plan.suffix_left, plan.suffix_right)
         elif plan.join_kind == String("left"):
@@ -84,14 +86,14 @@ fn execute(plan: LogicalPlan) -> DataFrame:
         elif plan.join_kind == String("full"):
             return join_full(left_df, right_df, plan.left_keys, plan.right_keys, plan.suffix_left, plan.suffix_right)
         else:
-# Default to anti join for unknown kinds to avoid throwing.
+            # Default to anti join for unknown kinds to avoid throwing.
             return join_anti(left_df, right_df, plan.left_keys, plan.right_keys)
 
     else:
-# PLAN_WINDOW
+        # PLAN_WINDOW
         var df = execute(plan.child)
 
-# Window/analytics functions (rolling + ranking + shifts + cumulatives)
+        # Window/analytics functions (rolling + ranking + shifts + cumulatives)
         if plan.window_kind == String("rolling_mean"):
             return rolling_mean(
                 df,
@@ -141,7 +143,7 @@ fn execute(plan: LogicalPlan) -> DataFrame:
                 plan.window_new_name
             )
         else:
-# dense_rank as a safe fallback
+            # dense_rank as a safe fallback
             return dense_rank(
                 df,
                 plan.window_order_by,
@@ -154,7 +156,7 @@ fn execute(plan: LogicalPlan) -> DataFrame:
 # DataFrame is returned with one column per aggregation.
 fn exec_aggregate(df: DataFrame, keys: List[String], aggs: List[AggSpec]) -> DataFrame:
     if len(keys) == 0:
-# Global aggregations -> single-row DataFrame
+        # Global aggregations -> single-row DataFrame
         var out_names = List[String]()
         var out_cols = List[Column]()
         var i = 0
@@ -163,14 +165,14 @@ fn exec_aggregate(df: DataFrame, keys: List[String], aggs: List[AggSpec]) -> Dat
             var a = aggs[i]
             out_names.push_back(a.alias)
             var val = agg_on_col(df, a)
-# Wrap the scalar in a one-element f64 series
+            # Wrap the scalar in a one-element f64 series
             out_cols.push_back(
                 Column.from_f64(SeriesF64(a.alias, List[Float64]([val])))
             )
             i += 1
         return DataFrame(out_names, out_cols)
 
-# Grouped aggregations
+    # Grouped aggregations
     return groupby_multi(df, keys, aggs)
 
 # Group-by over multiple key columns.
@@ -198,13 +200,13 @@ fn groupby_multi(df: DataFrame, keys: List[String], aggs: List[AggSpec]) -> Data
             var cidx = key_cols[k]
             if cidx >= 0:
                 s = s + df.cols[cidx].value()_str(i)
-# Stable unit separator between components
+            # Stable unit separator between components
             s = s + String("␟")
             k += 1
         comp_keys.push_back(s)
         i += 1
 
-# Unique keys and group ids (gids)
+    # Unique keys and group ids (gids)
     var uniq = List[String]()
     var gids = List[Int]()
     i = 0
@@ -225,18 +227,18 @@ fn groupby_multi(df: DataFrame, keys: List[String], aggs: List[AggSpec]) -> Data
 
     var G = len(uniq)
 
-# Output col_names/columns
+    # Output col_names/columns
     var out_names = List[String]()
     var out_cols = List[Column]()
 
-# Expand group keys back as columns (string-typed)
+    # Expand group keys back as columns (string-typed)
     ki = 0
     while ki < len(keys):
         out_names.push_back(keys[ki])
         var vals = List[String]()
         var g = 0
         while g < G:
-# find a representative row r within group g for key extraction
+            # find a representative row r within group g for key extraction
             var r = 0
             var found = String("")
             while r < n:
@@ -250,21 +252,21 @@ fn groupby_multi(df: DataFrame, keys: List[String], aggs: List[AggSpec]) -> Data
         out_cols.push_back(Column.from_str(SeriesStr(keys[ki], vals)))
         ki += 1
 
-# Compute aggregates per group
+    # Compute aggregates per group
     var ai = 0
     while ai < len(aggs):
         var a = aggs[ai]
         var agg_vals = List[Float64]()
         var g = 0
         while g < G:
-# Collect row indices in this group
+            # Collect row indices in this group
             var idxs = List[Int]()
             var r = 0
             while r < n:
                 if gids[r] == g:
                     idxs.push_back(r)
                 r += 1
-# Reduce over those rows
+            # Reduce over those rows
             agg_vals.push_back(agg_on_col_rows(df, a, idxs))
             g += 1
         out_names.push_back(a.alias)
@@ -297,7 +299,7 @@ fn agg_on_col(df: DataFrame, a: AggSpec) -> Float64:
     elif a.op == String("count"):
         return Float64(c)
 
-# Fallback to sum for unknown ops to avoid exceptions
+    # Fallback to sum for unknown ops to avoid exceptions
     return s
 
 # Reduce an aggregation over selected row indices of a column (grouped case).
@@ -325,5 +327,5 @@ fn agg_on_col_rows(df: DataFrame, a: AggSpec, idxs: List[Int]) -> Float64:
     elif a.op == String("count"):
         return Float64(c)
 
-# Fallback to sum for unknown ops
+    # Fallback to sum for unknown ops
     return s
