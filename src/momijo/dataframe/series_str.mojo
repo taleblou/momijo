@@ -19,18 +19,12 @@
 #   - Structs: SeriesStr
 #   - Key functions: __init__, len, head, get, set_name, values, index, where, df_label_where
 
+
+
 from momijo.dataframe.bitmap import Bitmap
 from momijo.dataframe.selection import Mask as Mask
 
-# Project:      Momijo
-# Module:       momijo.dataframe.series_str
-# File:         series_str.mojo
-# Path:         src/momijo/dataframe/series_str.mojo
-# 
-# Description:  Minimal String-series stub to satisfy head() signature.
-
-
-# String series, aligned with SeriesI64 API style
+ 
  
 struct SeriesStr(Copyable, Movable):
     var name: String
