@@ -19,8 +19,9 @@
 #   - Structs: —
 #   - Key functions: _esc, _unesc, to_mnp_string, _split_esc_tabs, from_mnp_string
 
-from collections.list import List
 
+
+from collections.list import List
 from momijo.dataframe.frame import DataFrame
 
 fn _esc(s: String) -> String:
