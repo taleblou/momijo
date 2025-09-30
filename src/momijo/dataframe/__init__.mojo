@@ -19,6 +19,8 @@
 #   - Structs: —
 #   - Key functions: —
 
+
+
 from momijo.dataframe.api import df_make as _df_make
 from momijo.dataframe.column import Column as Column
 
@@ -41,15 +43,8 @@ from momijo.dataframe.api import df_shape as df_shape
 from momijo.dataframe.api import df_dtypes as df_dtypes
 from momijo.dataframe.api import df_describe as df_describe
 
-# from momijo.dataframe.api import to_category
-
-# ---- Pairs helpers (functional, no inout) ----
-# alias ColPair = (String, List[String])
-# from momijo.dataframe.io_facade import read_csv as read_csv
-# from momijo.dataframe.io_facade import to_csv as to_csv
-# # JSONL hooks can be added when implemented:
-# from momijo.dataframe.io_facade import to_json_lines as to_json_lines
-# from momijo.dataframe.io_facade import read_json_lines as read_json_lines
+ 
+ 
 
 # ---- Basic selection/filter ----
 from momijo.dataframe.frame import head as head
@@ -68,17 +63,9 @@ from momijo.dataframe.selection import filter as filter
 from momijo.dataframe.frame import set_index as set_index
 from momijo.dataframe.frame import reset_index as reset_index
 
-# Provide rename with Pythonic keywords used by the demo
+
 from momijo.dataframe.api import df_rename as _df_rename
-# Pandas-like: set a single cell. This stub returns the original df for demo stability.
-# Returns a printable summary like:
-# name: 0\nage: 2\n...
-# Replace exact matches in a given column; returns a new DataFrame.
-# Note: value is Float64; stored back as String for simplicity.
-# Interpolates NA/empty cells linearly; leading/trailing NAs use nearest known value.
-# Currently supports fmt="%Y-%m-%d" by normalizing to 10-char date.
-# Supports 1 or 2 keys; ops: mean, max, count, nunique
-# Returns a List[String] to be used with assign(...).
+
 
 from momijo.dataframe.string_ops import col_str_concat as col_str_concat
 from momijo.dataframe.series_str import df_label_where
@@ -140,7 +127,7 @@ from momijo.dataframe.string_ops import str_replace_regex
  
 
 # ---- Pairs helpers (functional, no inout) ----
-# alias ColPair = (String, List[String])
+
 from momijo.dataframe.io_csv import read_csv as read_csv
 from momijo.dataframe.io_csv import write_csv as to_csv
 # JSONL hooks can be added when implemented:
