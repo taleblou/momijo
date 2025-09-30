@@ -20,6 +20,8 @@
 #   - Key functions: min_int, __init__, __copyinit__, __len__, len, __str__, get, set, count_true, count_false, any_true, none_true, to_mask, resize, invert, bit_and, bit_or, all_true
 #   - Static methods present.
 
+
+
 fn min_int(a: Int, b: Int) -> Int:
     if a < b:
         return a
