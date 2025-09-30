@@ -21,7 +21,6 @@
 
 from pathlib import Path
 from pathlib.path import Path
-
 from momijo.core.traits import one
 from momijo.core.version import major
 from momijo.dataframe.bitmap import Bitmap
@@ -697,13 +696,13 @@ fn outer_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> 
     fn append_df_unique(df: DataFrame):
         var r: Int = 0
         while r < df.nrows():
-# stringify row
+            # stringify row
             var key_str = String("")
             var cc: Int = 0
             while cc < df.ncols():
                 key_str = key_str + df.cols[cc][r] + String("\u0001")  # unlikely separator
                 cc += 1
-# check seen
+            # check seen
             var exists: Bool = False
             var i: Int = 0
             while i < len(seen):
@@ -712,7 +711,7 @@ fn outer_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> 
                     break
                 i += 1
             if not exists:
-# materialize and append to output
+                # materialize and append to output
                 var row = List[String]()
                 var c2: Int = 0
                 while c2 < df.ncols():
@@ -738,7 +737,7 @@ fn asof_join(left: DataFrame, right: DataFrame, on: String, by: String = String(
     out.col_names = List[String]()
     out.cols = List[List[String]]()
 
-# Copy left columns first
+    # Copy left columns first
     var c = 0
     while c < left.ncols():
         out.col_names.append(String(left.col_names[c]))
@@ -750,7 +749,7 @@ fn asof_join(left: DataFrame, right: DataFrame, on: String, by: String = String(
         out.cols.append(new_col)
         c += 1
 
-# Prepare to add right-only columns
+    # Prepare to add right-only columns
     var right_only = List[Int]()
     var rc = 0
     while rc < right.ncols():
@@ -760,7 +759,7 @@ fn asof_join(left: DataFrame, right: DataFrame, on: String, by: String = String(
             right_only.append(rc)
         rc += 1
 
-# Initialize new right-only cols with blanks
+    # Initialize new right-only cols with blanks
     var k = 0
     while k < len(right_only):
         var blank = List[String]()
@@ -771,7 +770,7 @@ fn asof_join(left: DataFrame, right: DataFrame, on: String, by: String = String(
         out.cols.append(blank)
         k += 1
 
-# Perform as-of matching
+    # Perform as-of matching
     var i = 0
     while i < left.nrows():
         var left_key = left.cols[_find_col(left, on)][i]
@@ -779,7 +778,7 @@ fn asof_join(left: DataFrame, right: DataFrame, on: String, by: String = String(
         if by != String(""):
             group_val = left.cols[_find_col(left, by)][i]
 
-# Find candidate in right
+        # Find candidate in right
         var best_j = -1
         var j = 0
         while j < right.nrows():
@@ -789,7 +788,7 @@ fn asof_join(left: DataFrame, right: DataFrame, on: String, by: String = String(
                     best_j = j
             j += 1
 
-# Fill matched values if found
+        # Fill matched values if found
         if best_j >= 0:
             var ri = 0
             while ri < len(right_only):
