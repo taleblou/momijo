@@ -3,7 +3,10 @@
 # File:         io_json_min.mojo
 # Path:         dataframe/io_json_min.mojo
 #
-# Description:  dataframe.io_json_min — Io Json Min module for Momijo DataFrame.
+# Description:  dataframe.io_json_min — Minimal JSON I/O for Momijo DataFrame.
+#               Provides compact JSON (object with name/columns/index/data) and JSON Lines
+#               serializers/deserializers; includes safe string escaping/unescaping,
+#               small text file wrappers, and tolerant parsing with width normalization.
 #               Implements core data structures, algorithms, and convenience APIs for production use.
 #               Designed as a stable, composable building block within the Momijo public API.
 #
@@ -17,47 +20,17 @@
 #
 # Notes:
 #   - Structs: —
-#   - Key functions: _hex, json_escape, json_unescape, to_json_string, from_json_string, _read_qstr, _read_str_array, _read_2d_str_array, to_json_lines_string, from_json_lines_string
+#   - Key functions: write_text, read_text, _hex, json_escape, json_unescape, to_json_string,
+#                    from_json_string, _read_qstr, _read_str_array, _read_2d_str_array,
+#                    to_json_lines_string, from_json_lines_string, write_json, read_json
 
-from collections.list import List
 
-from momijo.dataframe.frame import DataFrame
 
-# ---------- helpers: escaping/unescaping ----------
-# Project:      Momijo
-# Module:       dataframe.io_json_min
-# File:         io_json_min.mojo
-# Path:         dataframe/io_json_min.mojo
-#
-# Description:  dataframe.io_json_min — Io Json Min module for Momijo DataFrame.
-#               Implements core data structures, algorithms, and convenience APIs for production use.
-#               Designed as a stable, composable building block within the Momijo public API.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
-#
-# License:      MIT License
-# SPDX-License-Identifier: MIT
-# Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
-#
-# Notes:
-#   - Structs: —
-#   - Key functions: _hex, json_escape, json_unescape,
-#                    to_json_string, from_json_string,
-#                    _read_qstr, _read_str_array, _read_2d_str_array,
-#                    to_json_lines_string, from_json_lines_string,
-#                    write_json, read_json
 
 from collections.list import List
 from pathlib.path import Path
-
 from momijo.dataframe.frame import DataFrame
 
-# ---------- small file helpers (text mode) ----------
-from collections.list import List
-from pathlib.path import Path
-from momijo.dataframe.frame import DataFrame
 
 fn write_text(path: String, text: String) -> Bool:
     try:
