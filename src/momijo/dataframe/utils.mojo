@@ -19,11 +19,8 @@
 #   - Structs: Stats, Ops, ExprKind, ConstVal, Pred
 #   - Key functions: __init__, __copyinit__, is_digit, digit_value, is_sign, infer_dtype, sqrt64, parse_f64, compute_stats, pairs_append, percentile_f64, expanding_corr_last, between_i64, isin_string, df_where_qty_between, EQ, NE, GT
 #   - Static methods present.
-
-from momijo.dataframe.column import Column
-# Project:      Momijo
-# Module:       momijo.dataframe.utils
-# Description:  Helpers for dtype inference and basic stats.
+ 
+ 
 from momijo.dataframe.sorting import argsort_f64
 from momijo.dataframe.series_bool import append
 from momijo.dataframe.stats_core import corr_f64
@@ -121,7 +118,7 @@ fn infer_dtype(col: List[String]) -> String:
             while k < len(s):
                 var c = String(s[k])
                 if is_digit(c):
-# keep going
+                    # keep going
                     k += 1
                     continue
                 elif c == "." and not dot_seen:
