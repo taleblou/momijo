@@ -1,185 +1,442 @@
 # MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
-#
 # Project: momijo.tensor
 # File: src/momijo/tensor/device.mojo
+# Description: Single-file CPU/GPU device handling with runtime switching.
 
- 
- 
-from momijo.tensor.tensor_base import device  # chosen by proximity
-from momijo.tensor.errors import error  # chosen by proximity
- 
-from momijo.core.error import code
-from momijo.tensor.tensor import index
-from momijo.core.device import kind
+from momijo.tensor.tensor import Tensor
+from momijo.tensor.helpers import compute_row_major_strides
+from sys.info import has_accelerator
 
-# ---------------- DeviceKind ----------------
-struct DeviceKind(Copyable, Movable):
-    var code: Int  # 0=CPU, 1=CUDA, 2=METAL, 3=OTHER
+# =============================================================================
+# Device + runtime context
+# =============================================================================
+struct Device(ImplicitlyCopyable, Copyable, Movable):
+    var tag: Int8  # 0=cpu, 1=gpu
 
-    fn __init__(out self, code: Int):
-        self.code = code
+    fn __init__(out self, t: Int8):
+        self.tag = t
 
-    fn __copyinit__(out self, other: Self):
-        self.code = other.code
+    fn __copyinit__(out self, other: Device):
+        self.tag = other.tag
 
     @staticmethod
-    fn CPU() -> DeviceKind:
-        return DeviceKind(0)
+    fn cpu() -> Device:
+        return Device(0)
 
     @staticmethod
-    fn CUDA() -> DeviceKind:
-        return DeviceKind(1)
-
-    @staticmethod
-    fn METAL() -> DeviceKind:
-        return DeviceKind(2)
-
-    @staticmethod
-    fn OTHER() -> DeviceKind:
-        return DeviceKind(3)
-
-    fn __eq__(self, rhs: Self) -> Bool:
-        return self.code == rhs.code
-
-    fn __ne__(self, rhs: Self) -> Bool:
-        return self.code != rhs.code
-
-    fn to_string(self) -> String:
-        if self.code == 0:
-            return String("cpu")
-        if self.code == 1:
-            return String("cuda")
-        if self.code == 2:
-            return String("metal")
-        return String("other")
-
-# ---------------- Device ----------------
-struct Device(Copyable, Movable):
-    var kind: DeviceKind
-    var index: Int
-
-    fn __init__(out self, kind: DeviceKind = DeviceKind.CPU(), index: Int = 0):
-        self.kind = kind
-        self.index = index
-
-    fn __copyinit__(out self, other: Self):
-        self.kind = other.kind
-        self.index = other.index
-
-    fn __eq__(self, rhs: Self) -> Bool:
-        return (self.kind == rhs.kind) and (self.index == rhs.index)
-
-    fn __ne__(self, rhs: Self) -> Bool:
-        return not (self == rhs)
+    fn gpu() -> Device:
+        return Device(1)
 
     fn is_cpu(self) -> Bool:
-        return self.kind == DeviceKind.CPU()
+        return self.tag == 0
 
-    fn is_cuda(self) -> Bool:
-        return self.kind == DeviceKind.CUDA()
+    fn is_gpu(self) -> Bool:
+        return self.tag == 1
 
-    fn is_metal(self) -> Bool:
-        return self.kind == DeviceKind.METAL()
+    fn __eq__(self, other: Device) -> Bool:
+        return self.tag == other.tag
 
-    fn to_string(self) -> String:
-        # "cuda:0", "cpu:0", "metal:0", "other:0"
-        var s = self.kind.to_string()
-        s = s + String(":")
-        s = s + String(self.index)
-        return s
+    fn __ne__(self, other: Device) -> Bool:
+        return self.tag != other.tag
 
-# ---------------- Helpers / Stubs ----------------
-# Keep these simple so they compile everywhere. Wire real checks later.
-fn _system_has_cuda() -> Bool:
-    return False
+    fn __str__(self) -> String:
+        return "cpu" if self.tag == 0 else "gpu"
 
-fn _system_has_metal() -> Bool:
-    return False
 
-# Avoid per-byte String parsing for now; just lowercase ASCII-ish by delegating
-# to a placeholder that returns the original string (safe for compilation).
-# Replace with a real lowercase once your String utilities are settled.
-fn _lower(s: String) -> String:
-    return s  # stub
+struct RuntimeDeviceContext(ImplicitlyCopyable, Copyable, Movable):
+    var current: Device
 
-fn _parse_nonneg_int(s: String,  mut out_val: Int) -> Bool:
-    # Very minimal: accept empty/invalid as False without touching out_val
-    # If all chars are digits, try to parse via accumulating with Int casting.
-    var n: Int = len(s)
-    if n == 0:
-        return False
-    var i: Int = 0
-    var acc: Int = 0
+    fn __init__(out self, initial: Device):
+        self.current = initial
+
+    fn __copyinit__(out self, other: RuntimeDeviceContext):
+        self.current = other.current
+
+    @staticmethod
+    fn cpu() -> RuntimeDeviceContext:
+        return RuntimeDeviceContext(Device.cpu())
+
+    @staticmethod
+    fn gpu() -> RuntimeDeviceContext:
+        return RuntimeDeviceContext(Device.gpu())
+
+    fn set_cpu(mut self) -> None:
+        self.current = Device.cpu()
+
+    fn set_gpu(mut self) -> None:
+        self.current = Device.gpu()
+
+    fn get(self) -> Device:
+        return self.current
+
+    fn __str__(self) -> String:
+        return self.current.__str__()
+
+
+struct ScopedDevice:
+    var ctx_ptr: Pointer[RuntimeDeviceContext]
+    var saved: Device
+
+    fn __init__(out self, ctx_ptr: Pointer[RuntimeDeviceContext], new_dev: Device):
+        assert(ctx_ptr != Pointer, "ScopedDevice: ctx_ptr is NULL")
+        self.ctx_ptr = ctx_ptr
+        var v = self.ctx_ptr.load()
+        self.saved = v.get()
+        if new_dev.is_gpu():
+            v.set_gpu()
+        else:
+            v.set_cpu()
+        self.ctx_ptr.store(v)
+
+    fn __del__(deinit self):
+        var v = self.ctx_ptr.load()
+        if self.saved.is_gpu():
+            v.set_gpu()
+        else:
+            v.set_cpu()
+        self.ctx_ptr.store(v)
+
+
+# =============================================================================
+# Resolution helpers
+# =============================================================================
+fn resolve_device(ctx: Optional[RuntimeDeviceContext]) -> Device:
+    if ctx is None:
+        return Device.cpu()
+    return ctx.value().get()
+
+fn resolve_effective_device(ctx: Optional[RuntimeDeviceContext]) -> Device:
+    var req = resolve_device(ctx)
+    if req.is_gpu() and not has_accelerator():
+        # Requested GPU but system has no accelerator -> fallback to CPU
+        return Device.cpu()
+    return req
+
+fn get_device_name(ctx: Optional[RuntimeDeviceContext] = None) -> String:
+    return resolve_effective_device(ctx).__str__()
+
+fn set_device_cpu(mut ctx: RuntimeDeviceContext) -> RuntimeDeviceContext:
+    ctx.set_cpu()
+    return ctx
+
+fn set_device_gpu(mut ctx: RuntimeDeviceContext) -> RuntimeDeviceContext:
+    ctx.set_gpu()
+    return ctx
+
+
+# =============================================================================
+# CPU alloc helpers
+# =============================================================================
+@always_inline
+fn _numel(shape: List[Int]) -> Int:
+    var n = 1
+    var i = 0
+    while i < len(shape):
+        n = n * shape[i]
+        i += 1
+    return n
+
+fn _alloc_fill_f64_cpu(shape: List[Int], val: Float64) -> Tensor[Float64]:
+    var n = _numel(shape)
+    var data = List[Float64]()
+    data.reserve(n)
+    var j = 0
+    var lim = (n // 16) * 16
+    while j < lim:
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        j += 16
+    while j < n:
+        data.append(val)
+        j += 1
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Float64](data, shape, strides)
+
+fn _alloc_fill_f32_cpu(shape: List[Int], val: Float32) -> Tensor[Float32]:
+    var n = _numel(shape)
+    var data = List[Float32]()
+    data.reserve(n)
+    var j = 0
+    var lim = (n // 16) * 16
+    while j < lim:
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        j += 16
+    while j < n:
+        data.append(val)
+        j += 1
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Float32](data, shape, strides)
+
+fn _alloc_fill_i_cpu(shape: List[Int], val: Int) -> Tensor[Int]:
+    var n = _numel(shape)
+    var data = List[Int]()
+    data.reserve(n)
+    var j = 0
+    var lim = (n // 16) * 16
+    while j < lim:
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        data.append(val); data.append(val); data.append(val); data.append(val)
+        j += 16
+    while j < n:
+        data.append(val)
+        j += 1
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Int](data, shape, strides)
+
+
+# =============================================================================
+# GPU helpers (imports and kernels *inside* functions)
+# =============================================================================
+fn _alloc_fill_f32_gpu(shape: List[Int], val: Float32) raises -> Tensor[Float32]:
+    from gpu.host import DeviceContext
+    from gpu.id import block_dim, block_idx, thread_idx
+
+    @always_inline
+    fn k_fill(vec: UnsafePointer[Float32], size: Int, v: Float32):
+        var idx = block_idx.x * block_dim.x + thread_idx.x
+        if idx < UInt(size):
+            vec[idx] = v
+
+    var n = _numel(shape)
+    var dc = DeviceContext()
+    var hb = dc.enqueue_create_host_buffer[DType.float32](n)
+    var db = dc.enqueue_create_buffer[DType.float32](n)
+
+    var k = dc.compile_function[k_fill]()
+    var tpb = 256
+    var blocks = (n + tpb - 1) // tpb
+    dc.enqueue_function(k, db, n, val, grid_dim=blocks, block_dim=tpb)
+
+    dc.enqueue_copy(src_buf=db, dst_buf=hb)
+    dc.synchronize()
+
+    var out = List[Float32](); out.reserve(n)
+    var i = 0
     while i < n:
-        # We can't safely index to UInt8; rely on a naive check via substring conversion.
-        # As a stub, fail on anything non-'0'..'9' using a conservative approach:
-        # In real impl, add a proper char -> codepoint helper.
-        # Here we just return False to avoid half-baked conversions.
-        return False
-        i = i + 1
-    # unreachable here, but keep signature satisfied
-    out_val = acc
-    return True
+        out.append(hb[i]); i += 1
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Float32](out, shape, strides)
 
-# ---------------- Device discovery ----------------
-fn available_devices() -> List[Device]:
-    var out = List[Device]()
-    # Always include CPU:0
-    out.append(Device(DeviceKind.CPU(), 0))
-    # Optionally include GPU backends if available
-    if _system_has_cuda():
-        out.append(Device(DeviceKind.CUDA(), 0))
-    if _system_has_metal():
-        out.append(Device(DeviceKind.METAL(), 0))
-    return out
+fn _alloc_fill_f64_gpu(shape: List[Int], val: Float64) raises -> Tensor[Float64]:
+    from gpu.host import DeviceContext
+    from gpu.id import block_dim, block_idx, thread_idx
 
-fn default_device() -> Device:
-    # Prefer CUDA, then METAL, then CPU
-    if _system_has_cuda():
-        return Device(DeviceKind.CUDA(), 0)
-    if _system_has_metal():
-        return Device(DeviceKind.METAL(), 0)
-    return Device(DeviceKind.CPU(), 0)
+    @always_inline
+    fn k_fill(vec: UnsafePointer[Float64], size: Int, v: Float64):
+        var idx = block_idx.x * block_dim.x + thread_idx.x
+        if idx < UInt(size):
+            vec[idx] = v
 
-fn ensure_device_or_default(maybe: Device) -> Device:
-    # If the requested device isn't available, fall back to default
-    if maybe.is_cuda() and not _system_has_cuda():
-        return default_device()
-    if maybe.is_metal() and not _system_has_metal():
-        return default_device()
-    return maybe
+    var n = _numel(shape)
+    var dc = DeviceContext()
+    var hb = dc.enqueue_create_host_buffer[DType.float64](n)
+    var db = dc.enqueue_create_buffer[DType.float64](n)
 
-# Parse strings like "cpu", "cpu:0", "cuda", "cuda:0", "metal", etc.
-# Stubbed to accept a few common forms without per-char parsing.
-fn parse_device(s: String) -> Device:
-    var lower = _lower(s)
-    # Extremely simple checks; expand later
-    if lower == String("cuda") or lower == String("cuda:0"):
-        return Device(DeviceKind.CUDA(), 0)
-    if lower == String("metal") or lower == String("metal:0"):
-        return Device(DeviceKind.METAL(), 0)
-    # default CPU forms
-    return Device(DeviceKind.CPU(), 0)
+    var k = dc.compile_function[k_fill]()
+    var tpb = 256
+    var blocks = (n + tpb - 1) // tpb
+    dc.enqueue_function(k, db, n, val, grid_dim=blocks, block_dim=tpb)
 
-# Prefer one device over another (e.g., prefer CUDA when present)
-fn prefer(a: Device, b: Device) -> Device:
-    # If one is CUDA and system has CUDA, pick it.
-    if a.is_cuda() and _system_has_cuda():
-        return a
-    if b.is_cuda() and _system_has_cuda():
-        return b
-    # Else if one is METAL and available, pick it.
-    if a.is_metal() and _system_has_metal():
-        return a
-    if b.is_metal() and _system_has_metal():
-        return b
-    # Otherwise default to 'a'
-    return a
+    dc.enqueue_copy(src_buf=db, dst_buf=hb)
+    dc.synchronize()
+
+    var out = List[Float64](); out.reserve(n)
+    var i = 0
+    while i < n:
+        out.append(hb[i]); i += 1
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Float64](out, shape, strides)
+
+fn _to_device_f32_gpu(x: Tensor[Float32]) raises -> Tensor[Float32]:
+    from gpu.host import DeviceContext
+
+    var n = len(x._data)
+    var dc = DeviceContext()
+    var hb = dc.enqueue_create_host_buffer[DType.float32](n)
+
+    var i = 0
+    while i < n:
+        hb[i] = x._data[i]
+        i += 1
+
+    var db = dc.enqueue_create_buffer[DType.float32](n)
+    dc.enqueue_copy(src_buf=hb, dst_buf=db)
+    dc.enqueue_copy(src_buf=db, dst_buf=hb)
+    dc.synchronize()
+
+    var out = List[Float32](); out.reserve(n)
+    var j = 0
+    while j < n:
+        out.append(hb[j]); j += 1
+    return Tensor[Float32](out, x._shape.copy(), x._strides.copy())
+
+fn _to_device_f64_gpu(x: Tensor[Float64]) raises -> Tensor[Float64]:
+    from gpu.host import DeviceContext
+
+    var n = len(x._data)
+    var dc = DeviceContext()
+    var hb = dc.enqueue_create_host_buffer[DType.float64](n)
+
+    var i = 0
+    while i < n:
+        hb[i] = x._data[i]
+        i += 1
+
+    var db = dc.enqueue_create_buffer[DType.float64](n)
+    dc.enqueue_copy(src_buf=hb, dst_buf=db)
+    dc.enqueue_copy(src_buf=db, dst_buf=hb)
+    dc.synchronize()
+
+    var out = List[Float64](); out.reserve(n)
+    var j = 0
+    while j < n:
+        out.append(hb[j]); j += 1
+    return Tensor[Float64](out, x._shape.copy(), x._strides.copy())
+
+
+# =============================================================================
+# Public allocators with runtime switching
+# =============================================================================
+fn _want_gpu(ctx: Optional[RuntimeDeviceContext]) -> Bool:
+    return resolve_device(ctx).is_gpu() and has_accelerator()
+
+fn zeros_f64(shape: List[Int], ctx: Optional[RuntimeDeviceContext] = None) -> Tensor[Float64]:
+    if _want_gpu(ctx):
+        try:
+            return _alloc_fill_f64_gpu(shape, 0.0)
+        except e:
+            pass
+    return _alloc_fill_f64_cpu(shape, 0.0)
+
+fn ones_f64(shape: List[Int], ctx: Optional[RuntimeDeviceContext] = None) -> Tensor[Float64]:
+    if _want_gpu(ctx):
+        try:
+            return _alloc_fill_f64_gpu(shape, 1.0)
+        except e:
+            pass
+    return _alloc_fill_f64_cpu(shape, 1.0)
+
+fn zeros_f32(shape: List[Int], ctx: Optional[RuntimeDeviceContext] = None) -> Tensor[Float32]:
+    if _want_gpu(ctx):
+        try:
+            return _alloc_fill_f32_gpu(shape, Float32(0.0))
+        except e:
+            pass
+    return _alloc_fill_f32_cpu(shape, Float32(0.0))
+
+fn ones_f32(shape: List[Int], ctx: Optional[RuntimeDeviceContext] = None) -> Tensor[Float32]:
+    if _want_gpu(ctx):
+        try:
+            return _alloc_fill_f32_gpu(shape, Float32(1.0))
+        except e:
+            pass
+    return _alloc_fill_f32_cpu(shape, Float32(1.0))
+
+fn zeros_i(shape: List[Int], ctx: Optional[RuntimeDeviceContext] = None) -> Tensor[Int]:
+    var _ = ctx
+    return _alloc_fill_i_cpu(shape, 0)
+
+fn ones_i(shape: List[Int], ctx: Optional[RuntimeDeviceContext] = None) -> Tensor[Int]:
+    var _ = ctx
+    return _alloc_fill_i_cpu(shape, 1)
+
+
+# =============================================================================
+# Device transfer and query
+# =============================================================================
+fn device_of[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Device:
+    # Placeholder until Tensor carries device info.
+    return Device.cpu()
+
+fn to_device(x: Tensor[Float32], target: Device) -> Tensor[Float32]:
+    if target.is_gpu() and has_accelerator():
+        try:
+            return _to_device_f32_gpu(x)
+        except e:
+            pass
+    return Tensor[Float32](x._data.copy(), x._shape.copy(), x._strides.copy())
+
+fn to_device(x: Tensor[Float64], target: Device) -> Tensor[Float64]:
+    if target.is_gpu() and has_accelerator():
+        try:
+            return _to_device_f64_gpu(x)
+        except e:
+            pass
+    return Tensor[Float64](x._data.copy(), x._shape.copy(), x._strides.copy())
+
+fn to_device[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], target: Device) -> Tensor[T]:
+    var _ = target
+    return Tensor[T](x._data.copy(), x._shape.copy(), x._strides.copy())
+
+
+# =============================================================================
+# Generic dispatch helpers (effective device at runtime)
+# =============================================================================
+fn dispatch_unary_f64(
+    x: Tensor[Float64],
+    ctx: Optional[RuntimeDeviceContext],
+    cpu_impl: fn(Tensor[Float64]) -> Tensor[Float64],
+    gpu_impl: fn(Tensor[Float64]) -> Tensor[Float64]
+) -> Tensor[Float64]:
+    if _want_gpu(ctx):
+        return gpu_impl(x)
+    return cpu_impl(x)
+
+fn dispatch_binary_f64(
+    a: Tensor[Float64],
+    b: Tensor[Float64],
+    ctx: Optional[RuntimeDeviceContext],
+    cpu_impl: fn(Tensor[Float64], Tensor[Float64]) -> Tensor[Float64],
+    gpu_impl: fn(Tensor[Float64], Tensor[Float64]) -> Tensor[Float64]
+) -> Tensor[Float64]:
+    if _want_gpu(ctx):
+        return gpu_impl(a, b)
+    return cpu_impl(a, b)
+
+fn dispatch_unary_f32(
+    x: Tensor[Float32],
+    ctx: Optional[RuntimeDeviceContext],
+    cpu_impl: fn(Tensor[Float32]) -> Tensor[Float32],
+    gpu_impl: fn(Tensor[Float32]) -> Tensor[Float32]
+) -> Tensor[Float32]:
+    if _want_gpu(ctx):
+        return gpu_impl(x)
+    return cpu_impl(x)
+
+fn dispatch_binary_f32(
+    a: Tensor[Float32],
+    b: Tensor[Float32],
+    ctx: Optional[RuntimeDeviceContext],
+    cpu_impl: fn(Tensor[Float32], Tensor[Float32]) -> Tensor[Float32],
+    gpu_impl: fn(Tensor[Float32], Tensor[Float32]) -> Tensor[Float32]
+) -> Tensor[Float32]:
+    if _want_gpu(ctx):
+        return gpu_impl(a, b)
+    return cpu_impl(a, b)
+
+fn dispatch_unary_i(
+    x: Tensor[Int],
+    ctx: Optional[RuntimeDeviceContext],
+    cpu_impl: fn(Tensor[Int]) -> Tensor[Int],
+    gpu_impl: fn(Tensor[Int]) -> Tensor[Int]
+) -> Tensor[Int]:
+    var _ = ctx
+    return cpu_impl(x)
+
+fn dispatch_binary_i(
+    a: Tensor[Int],
+    b: Tensor[Int],
+    ctx: Optional[RuntimeDeviceContext],
+    cpu_impl: fn(Tensor[Int], Tensor[Int]) -> Tensor[Int],
+    gpu_impl: fn(Tensor[Int], Tensor[Int]) -> Tensor[Int]
+) -> Tensor[Int]:
+    var _ = ctx
+    return cpu_impl(a, b)
