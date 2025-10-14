@@ -1,103 +1,69 @@
 # MIT License
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Project: momijo  |  Source: https://github.com/taleblou/momijo
-# This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# Website: https://taleblou.ir/
-# Repository: https://github.com/taleblou/momijo
+# Project:      Momijo
+# Module:       momijo.tensor.errors
+# File:         src/momijo/tensor/errors.mojo
 #
-# Project: momijo.tensor
-# File: src/momijo/tensor/errors.mojo
+# Description:
+#   Error/Status/Result primitives (assert-free) for Momijo Tensor stack.
+#   - ErrorKind: compact error codes with string conversion
+#   - TensorError: structured error with kind/message/where
+#   - Status: OK/ERR without payload
+#   - Result[T]: payload + error
+#   - Helpers: Ok/Err constructors, validation/check utilities, ErrorList
 
- 
- 
-from momijo.tensor.tensor_base import device  # chosen by proximity
- 
-from momijo.core.error import code
-from momijo.core.result import err
-from momijo.core.device import kind
-from momijo.core.error import message
+from collections.list import List
+
+# ---------- ErrorKind ----------
 struct ErrorKind(Copyable, Movable, EqualityComparable):
-    var code: Int
-
-    fn __init__(out self, code: Int):
-        self.code = code
-
-    fn __copyinit__(out self, other: Self):
-        self.code = other.code
+    var code: Int32
 
     @always_inline
-    fn __eq__(self, other: ErrorKind) -> Bool:
-        return self.code == other.code
+    fn __eq__(self, other: ErrorKind) -> Bool: return self.code == other.code
+    @always_inline
+    fn __ne__(self, other: ErrorKind) -> Bool: return self.code != other.code
+
+    @staticmethod @always_inline fn OK()                -> ErrorKind: return ErrorKind(Int32(0))
+    @staticmethod @always_inline fn InvalidArgument()  -> ErrorKind: return ErrorKind(Int32(1))
+    @staticmethod @always_inline fn ShapeMismatch()    -> ErrorKind: return ErrorKind(Int32(2))
+    @staticmethod @always_inline fn DTypeMismatch()    -> ErrorKind: return ErrorKind(Int32(3))
+    @staticmethod @always_inline fn DeviceUnavailable()-> ErrorKind: return ErrorKind(Int32(4))
+    @staticmethod @always_inline fn NotContiguous()    -> ErrorKind: return ErrorKind(Int32(5))
+    @staticmethod @always_inline fn OutOfBounds()      -> ErrorKind: return ErrorKind(Int32(6))
+    @staticmethod @always_inline fn MemoryAllocation() -> ErrorKind: return ErrorKind(Int32(7))
+    @staticmethod @always_inline fn ArithmeticOverflow()-> ErrorKind: return ErrorKind(Int32(8))
+    @staticmethod @always_inline fn DivideByZero()     -> ErrorKind: return ErrorKind(Int32(9))
+    @staticmethod @always_inline fn NotImplemented()   -> ErrorKind: return ErrorKind(Int32(10))
+
+    fn ravel(self) -> String:
+        var t = self.code
+        if t == 0:  return String("OK")
+        if t == 1:  return String("InvalidArgument")
+        if t == 2:  return String("ShapeMismatch")
+        if t == 3:  return String("DTypeMismatch")
+        if t == 4:  return String("DeviceUnavailable")
+        if t == 5:  return String("NotContiguous")
+        if t == 6:  return String("OutOfBounds")
+        if t == 7:  return String("MemoryAllocation")
+        if t == 8:  return String("ArithmeticOverflow")
+        if t == 9:  return String("DivideByZero")
+        return String("NotImplemented")
 
     @always_inline
-    fn __ne__(self, other: ErrorKind) -> Bool:
-        return self.code != other.code
+    fn __str__(self) -> String: return self.ravel()
 
-    fn to_string(self) -> String:
-        var s = String("Unknown")
-        if self.code == 0:   s = String("OK")
-        elif self.code == 1: s = String("InvalidArgument")
-        elif self.code == 2: s = String("ShapeMismatch")
-        elif self.code == 3: s = String("DTypeMismatch")
-        elif self.code == 4: s = String("DeviceUnavailable")
-        elif self.code == 5: s = String("NotContiguous")
-        elif self.code == 6: s = String("OutOfBounds")
-        elif self.code == 7: s = String("MemoryAllocation")
-        elif self.code == 8: s = String("ArithmeticOverflow")
-        elif self.code == 9: s = String("DivideByZero")
-        elif self.code == 10: s = String("NotImplemented")
-        return s
-
-    @staticmethod
-    fn OK() -> ErrorKind:                 return ErrorKind(0)
-    @staticmethod
-    fn InvalidArgument() -> ErrorKind:    return ErrorKind(1)
-    @staticmethod
-    fn ShapeMismatch() -> ErrorKind:      return ErrorKind(2)
-    @staticmethod
-    fn DTypeMismatch() -> ErrorKind:      return ErrorKind(3)
-    @staticmethod
-    fn DeviceUnavailable() -> ErrorKind:  return ErrorKind(4)
-    @staticmethod
-    fn NotContiguous() -> ErrorKind:      return ErrorKind(5)
-    @staticmethod
-    fn OutOfBounds() -> ErrorKind:        return ErrorKind(6)
-    @staticmethod
-    fn MemoryAllocation() -> ErrorKind:   return ErrorKind(7)
-    @staticmethod
-    fn ArithmeticOverflow() -> ErrorKind: return ErrorKind(8)
-    @staticmethod
-    fn DivideByZero() -> ErrorKind:       return ErrorKind(9)
-    @staticmethod
-    fn NotImplemented() -> ErrorKind:     return ErrorKind(10)
-    @staticmethod
-    fn Unknown() -> ErrorKind:            return ErrorKind(11)
-
-
-# ---------- Error object ----------
+# ---------- TensorError ----------
 struct TensorError(Copyable, Movable):
     var kind: ErrorKind
     var message: String
     var where_: String
 
-    fn __init__(out self, kind: ErrorKind, message: String = String(""), where_: String = String("")):
-        self.kind = kind
-        self.message = message
-        self.where_ = where_
-
-    fn __copyinit__(out self, other: TensorError):
-        self.kind = other.kind
-        self.message = other.message
-        self.where_ = other.where_
-
+    @always_inline
     fn ok(self) -> Bool:
         return self.kind == ErrorKind.OK()
 
-    fn to_string(self) -> String:
-        var s = String("[") + self.kind.to_string() + String("]")
+    fn ravel(self) -> String:
+        var s = String("[") + self.kind.ravel() + String("]")
         if len(self.message) > 0:
             s = s + String(" ") + self.message
         if len(self.where_) > 0:
@@ -105,19 +71,9 @@ struct TensorError(Copyable, Movable):
         return s
 
     @always_inline
-    fn __eq__(self, other: TensorError) -> Bool:
-        return (self.kind == other.kind) and (self.message == other.message) and (self.where_ == other.where_)
+    fn __str__(self) -> String: return self.ravel()
 
-    @always_inline
-    fn __ne__(self, other: TensorError) -> Bool:
-        return not (self == other)
-
-
-# ---------- Status (void result) ----------
-    fn __copyinit__(out self, other: Self):
-        self.kind = other.kind
-        self.message = other.message
-        self.where_ = other.where_
+# ---------- Status ----------
 struct Status(Copyable, Movable):
     var ok: Bool
     var err: TensorError
@@ -126,33 +82,24 @@ struct Status(Copyable, Movable):
         self.ok = ok
         self.err = err
 
-    fn __copyinit__(out self, other: Status):
-        self.ok = other.ok
-        self.err = other.err
+    @always_inline fn is_ok(self) -> Bool: return self.ok
+    @always_inline fn is_err(self) -> Bool: return not self.ok
+    @always_inline fn error(self) -> TensorError: return self.err
 
-    fn is_ok(self) -> Bool:
-        return self.ok
+    fn ravel(self) -> String:
+        if self.ok: return String("OK")
+        return self.err.ravel()
 
-    fn is_err(self) -> Bool:
-        return not self.ok
+    @always_inline
+    fn __str__(self) -> String: return self.ravel()
 
-    fn error(self) -> TensorError:
-        return self.err
-
-    fn to_string(self) -> String:
-        if self.ok:
-            return String("OK")
-        return self.err.to_string()
-
-# Constructors
-fn OkStatus() -> Status:
+@always_inline fn OkStatus() -> Status:
     return Status(True, TensorError(ErrorKind.OK(), String(""), String("")))
 
-fn ErrStatus(kind: ErrorKind, message: String = String(""), where_: String = String("")) -> Status:
+@always_inline fn ErrStatus(kind: ErrorKind, message: String = String(""), where_: String = String("")) -> Status:
     return Status(False, TensorError(kind, message, where_))
 
-
-# ---------- Result[T] (value result) ----------
+# ---------- Result[T] ----------
 struct Result[T: Copyable & Movable](Copyable, Movable):
     var ok: Bool
     var value: T
@@ -160,149 +107,157 @@ struct Result[T: Copyable & Movable](Copyable, Movable):
 
     fn __init__(out self, ok: Bool, value: T, err: TensorError):
         self.ok = ok
-        self.value() = value
+        self.value = value
         self.err = err
 
     fn __copyinit__(out self, other: Result[T]):
         self.ok = other.ok
-        self.value() = other.value()
+        self.value = other.value
         self.err = other.err
 
-    fn is_ok(self) -> Bool:
-        return self.ok
+    @always_inline fn is_ok(self) -> Bool: return self.ok
+    @always_inline fn is_err(self) -> Bool: return not self.ok
 
-    fn is_err(self) -> Bool:
-        return not self.ok
-
+    @always_inline
     fn unwrap_or(self, default_value: T) -> T:
-        if self.ok:
-            return self.value()
+        if self.ok: return self.value
         return default_value
 
-    fn error(self) -> TensorError:
-        return self.err
+    @always_inline fn error(self) -> TensorError: return self.err
 
-# Constructors
+@always_inline
 fn Ok[T: Copyable & Movable](value: T) -> Result[T]:
     return Result[T](True, value, TensorError(ErrorKind.OK(), String(""), String("")))
 
+@always_inline
 fn Err[T: Copyable & Movable](kind: ErrorKind, message: String = String(""), where_: String = String("")) -> Result[T]:
     var dummy: T = __zeroed_value_for_T[T]()
     return Result[T](False, dummy, TensorError(kind, message, where_))
 
+@always_inline
 fn __zeroed_value_for_T[T: Copyable & Movable]() -> T:
     var tmp: T
     return tmp
 
-
-# ---------- Convenience builders ----------
-fn err_invalid_arg(msg: String, where_: String = String("")) -> TensorError:
+# ---------- Fast helpers ----------
+@always_inline fn err_invalid_arg(msg: String, where_: String = String("")) -> TensorError:
     return TensorError(ErrorKind.InvalidArgument(), msg, where_)
-
-fn err_shape_mismatch(msg: String, where_: String = String("")) -> TensorError:
+@always_inline fn err_shape_mismatch(msg: String, where_: String = String("")) -> TensorError:
     return TensorError(ErrorKind.ShapeMismatch(), msg, where_)
-
-fn err_dtype_mismatch(msg: String, where_: String = String("")) -> TensorError:
+@always_inline fn err_dtype_mismatch(msg: String, where_: String = String("")) -> TensorError:
     return TensorError(ErrorKind.DTypeMismatch(), msg, where_)
-
-fn err_not_contiguous(msg: String, where_: String = String("")) -> TensorError:
+@always_inline fn err_not_contiguous(msg: String, where_: String = String("")) -> TensorError:
     return TensorError(ErrorKind.NotContiguous(), msg, where_)
-
-fn err_out_of_bounds(msg: String, where_: String = String("")) -> TensorError:
+@always_inline fn err_out_of_bounds(msg: String, where_: String = String("")) -> TensorError:
     return TensorError(ErrorKind.OutOfBounds(), msg, where_)
-
-fn err_not_implemented(msg: String, where_: String = String("")) -> TensorError:
+@always_inline fn err_not_implemented(msg: String, where_: String = String("")) -> TensorError:
     return TensorError(ErrorKind.NotImplemented(), msg, where_)
 
+# ---------- Logging (no assert, no throw) ----------
+@always_inline
+fn fail(msg: String) -> None:
+    print(String("ERROR: ") + msg)
 
-# ---------- Aggregation ----------
-    fn __copyinit__(out self, other: Self):
-        self.ok = other.ok
-        self.err = other.err
-        self.ok = other.ok
-        self.value = other.value
-        self.err = other.err
-        self.dummy = other.dummy
-        self.tmp = other.tmp
+# ---------- Require/Ensure (assert-free) ----------
+@always_inline
+fn require(cond: Bool, msg: String) -> Bool:
+    if not cond:
+        fail(msg)
+        return False
+    return True
+
+# ---------- ErrorList ----------
 struct ErrorList(Copyable, Movable, Sized):
     var items: List[TensorError]
 
     fn __init__(out self):
         self.items = List[TensorError]()
 
-    fn __copyinit__(out self, other: ErrorList):
-        self.items = other.items
+    @always_inline fn push(mut self, e: TensorError) -> None:
+        self.items.append(e)
+
+    @always_inline fn any(self) -> Bool:
+        return len(self.items) > 0
+
+    @always_inline fn clear(mut self) -> None:
+        self.items = List[TensorError]()
 
     @always_inline
     fn __len__(self) -> Int:
         return len(self.items)
-
-    fn push(mut self, e: TensorError) -> None:
-        self.items.append(e)
-
-    fn any(self) -> Bool:
-        return len(self.items) > 0
-
-    fn clear(mut self) -> None:
-        self.items = List[TensorError]()
 
     fn join_messages(self) -> String:
         var out = String("")
         var first = True
         for e in self.items:
             if first:
-                out = e.to_string()
+                out = e.ravel()
                 first = False
             else:
-                out = out + String("; ") + e.to_string()
+                out = out + String("; ") + e.ravel()
         return out
 
+# ---------- Checks (assert-free) ----------
+@always_inline
+fn check_axis(axis: Int, ndim: Int, ctx: String = String("axis")) -> Bool:
+    if ndim < 0:
+        fail(String("invalid ndim < 0")); return False
+    if axis < 0 or axis >= ndim:
+        fail(ctx + String(" out of range: ") + String(axis) + String(" vs ndim ") + String(ndim))
+        return False
+    return True
 
-# ---------- Fail helper ----------
-fn fail(msg: String) -> None:
-    # Print the error message; do not terminate (keeps compilation/runtime simple).
-    print(String("ERROR: ") + msg)
-    fn __copyinit__(out self, other: Self):
-        self.items = other.items
+@always_inline
+fn check_equal_len(a: Int, b: Int, what: String) -> Bool:
+    if a != b:
+        fail(what + String(" length mismatch: ") + String(a) + String(" vs ") + String(b))
+        return False
+    return True
 
-fn require(cond: Bool, msg: String) -> None:
-    assert cond, msg
-
-fn unreachable(msg: String) -> None:
-    assert False, msg
-
-fn check_axis(axis: Int, ndim: Int, ctx: String = "axis") -> None:
-    assert ndim >= 0, "invalid ndim < 0"
-    assert axis >= 0 and axis < ndim, ctx + " out of range: " + String(axis) + " vs ndim " + String(ndim)
-
-fn check_equal_len(a: Int, b: Int, what: String) -> None:
-    assert a == b, what + " length mismatch: " + String(a) + " vs " + String(b)
-
-fn check_same_shape(a: List[Int], b: List[Int], what: String = "shape") -> None:
+fn check_same_shape(a: List[Int], b: List[Int], what: String = String("shape")) -> Bool:
     if len(a) != len(b):
-        assert False, what + " rank mismatch: " + String(len(a)) + " vs " + String(len(b))
+        fail(what + String(" rank mismatch: ") + String(len(a)) + String(" vs ") + String(len(b)))
+        return False
     var i = 0
-    while i < len(a):
+    var n = len(a)
+    while i < n:
         if a[i] != b[i]:
-            assert False, what + " mismatch at dim " + String(i) + ": " + String(a[i]) + " vs " + String(b[i])
+            fail(
+                what + String(" mismatch at dim ")
+                + String(i) + String(": ") + String(a[i]) + String(" vs ") + String(b[i])
+            )
+            return False
         i += 1
+    return True
 
-fn check_product(shape: List[Int], expected: Int, what: String = "shape product") -> None:
-    var prod = 1
+fn check_product(shape: List[Int], expected: Int, what: String = String("shape product")) -> Bool:
+    var size = 1
     var i = 0
-    while i < len(shape):
-        prod *= shape[i]
+    var n = len(shape)
+    while i < n:
+        size = size * shape[i]
         i += 1
-    assert prod == expected, what + " mismatch: " + String(prod) + " vs " + String(expected)
+    if size != expected:
+        fail(what + String(" mismatch: ") + String(size) + String(" vs ") + String(expected))
+        return False
+    return True
 
-fn check_non_empty(n: Int, what: String = "length") -> None:
-    assert n > 0, what + " must be > 0"
+@always_inline
+fn check_non_empty(n: Int, what: String = String("length")) -> Bool:
+    if n <= 0:
+        fail(what + String(" must be > 0"))
+        return False
+    return True
 
-fn check_positive(x: Int, what: String) -> None:
-    assert x > 0, what + " must be > 0, got " + String(x)
+@always_inline
+fn check_positive(x: Int, what: String) -> Bool:
+    if x <= 0:
+        fail(what + String(" must be > 0, got ") + String(x))
+        return False
+    return True
 
-fn check_broadcastable_like(a: List[Int], b: List[Int], ctx: String = "broadcast") -> None:
-    # Numpy-like right-aligned broadcasting rule. Only verifies compatibility.
+fn check_broadcastable_like(a: List[Int], b: List[Int], ctx: String = String("broadcast")) -> Bool:
+    # Numpy-like right-aligned broadcasting compatibility check.
     var ia = len(a) - 1
     var ib = len(b) - 1
     while ia >= 0 or ib >= 0:
@@ -311,6 +266,28 @@ fn check_broadcastable_like(a: List[Int], b: List[Int], ctx: String = "broadcast
         if ia >= 0: da = a[ia]
         if ib >= 0: db = b[ib]
         var ok = (da == db) or (da == 1) or (db == 1)
-        assert ok, ctx + " incompatible at dims (" + String(ia) + "," + String(ib) + "): " + String(da) + " vs " + String(db)
+        if not ok:
+            fail(
+                ctx + String(" incompatible at dims (")
+                + String(ia) + String(",") + String(ib) + String("): ")
+                + String(da) + String(" vs ") + String(db)
+            )
+            return False
         ia -= 1
         ib -= 1
+    return True
+
+@always_inline
+fn check_axis_status(axis: Int, ndim: Int, ctx: String = String("axis")) -> Status:
+    if check_axis(axis, ndim, ctx): return OkStatus()
+    return ErrStatus(ErrorKind.InvalidArgument(), ctx, String("check_axis"))
+
+@always_inline
+fn check_same_shape_status(a: List[Int], b: List[Int], what: String = String("shape")) -> Status:
+    if check_same_shape(a, b, what): return OkStatus()
+    return ErrStatus(ErrorKind.ShapeMismatch(), what, String("check_same_shape"))
+
+@always_inline
+fn check_broadcastable_status(a: List[Int], b: List[Int], ctx: String = String("broadcast")) -> Status:
+    if check_broadcastable_like(a, b, ctx): return OkStatus()
+    return ErrStatus(ErrorKind.InvalidArgument(), ctx, String("check_broadcastable_like"))
