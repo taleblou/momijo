@@ -43,7 +43,7 @@ from momijo.tensor.creation import eye_int,eye_f64,eye_f32
 # Random helpers (Float64) 
 from momijo.tensor.creation import from_list_float64
 from momijo.tensor.creation import from_list_int32
-from momijo.tensor.creation import randn,rand
+from momijo.tensor.creation import randn,rand,randn_int,randn_f64,randn_f32
 from momijo.tensor.creation import zeros_like
 from momijo.tensor.creation import arange_f64 as arange
 
@@ -66,7 +66,7 @@ from momijo.tensor.transform import sliding_window_step
 # ----------------------------- Math / Reductions ------------------------------
 from momijo.tensor.math import mean
 # If you later expose sum/min/max generics, re-export them here similarly:
-# from momijo.tensor.math import sum
+# from momijo.tensor.math import sum,analytic_jacobian,numeric_jacobian,f_vec
 # from momijo.tensor.math import min
 # from momijo.tensor.math import max
 
