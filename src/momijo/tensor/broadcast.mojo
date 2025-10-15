@@ -37,26 +37,21 @@ from momijo.tensor.cast import *
 # Broadcast utilities
 # ============================================================
 
-# struct BroadcastResult:
-#     var shape: List[Int]
-#     var lhs_strides: List[Int]
-#     var rhs_strides: List[Int]
-
-#     fn __init__(out self):
-#         self.shape = List[Int]()
-#         self.lhs_strides = List[Int]()
-#         self.rhs_strides = List[Int]()
-
+ 
+# Pack result to avoid juggling multiple returns.
 struct BroadcastResult:
     var ok: Bool
     var shape: List[Int]
     var lhs_padded: List[Int]
     var rhs_padded: List[Int]
-    fn __init__(out self,ok_b: Bool ,shape_b: List[Int],lhs_padded_b: List[Int],rhs_padded_b: List[Int]):
+
+    fn __init__(out self, ok_b: Bool, shape_b: List[Int],
+                lhs_padded_b: List[Int], rhs_padded_b: List[Int]):
         self.ok = ok_b
         self.shape = shape_b.copy()
-        self.lhs_padded = rhs_padded_b.copy()
+        self.lhs_padded = lhs_padded_b.copy()   
         self.rhs_padded = rhs_padded_b.copy()
+
 
 @always_inline
 fn same_shape(a: List[Int], b: List[Int]) -> Bool:
@@ -107,28 +102,25 @@ fn prepare_broadcast(
     return (True, br)
 
 @always_inline
-fn pad_left_ones(sh: List[Int], target_rank: Int) -> List[Int]:
-    var r = len(sh)
-    if r >= target_rank:
-        return sh.copy()
+fn pad_left_ones(x: List[Int], r: Int) -> List[Int]:
+    var rx = len(x)
     var out = List[Int]()
-    out.reserve(target_rank)
-    var pad = target_rank - r
+    out.reserve(r)
     var i = 0
-    while i < pad:
+    while i < (r - rx):
         out.append(1)
         i += 1
     var j = 0
-    while j < r:
-        out.append(sh[j])
+    while j < rx:
+        out.append(x[j])
         j += 1
     return out.copy()
 
 
 
 
-@always_inline 
-fn broadcast_shapes(a: List[Int], b: List[Int]) -> BroadcastResult:#(Bool, List[Int], List[Int], List[Int]):
+@always_inline
+fn broadcast_shapes(a: List[Int], b: List[Int]) -> BroadcastResult:
     var ra = len(a)
     var rb = len(b)
     var r  = ra if ra >= rb else rb
@@ -138,6 +130,7 @@ fn broadcast_shapes(a: List[Int], b: List[Int]) -> BroadcastResult:#(Bool, List[
 
     var out = List[Int]()
     out.reserve(r)
+
     var i = 0
     while i < r:
         var da = ash[i]
@@ -149,15 +142,13 @@ fn broadcast_shapes(a: List[Int], b: List[Int]) -> BroadcastResult:#(Bool, List[
         elif db == 1:
             out.append(da)
         else:
-            # make copies explicitly to avoid implicit-copy warning
-            return BroadcastResult(False, List[Int](), ash.copy(), bsh.copy())#(False, List[Int](), ash.copy(), bsh.copy())
+            return BroadcastResult(False, List[Int](), ash, bsh)
         i += 1
-    # explicit copies here too
-    return BroadcastResult(True, out, ash, bsh)#(True, out.copy(), ash.copy(), bsh.copy())
 
+    return BroadcastResult(True, out, ash, bsh)
 
+# --------------------- variadic (left-fold) ----------------------
 
-# Variadic broadcast (left fold)
 fn broadcast_shapes_many(shapes: List[List[Int]], out out_shape: List[Int]) -> Bool:
     out_shape.clear()
     var n = len(shapes)
@@ -165,21 +156,17 @@ fn broadcast_shapes_many(shapes: List[List[Int]], out out_shape: List[Int]) -> B
         out_shape.append(1)
         return True
 
-    var cur = List[Int]()
-    var i0 = 0
-    var s0n = len(shapes[0])
-    while i0 < s0n:
-        cur.append(shapes[0][i0])
-        i0 += 1
-
+    var cur = shapes[0].copy()
     var k = 1
     while k < n:
-        var tmp = List[Int]()
-        if not broadcast_shapes(cur, shapes[k], tmp):
+        var br = broadcast_shapes(cur, shapes[k])
+        if not br.ok:
+            out_shape.clear()
             return False
-        cur = tmp
+        cur = br.out_shape   # consume the out shape from result
         k += 1
 
+    # write back to out parameter
     var i = 0
     var cn = len(cur)
     while i < cn:
