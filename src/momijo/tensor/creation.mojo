@@ -32,6 +32,7 @@ from momijo.tensor.helpers import (
 )
 from momijo.tensor.cast import *
 from math import *
+import random
 # ------------------------------ small local helpers ------------------------------ #
 
 @always_inline
@@ -139,9 +140,11 @@ fn zeros_with_shape[T: ImplicitlyCopyable & Copyable & Movable](
     shape: List[Int],
     from_f64: fn (Float64) -> T
 ) -> Tensor[T]:
-    var sh = copy_list_int(shape)
+    # Defensive copy (per project rules)
+    var sh = shape.copy()
     var n = numel(sh)
 
+    # Build zero-filled data buffer
     var data = List[T]()
     data.reserve(n)
 
@@ -157,8 +160,12 @@ fn zeros_with_shape[T: ImplicitlyCopyable & Copyable & Movable](
         data.append(z)
         i = i + 1
 
+    # Row-major strides
     var strides = compute_row_major_strides(sh)
-    return Tensor[T](data=data, shape=sh, strides=strides)
+
+    # Use positional args; most Mojo ctors aren't named. Include offset=0.
+    return Tensor[T](data, sh, strides, 0)
+
 
 # Generic wrapper: prefer this instead of calling full(...)
 @always_inline
@@ -201,9 +208,10 @@ fn zeros_like(x: Tensor[Int]) -> Tensor[Int]:
 
 # ------------------------------ full ---------------------------------
 
+@always_inline
 fn full[T: ImplicitlyCopyable & Copyable & Movable](shape: List[Int], fill: T) -> Tensor[T]:
-    # Defensive copy
-    var sh = copy_list_int(shape)
+    # Defensive copy of shape
+    var sh = shape.copy()
 
     # Build data buffer
     var n = numel(sh)
@@ -213,14 +221,8 @@ fn full[T: ImplicitlyCopyable & Copyable & Movable](shape: List[Int], fill: T) -
     var i = 0
     var lim = (n // 8) * 8
     while i < lim:
-        data.append(fill)
-        data.append(fill)
-        data.append(fill)
-        data.append(fill)
-        data.append(fill)
-        data.append(fill)
-        data.append(fill)
-        data.append(fill)
+        data.append(fill); data.append(fill); data.append(fill); data.append(fill)
+        data.append(fill); data.append(fill); data.append(fill); data.append(fill)
         i = i + 8
     while i < n:
         data.append(fill)
@@ -229,8 +231,8 @@ fn full[T: ImplicitlyCopyable & Copyable & Movable](shape: List[Int], fill: T) -
     # Row-major strides
     var strides = compute_row_major_strides(sh)
 
-    # IMPORTANT: pass positionally (many Mojo ctors aren't named)
-    return Tensor[T](data, sh, strides)
+    # Use the 4-arg ctor: (data, shape, strides, offset)
+    return Tensor[T](data, sh, strides, 0)
 
 @always_inline
 fn full(shape: List[Int], fill: Float64) -> Tensor[Float64]:
@@ -591,10 +593,19 @@ fn randn(x: Tensor[Float32], seed: Optional[Int] = None) -> Tensor[Float32]:
 @always_inline
 fn randn(x: Tensor[Int], seed: Optional[Int] = None) -> Tensor[Int]:
     return randn_like_with[Int](x, to_int_from_f64, seed)
+    
+@always_inline
+fn randn_f64(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
+    return randn_with_shape[Float64](shape, to_f64_from_f64, seed)
 
 @always_inline
-fn randn(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
-    return randn_with_shape[Float64](shape, to_f64_from_f64, seed)
+fn randn_f32(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float32]:
+    return randn_with_shape[Float32](shape, to_f32_from_f64, seed)
+
+@always_inline
+fn randn_int(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Int]:
+    return randn_with_shape[Int](shape, to_int_from_f64, seed)
+ 
 
 # ============================== NEW: rand (uniform) like randn ==============================
 
@@ -1051,43 +1062,26 @@ fn empty_tensor_with[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T,
     shape: Optional[List[Int]] = None
 ) -> Tensor[T]:
-    # materialize shape (copy)
-    var shp = List[Int]()
-    if shape is None:
-        shp.append(0)
+    var shp = if shape is None:
+        (var tmp = List[Int](); tmp.append(0); tmp)
     else:
-        var s = shape.value().copy()
-        var i = 0
-        var m = len(s)
-        while i < m:
-            shp.append(s[i])
-            i = i + 1
+        shape.value().copy()
 
-    # num elements
-    var n = 1
-    var j = 0
-    var r = len(shp)
-    while j < r:
-        n = n * shp[j]
-        j = j + 1
+    var n = 1; var i = 0
+    while i < len(shp): n = n * shp[i]; i += 1
 
-    # allocate and zero-initialize via converter (no T())
-    var data = List[T]()
-    data.reserve(n)
+    var data = List[T](); data.reserve(n)
     var z = from_f64(0.0)
-
-    var k = 0
-    var lim = (n // 8) * 8
+    var k = 0; var lim = (n // 8) * 8
     while k < lim:
         data.append(z); data.append(z); data.append(z); data.append(z)
         data.append(z); data.append(z); data.append(z); data.append(z)
-        k = k + 8
-    while k < n:
-        data.append(z)
-        k = k + 1
+        k += 8
+    while k < n: data.append(z); k += 1
 
-    return Tensor[T](data, shp)
-
+    var strides = compute_row_major_strides(shp)
+    return Tensor[T](data, shp, strides, 0)
+    
 fn empty_tensor[T: ImplicitlyCopyable & Copyable & Movable]() -> Tensor[T]:
     var data = List[T]()        # no elements
     var shape = List[Int]()     # 1D with zero length
@@ -1128,18 +1122,14 @@ fn empty_like(x: Tensor[Int]) -> Tensor[Int]:
 
 @always_inline
 fn from_list_float64(data: List[Float64]) -> Tensor[Float64]:
-    # Construct a 1D tensor from a List[Float64] without aliasing the input list.
     var n = len(data)
-
     var shape = List[Int]()
     shape.append(n)
-
     var buf = data.copy()
     return Tensor[Float64](buf, shape)
 
 @always_inline
 fn from_list_int(data: List[Int]) -> Tensor[Int]:
-    # Build a 1D tensor from a List[Int] without aliasing caller memory.
     var n = len(data)
     var shape = List[Int]()
     shape.append(n)
@@ -1147,46 +1137,26 @@ fn from_list_int(data: List[Int]) -> Tensor[Int]:
 
 @always_inline
 fn from_list_float32(data: List[Float32]) -> Tensor[Float32]:
-    # Build a 1D tensor from a List[Float32] without aliasing caller memory.
     var n = len(data)
     var shape = List[Int]()
     shape.append(n)
     return Tensor[Float32](data.copy(), shape)
 
-
 @always_inline
 fn scalar_zero_tensor[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T
 ) -> Tensor[T]:
-    var shape = List[Int]()                      # []
-    var strides = compute_row_major_strides(shape)
+    # Rank-0 tensor (shape == [], numel == 1)
+    var shape = List[Int]()                       # []
+    var strides = compute_row_major_strides(shape) # []
     var data = List[T]()
-    data.append(from_f64(0.0))
-    return Tensor[T](data=data, shape=shape, strides=strides)
+    data.append(from_f64(0.0))                    # one element for scalar
+    # Positional args only; include offset=0 for the 4-arg ctor
+    return Tensor[T](data, shape, strides, 0)
 
 
-
-
-# @always_inline
-# fn scalar64(x: Float64) -> Tensor[Float64]:
-#     var sh = List[Int](); sh.append(1)                      # shape = [1]
-#     return Tensor[Float64](shape=sh, fill=x)   
 
  
-# @always_inline
-# fn scalar32(x: Float32) -> Tensor[Float32]:
-#     var sh = List[Int](); sh.append(1)                      # shape = [1]
-#     return Tensor[Float32](shape=sh, fill=x)   
-
-# @always_inline
-# fn scalar_int(x: Int) -> Tensor[Int]:
-#     var sh = List[Int](); sh.append(1)
-#     return Tensor[Int](shape=sh, fill=x)
-
-# @always_inline
-# fn scalar_int(s: Int) -> Tensor[Int]:
-#     # Rank-0 scalar tensor with value s  ⇒ shape = []
-#     return full[Int](List[Int](), s)
 
 
 @always_inline
