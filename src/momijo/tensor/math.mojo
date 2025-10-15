@@ -32,6 +32,7 @@ from momijo.tensor.helpers import numel,is_row_major_contiguous
 from momijo.tensor.broadcast import keepdims_shape,clip
 from momijo.tensor.helpers import normalize_axis,unravel_index ,lin_index
 from momijo.tensor.helpers import shape_drop_axis ,astype_with ,zero_scalar_of ,compute_row_major_strides
+ 
 
 from math import *
 # ======================= Math helpers (Float64) =======================
@@ -814,7 +815,6 @@ fn elemwise2_same_contig_impl[T: ImplicitlyCopyable & Copyable & Movable](
 ) -> Tensor[T]:
     var n = len(a._data)
     var out_tensor = Tensor[T](shape=a._shape, fill=zero_scalar_of[T](from_f64))
-    # Alternatively: var out_tensor = Tensor[T](shape=a._shape, fill=from_f64(0.0))
 
     var i = 0
     var lim = (n // 8) * 8
@@ -841,7 +841,7 @@ fn elemwise_scalar_right_impl[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T
 ) -> Tensor[T]:
     var n = len(x._data)
-    var out_tensor = Tensor[T](shape=x._shape, fill=from_f64(0.0))
+    var out_tensor = Tensor[T](shape=x._shape, fill=zero_scalar_of[T](from_f64))
 
     var i = 0
     var lim = (n // 8) * 8
@@ -861,7 +861,6 @@ fn elemwise_scalar_right_impl[T: ImplicitlyCopyable & Copyable & Movable](
 
     return out_tensor.copy()
 
-
 @always_inline
 fn elemwise_scalar_left_impl[T: ImplicitlyCopyable & Copyable & Movable](
     s: T, x: Tensor[T], op_id: Int,
@@ -869,7 +868,7 @@ fn elemwise_scalar_left_impl[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T
 ) -> Tensor[T]:
     var n = len(x._data)
-    var out_tensor = Tensor[T](shape=x._shape, fill=from_f64(0.0))
+    var out_tensor = Tensor[T](shape=x._shape, fill=zero_scalar_of[T](from_f64))
 
     var i = 0
     var lim = (n // 8) * 8
@@ -889,21 +888,23 @@ fn elemwise_scalar_left_impl[T: ImplicitlyCopyable & Copyable & Movable](
 
     return out_tensor.copy()
 
-
 @always_inline
 fn new_tensor_from_list[T: ImplicitlyCopyable & Copyable & Movable](
     data: List[T], shape: List[Int],
     from_f64: fn (Float64) -> T
 ) -> Tensor[T]:
-    # Pick an initial fill value
-    var init = data[0] if len(data) > 0 else from_f64(0.0)
-
-    # Allocate with shape+fill, then copy data in
+    var init = zero_scalar_of[T](from_f64)
     var t = Tensor[T](shape=shape, fill=init)
+
+    var n_expected = numel(shape)
+    var n_src = len(data)
+    var k = n_src if n_src < n_expected else n_expected
+
     var i = 0
-    while i < len(data):
+    while i < k:
         t._data[i] = data[i]
         i += 1
+
     return t.copy()
 
 @always_inline
@@ -915,58 +916,52 @@ fn apply_broadcast2_impl[T: ImplicitlyCopyable & Copyable & Movable](
     var ashp = a._shape.copy()
     var bshp = b._shape.copy()
 
-    # broadcast_shapes returns (ok, out_shape, ash_padded, bsh_padded)
-    # var ok: Bool
-    # var oshp: List[Int]
-    # var apad: List[Int]
-    # var bpad: List[Int]
     var rest = broadcast_shapes(ashp.copy(), bshp.copy())
-    var ok   = rest.ok
-    var oshp = rest.shape.copy()  
+    if not rest.ok:
+        return empty_tensor[T]()
+
+    var oshp = rest.shape.copy()
     var apad = rest.lhs_padded.copy()
     var bpad = rest.rhs_padded.copy()
-    if not ok:
-        return empty_tensor[T]()   # or handle error as appropriate
 
-    # Fast path: rank-1 with equal length (legacy behavior when oshp was empty)
+    # Legacy equal-length 1D path (kept for compatibility)
     if len(oshp) == 0:
         var n = len(a._data)
         var m = len(b._data)
         var k = n if n < m else m
-        var out = List[T]()
-        out.reserve(k)
+        var out_list = List[T]()
+        out_list.reserve(k)
         var i0 = 0
         while i0 < k:
-            out.append(bin_combine_impl[T](a._data[i0], b._data[i0], op_id, to_f64, from_f64))
+            out_list.append(bin_combine_impl[T](a._data[i0], b._data[i0], op_id, to_f64, from_f64))
             i0 += 1
         var shp1 = List[Int](); shp1.append(k)
-        return new_tensor_from_list[T](out, shp1, from_f64)   # <-- pass from_f64
+        return new_tensor_from_list[T](out_list, shp1, from_f64)
 
     var an = len(a._data)
     var bn = len(b._data)
 
-    # If shapes match and both are contiguous, take the contiguous fast path
-    if an == bn and same_shape(ashp, bshp) and is_row_major_contiguous(ashp, a._strides) and is_row_major_contiguous(bshp, b._strides):
+    if an == bn and same_shape(ashp, bshp)
+       and is_row_major_contiguous(ashp, a._strides)
+       and is_row_major_contiguous(bshp, b._strides):
         return elemwise2_same_contig_impl[T](a, b, op_id, to_f64, from_f64)
 
-    # Scalar broadcast fast paths
     if bn == 1:
         return elemwise_scalar_right_impl[T](a, b._data[0], op_id, to_f64, from_f64)
     if an == 1:
         return elemwise_scalar_left_impl[T](a._data[0], b, op_id, to_f64, from_f64)
 
-    # General N-d broadcast
-    var a_str = ensure_strides(a._strides, ashp)
-    var b_str = ensure_strides(b._strides, bshp)
+    # General N-D broadcast
+    var a_str = ensure_strides(a._strides, apad)   # fixed: use padded shape
+    var b_str = ensure_strides(b._strides, bpad)   # fixed: use padded shape
     var o_str = row_major_strides(oshp)
 
     var rank_o = len(oshp)
-    var rank_a = len(apad)   # use padded ranks
+    var rank_a = len(apad)
     var rank_b = len(bpad)
 
     var n_out = numel(oshp)
-    var out2 = List[T]()
-    out2.reserve(n_out)
+    var out_tensor = Tensor[T](shape=oshp, fill=zero_scalar_of[T](from_f64))
 
     var idx = 0
     while idx < n_out:
@@ -989,21 +984,52 @@ fn apply_broadcast2_impl[T: ImplicitlyCopyable & Copyable & Movable](
                 rem = rem % step
             d += 1
 
-        out2.append(bin_combine_impl[T](a._data[oa], b._data[ob], op_id, to_f64, from_f64))
+        out_tensor._data[idx] = bin_combine_impl[T](a._data[oa], b._data[ob], op_id, to_f64, from_f64)
         idx += 1
 
-    return new_tensor_from_list[T](out2, oshp, from_f64)     # <-- pass from_f64
+    return out_tensor.copy()
 
 
+@always_inline
 fn apply_broadcast2_inplace_impl[T: ImplicitlyCopyable & Copyable & Movable](
     mut x: Tensor[T], y: Tensor[T], op_id: Int,
     to_f64: fn (T) -> Float64,
     from_f64: fn (Float64) -> T
 ) -> None:
     var xshp = x._shape.copy()
-    var yshp = y._shape
-    var oshp = broadcast_shapes(xshp, yshp)
+    var yshp = y._shape.copy()
 
+    var rest = broadcast_shapes(xshp.copy(), yshp.copy())
+    if not rest.ok:
+        return
+
+    var oshp = rest.shape.copy()
+    var xpad = rest.lhs_padded.copy()
+    var ypad = rest.rhs_padded.copy()
+
+    # Fast path: identical shapes and row-major contiguous on both sides
+    if same_shape(xshp, yshp)
+       and is_row_major_contiguous(xshp, x._strides)
+       and is_row_major_contiguous(yshp, y._strides):
+        var n = len(x._data)
+        var i = 0
+        var lim = (n // 8) * 8
+        while i < lim:
+            x._data[i    ] = bin_combine_impl[T](x._data[i    ], y._data[i    ], op_id, to_f64, from_f64)
+            x._data[i + 1] = bin_combine_impl[T](x._data[i + 1], y._data[i + 1], op_id, to_f64, from_f64)
+            x._data[i + 2] = bin_combine_impl[T](x._data[i + 2], y._data[i + 2], op_id, to_f64, from_f64)
+            x._data[i + 3] = bin_combine_impl[T](x._data[i + 3], y._data[i + 3], op_id, to_f64, from_f64)
+            x._data[i + 4] = bin_combine_impl[T](x._data[i + 4], y._data[i + 4], op_id, to_f64, from_f64)
+            x._data[i + 5] = bin_combine_impl[T](x._data[i + 5], y._data[i + 5], op_id, to_f64, from_f64)
+            x._data[i + 6] = bin_combine_impl[T](x._data[i + 6], y._data[i + 6], op_id, to_f64, from_f64)
+            x._data[i + 7] = bin_combine_impl[T](x._data[i + 7], y._data[i + 7], op_id, to_f64, from_f64)
+            i += 8
+        while i < n:
+            x._data[i] = bin_combine_impl[T](x._data[i], y._data[i], op_id, to_f64, from_f64)
+            i += 1
+        return
+
+    # Legacy equal-length 1D fallback (when oshp is empty)
     if len(oshp) == 0:
         var xn = len(x._data)
         var yn = len(y._data)
@@ -1014,31 +1040,14 @@ fn apply_broadcast2_inplace_impl[T: ImplicitlyCopyable & Copyable & Movable](
             i0 += 1
         return
 
-    if same_shape(xshp, yshp) and is_contiguous(xshp, x._strides) and is_contiguous(yshp, y._strides):
-        var n = len(x._data)
-        var i1 = 0
-        var lim = (n // 8) * 8
-        while i1 < lim:
-            x._data[i1    ] = bin_combine_impl[T](x._data[i1    ], y._data[i1    ], op_id, to_f64, from_f64)
-            x._data[i1 + 1] = bin_combine_impl[T](x._data[i1 + 1], y._data[i1 + 1], op_id, to_f64, from_f64)
-            x._data[i1 + 2] = bin_combine_impl[T](x._data[i1 + 2], y._data[i1 + 2], op_id, to_f64, from_f64)
-            x._data[i1 + 3] = bin_combine_impl[T](x._data[i1 + 3], y._data[i1 + 3], op_id, to_f64, from_f64)
-            x._data[i1 + 4] = bin_combine_impl[T](x._data[i1 + 4], y._data[i1 + 4], op_id, to_f64, from_f64)
-            x._data[i1 + 5] = bin_combine_impl[T](x._data[i1 + 5], y._data[i1 + 5], op_id, to_f64, from_f64)
-            x._data[i1 + 6] = bin_combine_impl[T](x._data[i1 + 6], y._data[i1 + 6], op_id, to_f64, from_f64)
-            x._data[i1 + 7] = bin_combine_impl[T](x._data[i1 + 7], y._data[i1 + 7], op_id, to_f64, from_f64)
-            i1 += 8
-        while i1 < n:
-            x._data[i1] = bin_combine_impl[T](x._data[i1], y._data[i1], op_id, to_f64, from_f64)
-            i1 += 1
-        return
-
-    var x_str = ensure_strides(x._strides, xshp)
-    var y_str = ensure_strides(y._strides, yshp)
+    # General N-D broadcast (use padded shapes for correct indexing)
+    var x_str = ensure_strides(x._strides, xpad)
+    var y_str = ensure_strides(y._strides, ypad)
     var o_str = row_major_strides(oshp)
+
     var rank_o = len(oshp)
-    var rank_x = len(xshp)
-    var rank_y = len(yshp)
+    var rank_x = len(xpad)
+    var rank_y = len(ypad)
     var n_out = numel(oshp)
 
     var idx = 0
@@ -1054,15 +1063,16 @@ fn apply_broadcast2_inplace_impl[T: ImplicitlyCopyable & Copyable & Movable](
                 cur = (rem // step) % oshp[d]
             var xi = rank_x - rank_o + d
             var yi = rank_y - rank_o + d
-            if xi >= 0 and xshp[xi] != 1:
+            if xi >= 0 and xpad[xi] != 1:
                 ox = ox + cur * x_str[xi]
-            if yi >= 0 and yshp[yi] != 1:
+            if yi >= 0 and ypad[yi] != 1:
                 oy = oy + cur * y_str[yi]
             if step != 0:
                 rem = rem % step
             d += 1
         x._data[ox] = bin_combine_impl[T](x._data[ox], y._data[oy], op_id, to_f64, from_f64)
         idx += 1
+
 
 # ---- public broadcasted binary (per-dtype) ----
 # Typed conversions to Float64
@@ -1575,12 +1585,13 @@ fn lxnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
 fn landnot_t(x: Tensor[Float32], y: Tensor[FloFloat32at64]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 26)
 
- @always_inline
+@always_inline
 fn _not_to_int_impl[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], to_f64: fn (T) -> Float64
 ) -> Tensor[Int]:
-    # Build an Int mask where output[i] = 1 if x[i] == 0 else 0
+    # Build Int mask: out[i] = 1 if x[i] == 0 else 0
     var n = len(x._data)
+
     var out = List[Int]()
     out.reserve(n)
 
@@ -1588,49 +1599,37 @@ fn _not_to_int_impl[T: ImplicitlyCopyable & Copyable & Movable](
     var lim = (n // 8) * 8
     while i < lim:
         var a0 = 1
-        if to_f64(x._data[i    ]) != 0.0:
-            a0 = 0
+        if to_f64(x._data[i    ]) != 0.0: a0 = 0
         var a1 = 1
-        if to_f64(x._data[i + 1]) != 0.0:
-            a1 = 0
+        if to_f64(x._data[i + 1]) != 0.0: a1 = 0
         var a2 = 1
-        if to_f64(x._data[i + 2]) != 0.0:
-            a2 = 0
+        if to_f64(x._data[i + 2]) != 0.0: a2 = 0
         var a3 = 1
-        if to_f64(x._data[i + 3]) != 0.0:
-            a3 = 0
+        if to_f64(x._data[i + 3]) != 0.0: a3 = 0
         var a4 = 1
-        if to_f64(x._data[i + 4]) != 0.0:
-            a4 = 0
+        if to_f64(x._data[i + 4]) != 0.0: a4 = 0
         var a5 = 1
-        if to_f64(x._data[i + 5]) != 0.0:
-            a5 = 0
+        if to_f64(x._data[i + 5]) != 0.0: a5 = 0
         var a6 = 1
-        if to_f64(x._data[i + 6]) != 0.0:
-            a6 = 0
+        if to_f64(x._data[i + 6]) != 0.0: a6 = 0
         var a7 = 1
-        if to_f64(x._data[i + 7]) != 0.0:
-            a7 = 0
+        if to_f64(x._data[i + 7]) != 0.0: a7 = 0
 
-        out.append(a0)
-        out.append(a1)
-        out.append(a2)
-        out.append(a3)
-        out.append(a4)
-        out.append(a5)
-        out.append(a6)
-        out.append(a7)
+        out.append(a0); out.append(a1); out.append(a2); out.append(a3)
+        out.append(a4); out.append(a5); out.append(a6); out.append(a7)
         i += 8
 
     while i < n:
         var m = 1
-        if to_f64(x._data[i]) != 0.0:
-            m = 0
+        if to_f64(x._data[i]) != 0.0: m = 0
         out.append(m)
         i += 1
 
-    var strides = compute_row_major_strides(x._shape)
-    return Tensor[Int](data=out, shape=x._shape, strides=strides)
+    # Fresh shape copy + row-major strides; offset = 0
+    var shp = x._shape.copy()
+    var strides = compute_row_major_strides(shp)
+    return Tensor[Int](out, shp, strides, 0)
+
 
 
 @always_inline
@@ -1731,77 +1730,7 @@ fn lnot_t(x: Tensor[Bool]) -> Tensor[Bool]:
     var strides = compute_row_major_strides(x._shape)
     return Tensor[Bool](data=out, shape=x._shape, strides=strides)
 
-# @always_inline
-# fn _apply_logic(x: Tensor[Float64], y: Tensor[Float64], op_id: Int) -> Tensor[Int]:
-#     return _apply_logic_impl[Float64](x, y, op_id)
-
-# @always_inline
-# fn _apply_logic(x: Tensor[Float32], y: Tensor[Float32], op_id: Int) -> Tensor[Int]:
-#     return _apply_logic_impl[Float32](x, y, op_id)
-
-# @always_inline
-# fn _apply_logic(x: Tensor[Int], y: Tensor[Int], op_id: Int) -> Tensor[Int]:
-#     return _apply_logic_impl[Int](x, y, op_id)
-
-# @always_inline
-# fn _apply_logic[T: ImplicitlyCopyable & Copyable & Movable](
-#     x: Tensor[T], y: Tensor[T], op_id: Int
-# ) -> Tensor[Int]:
-#     return _apply_logic_impl[T](x, y, op_id)
-
-# # If you also have NOT:
-# @always_inline
-# fn _apply_not(x: Tensor[Float64]) -> Tensor[Int]:
-#     return _apply_not_impl[Float64](x)
-
-# @always_inline
-# fn _apply_not(x: Tensor[Float32]) -> Tensor[Int]:
-#     return _apply_not_impl[Float32](x)
-
-# @always_inline
-# fn _apply_not(x: Tensor[Int]) -> Tensor[Int]:
-#     return _apply_not_impl[Int](x)
-
-# @always_inline
-# fn _apply_not[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[Int]:
-#     return _apply_not_impl[T](x)
-
-# # ---- Public NOT wrappers to match your API family ----
-# @always_inline
-# fn not_t(x: Tensor[Float64]) -> Tensor[Int]:
-#      return _apply_not(x)
-# @always_inline
-# fn not_t(x: Tensor[Float32]) -> Tensor[Int]:
-#      return _apply_not(x)
-# @always_inline
-# fn not_t(x: Tensor[Int])     -> Tensor[Int]: 
-#     return _apply_not(x)
-# @always_inline
-# fn not_t[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[Int]:
-#     return _apply_not(x)
-
-# ===== Friendly API wrappers (unchanged names) =====
-# @always_inline 
-# fn add_t[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -> Tensor[T]:
-#     return apply_broadcast2(a, b, 0)
-# @always_inline 
-# fn sub_t[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -> Tensor[T]:
-#     return apply_broadcast2(a, b, 1)
-# @always_inline 
-# fn mul_t[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -> Tensor[T]:
-#     return apply_broadcast2(a, b, 2)
-# @always_inline 
-# fn div_t[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -> Tensor[T]:
-#     return apply_broadcast2(a, b, 3)
-# @always_inline 
-# fn pow_t[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -> Tensor[T]:
-#     return apply_broadcast2(a, b, 4)
-# @always_inline 
-# fn maximum_t[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -> Tensor[T]:
-#     return apply_broadcast2(a, b, 5)
-# @always_inline 
-# fn minimum_t[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -> Tensor[T]:
-#     return apply_broadcast2(a, b, 6)
+ 
  
 
 
@@ -1967,8 +1896,8 @@ fn lerp[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T], 
         return Tensor[T](shp1, out0)
      
 
-    var a_str = ensure_strides(a._strides, ashp)
-    var b_str = ensure_strides(b._strides, bshp)
+    var a_str = ensure_strides(a._strides, apad)
+    var b_str = ensure_strides(b._strides, bpad)
     var o_str = row_major_strides(oshp)
 
     var rank_o = len(oshp)
@@ -2197,6 +2126,469 @@ fn normalize_[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], axis
                 m += 1
             r += 1
         l += 1
+
+
+# -----------------------------------------------------------------------------
+# Tensor[Float64] reductions: global min / max
+# - Empty tensor: returns 0.0
+# - NaN policy: if any element is NaN, return that NaN immediately
+# - Micro-opts: local alias for data; 8x unroll
+# -----------------------------------------------------------------------------
+
+@always_inline
+fn min_t(self: Tensor[Float64]) -> Float64:
+    var xs = self._data
+    var n  = len(xs)
+    if n == 0:
+        return 0.0
+
+    var m = xs[0]
+    # m is NaN?
+    if not (m == m):
+        return m
+
+    var i   = 1
+    var lim = (n // 8) * 8
+    while i < lim:
+        var v0 = xs[i]
+        if not (v0 == v0):
+            return v0
+        if v0 < m:
+            m = v0
+
+        var v1 = xs[i + 1]
+        if not (v1 == v1):
+            return v1
+        if v1 < m:
+            m = v1
+
+        var v2 = xs[i + 2]
+        if not (v2 == v2):
+            return v2
+        if v2 < m:
+            m = v2
+
+        var v3 = xs[i + 3]
+        if not (v3 == v3):
+            return v3
+        if v3 < m:
+            m = v3
+
+        var v4 = xs[i + 4]
+        if not (v4 == v4):
+            return v4
+        if v4 < m:
+            m = v4
+
+        var v5 = xs[i + 5]
+        if not (v5 == v5):
+            return v5
+        if v5 < m:
+            m = v5
+
+        var v6 = xs[i + 6]
+        if not (v6 == v6):
+            return v6
+        if v6 < m:
+            m = v6
+
+        var v7 = xs[i + 7]
+        if not (v7 == v7):
+            return v7
+        if v7 < m:
+            m = v7
+
+        i = i + 8
+
+    while i < n:
+        var v = xs[i]
+        if not (v == v):
+            return v
+        if v < m:
+            m = v
+        i = i + 1
+
+    return m
+
+
+@always_inline
+fn max_t(self: Tensor[Float64]) -> Float64:
+    var xs = self._data.copy()
+    var n  = len(xs)
+    if n == 0:
+        return 0.0
+
+    var M = xs[0]
+    # M is NaN?
+    if not (M == M):
+        return M
+
+    var i   = 1
+    var lim = (n // 8) * 8
+    while i < lim:
+        var v0 = xs[i]
+        if not (v0 == v0):
+            return v0
+        if v0 > M:
+            M = v0
+
+        var v1 = xs[i + 1]
+        if not (v1 == v1):
+            return v1
+        if v1 > M:
+            M = v1
+
+        var v2 = xs[i + 2]
+        if not (v2 == v2):
+            return v2
+        if v2 > M:
+            M = v2
+
+        var v3 = xs[i + 3]
+        if not (v3 == v3):
+            return v3
+        if v3 > M:
+            M = v3
+
+        var v4 = xs[i + 4]
+        if not (v4 == v4):
+            return v4
+        if v4 > M:
+            M = v4
+
+        var v5 = xs[i + 5]
+        if not (v5 == v5):
+            return v5
+        if v5 > M:
+            M = v5
+
+        var v6 = xs[i + 6]
+        if not (v6 == v6):
+            return v6
+        if v6 > M:
+            M = v6
+
+        var v7 = xs[i + 7]
+        if not (v7 == v7):
+            return v7
+        if v7 > M:
+            M = v7
+
+        i = i + 8
+
+    while i < n:
+        var v = xs[i]
+        if not (v == v):
+            return v
+        if v > M:
+            M = v
+        i = i + 1
+
+    return M
+
+ 
+@always_inline
+fn min_t(self: Tensor[Float32]) -> Float32:
+    var xs = self._data
+    var n  = len(xs)
+    if n == 0:
+        return 0.0
+
+    var m = xs[0]
+    # m is NaN?
+    if not (m == m):
+        return m
+
+    var i   = 1
+    var lim = (n // 8) * 8
+    while i < lim:
+        var v0 = xs[i]
+        if not (v0 == v0):
+            return v0
+        if v0 < m:
+            m = v0
+
+        var v1 = xs[i + 1]
+        if not (v1 == v1):
+            return v1
+        if v1 < m:
+            m = v1
+
+        var v2 = xs[i + 2]
+        if not (v2 == v2):
+            return v2
+        if v2 < m:
+            m = v2
+
+        var v3 = xs[i + 3]
+        if not (v3 == v3):
+            return v3
+        if v3 < m:
+            m = v3
+
+        var v4 = xs[i + 4]
+        if not (v4 == v4):
+            return v4
+        if v4 < m:
+            m = v4
+
+        var v5 = xs[i + 5]
+        if not (v5 == v5):
+            return v5
+        if v5 < m:
+            m = v5
+
+        var v6 = xs[i + 6]
+        if not (v6 == v6):
+            return v6
+        if v6 < m:
+            m = v6
+
+        var v7 = xs[i + 7]
+        if not (v7 == v7):
+            return v7
+        if v7 < m:
+            m = v7
+
+        i = i + 8
+
+    while i < n:
+        var v = xs[i]
+        if not (v == v):
+            return v
+        if v < m:
+            m = v
+        i = i + 1
+
+    return m
+
+
+@always_inline
+fn max_t(self: Tensor[Float32]) -> Float32:
+    var xs = self._data.copy()
+    var n  = len(xs)
+    if n == 0:
+        return 0.0
+
+    var M = xs[0]
+    # M is NaN?
+    if not (M == M):
+        return M
+
+    var i   = 1
+    var lim = (n // 8) * 8
+    while i < lim:
+        var v0 = xs[i]
+        if not (v0 == v0):
+            return v0
+        if v0 > M:
+            M = v0
+
+        var v1 = xs[i + 1]
+        if not (v1 == v1):
+            return v1
+        if v1 > M:
+            M = v1
+
+        var v2 = xs[i + 2]
+        if not (v2 == v2):
+            return v2
+        if v2 > M:
+            M = v2
+
+        var v3 = xs[i + 3]
+        if not (v3 == v3):
+            return v3
+        if v3 > M:
+            M = v3
+
+        var v4 = xs[i + 4]
+        if not (v4 == v4):
+            return v4
+        if v4 > M:
+            M = v4
+
+        var v5 = xs[i + 5]
+        if not (v5 == v5):
+            return v5
+        if v5 > M:
+            M = v5
+
+        var v6 = xs[i + 6]
+        if not (v6 == v6):
+            return v6
+        if v6 > M:
+            M = v6
+
+        var v7 = xs[i + 7]
+        if not (v7 == v7):
+            return v7
+        if v7 > M:
+            M = v7
+
+        i = i + 8
+
+    while i < n:
+        var v = xs[i]
+        if not (v == v):
+            return v
+        if v > M:
+            M = v
+        i = i + 1
+
+    return M
+ 
+
+@always_inline
+fn min_t(self: Tensor[Int]) -> Int:
+    var xs = self._data.copy()
+    var n  = len(xs)
+    if n == 0:
+        return 0
+
+    var m = xs[0]
+    # m is NaN?
+    if not (m == m):
+        return m
+
+    var i   = 1
+    var lim = (n // 8) * 8
+    while i < lim:
+        var v0 = xs[i]
+        if not (v0 == v0):
+            return v0
+        if v0 < m:
+            m = v0
+
+        var v1 = xs[i + 1]
+        if not (v1 == v1):
+            return v1
+        if v1 < m:
+            m = v1
+
+        var v2 = xs[i + 2]
+        if not (v2 == v2):
+            return v2
+        if v2 < m:
+            m = v2
+
+        var v3 = xs[i + 3]
+        if not (v3 == v3):
+            return v3
+        if v3 < m:
+            m = v3
+
+        var v4 = xs[i + 4]
+        if not (v4 == v4):
+            return v4
+        if v4 < m:
+            m = v4
+
+        var v5 = xs[i + 5]
+        if not (v5 == v5):
+            return v5
+        if v5 < m:
+            m = v5
+
+        var v6 = xs[i + 6]
+        if not (v6 == v6):
+            return v6
+        if v6 < m:
+            m = v6
+
+        var v7 = xs[i + 7]
+        if not (v7 == v7):
+            return v7
+        if v7 < m:
+            m = v7
+
+        i = i + 8
+
+    while i < n:
+        var v = xs[i]
+        if not (v == v):
+            return v
+        if v < m:
+            m = v
+        i = i + 1
+
+    return m
+
+
+@always_inline
+fn max_t(self: Tensor[Int]) -> Int:
+    var xs = self._data.copy()
+    var n  = len(xs)
+    if n == 0:
+        return 0
+
+    var M = xs[0]
+    # M is NaN?
+    if not (M == M):
+        return M
+
+    var i   = 1
+    var lim = (n // 8) * 8
+    while i < lim:
+        var v0 = xs[i]
+        if not (v0 == v0):
+            return v0
+        if v0 > M:
+            M = v0
+
+        var v1 = xs[i + 1]
+        if not (v1 == v1):
+            return v1
+        if v1 > M:
+            M = v1
+
+        var v2 = xs[i + 2]
+        if not (v2 == v2):
+            return v2
+        if v2 > M:
+            M = v2
+
+        var v3 = xs[i + 3]
+        if not (v3 == v3):
+            return v3
+        if v3 > M:
+            M = v3
+
+        var v4 = xs[i + 4]
+        if not (v4 == v4):
+            return v4
+        if v4 > M:
+            M = v4
+
+        var v5 = xs[i + 5]
+        if not (v5 == v5):
+            return v5
+        if v5 > M:
+            M = v5
+
+        var v6 = xs[i + 6]
+        if not (v6 == v6):
+            return v6
+        if v6 > M:
+            M = v6
+
+        var v7 = xs[i + 7]
+        if not (v7 == v7):
+            return v7
+        if v7 > M:
+            M = v7
+
+        i = i + 8
+
+    while i < n:
+        var v = xs[i]
+        if not (v == v):
+            return v
+        if v > M:
+            M = v
+        i = i + 1
+
+    return M
 
 
 # ======================= Comparisons -> UInt8 mask =======================
@@ -2817,7 +3209,63 @@ fn mean(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) 
     return tout_g.copy()
 
 
- 
+@always_inline
+fn mean_axes_f64(
+    x0: Tensor[Float64], axes_in: List[Int], keepdims: Bool = False
+) -> Tensor[Float64]:
+    var x = x0.copy()
+    var r = len(x._shape)
+
+    # normalize & dedup
+    var axes = List[Int]()
+    axes.reserve(len(axes_in))
+    var seen = List[Int]()       
+    var i = 0
+    while i < len(axes_in):
+        var a = axes_in[i]
+        if a < 0: a = a + r
+        # bounds check
+        if a >= 0 and a < r:
+            # dedup
+            var dup = False
+            var j = 0
+            while j < len(seen):
+                if seen[j] == a: dup = True; break
+                j += 1
+            if not dup:
+                axes.append(a)
+                seen.append(a)
+        i += 1
+
+    # sort descending
+    var n = len(axes)
+    var j2 = 0
+    while j2 < n:
+        var m = j2
+        var k = j2 + 1
+        while k < n:
+            if axes[k] > axes[m]: m = k
+            k += 1
+        var tmp = axes[j2]; axes[j2] = axes[m]; axes[m] = tmp
+        j2 += 1
+
+    # reduce one-by-one, adjusting later axes when keepdims == False
+    var t = 0
+    while t < len(axes):
+        var a = axes[t]
+        var opt = Optional[Int](a)
+        x = mean(x, opt, keepdims)
+        if not keepdims:
+             
+            var u = t + 1
+            while u < len(axes):
+                if axes[u] > a:
+                    axes[u] = axes[u] - 1
+                u += 1
+        t += 1
+
+    return x.copy()
+
  
 # ========= variance for Float64 =========
 fn variance(
@@ -3213,3 +3661,78 @@ fn math_min(a: Int, b: Int) -> Int:
 @always_inline
 fn math_max(a: Int, b: Int) -> Int:
     return a if a >= b else b
+
+ 
+
+
+# -----------------------------------------------------------------------------
+# f(x) = x^2 + 2x  (elementwise)
+# -----------------------------------------------------------------------------
+@always_inline
+fn f_vec(x: Tensor[Float64]) -> Tensor[Float64]:
+    var x2 = x.mul(x)
+    return x2.add(x.mul_scalar(2.0))
+
+# -----------------------------------------------------------------------------
+# Analytic Jacobian: diag(2*x + 2)
+# -----------------------------------------------------------------------------
+@always_inline
+fn analytic_jacobian(x: Tensor[Float64]) -> Tensor[Float64]:
+    var x1d = x.flatten()
+    var n = x1d.numel()
+
+    var diag_vals = x1d.mul_scalar(2.0).add_scalar(2.0)  # (n,)
+    var jbuf = List[Float64]()
+    jbuf.reserve(n * n)
+
+    var k = 0
+    var total = n * n
+    while k < total:
+        jbuf.append(0.0)
+        k += 1
+
+    var dv = diag_vals._data.copy()
+    var i = 0
+    while i < n:
+        jbuf[i * n + i] = dv[i]
+        i += 1
+
+    return from_list_float64(jbuf).reshape([n, n])
+
+# -----------------------------------------------------------------------------
+# Numeric Jacobian via central differences (central diff per column)
+# J_ij ≈ (f_i(x + eps * e_j) - f_i(x - eps * e_j)) / (2 * eps)
+# -----------------------------------------------------------------------------
+fn numeric_jacobian(x: Tensor[Float64], eps: Float64 = 1e-6) -> Tensor[Float64]:
+    var x1d = x.flatten()
+    var n = x1d.numel()
+
+    var jbuf = List[Float64]()
+    jbuf.reserve(n * n)
+    var total = n * n
+    var k = 0
+    while k < total: jbuf.append(0.0); k += 1
+
+    var denom = 2.0 * eps
+    var xw = x1d.copy()
+
+    var j = 0
+    while j < n:
+        var xj0 = xw._data[j]              # read
+        xw._data[j] = xj0 + eps            # +eps
+        var y_plus = f_vec(xw)
+        xw._data[j] = xj0 - eps            # -eps
+        var y_minus = f_vec(xw)
+        xw._data[j] = xj0                  # restore
+
+        var g = y_plus.sub(y_minus).div_scalar(denom)
+        var gd = g._data.copy()
+
+        var i = 0
+        while i < n:
+            jbuf[i * n + j] = gd[i]
+            i += 1
+        j += 1
+    return from_list_float64(jbuf).reshape([n, n])
+
+ 
