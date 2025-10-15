@@ -5297,3 +5297,21 @@ fn astype_f64_from_int(t: Tensor[Int]) -> Tensor[Float64]:
         k = k + 1
 
     return Tensor[Float64](sh, flat)
+
+
+fn astype_f64_from_f32(t: Tensor[Float32]) -> Tensor[Float64]:
+    var flat = List[Float64]()
+    flat.reserve(len(t._data))
+    var i = 0
+    while i < len(t._data):
+        flat.append(Float64(t._data[i]))
+        i = i + 1
+
+    var sh = List[Int]()       
+    sh.reserve(len(t._shape))
+    var k = 0
+    while k < len(t._shape):
+        sh.append(t._shape[k])
+        k = k + 1
+
+    return Tensor[Float64](sh, flat)
