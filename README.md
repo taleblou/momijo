@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="momijo logo" width="160" height="160">
+  <img src="docs/momijo.PNG" alt="momijo logo" width="160" height="160">
 </p>
 
 <h1 align="center">momijo</h1>
