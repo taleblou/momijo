@@ -1726,154 +1726,153 @@ fn tensor_permute[T: Copyable & Movable](x: Tensor[T], axes: List[Int]) -> Tenso
 # ----------------------------- utility function -----------------------------
 
 
+@always_inline
+fn clamp_axis(ax: Int, rank: Int) -> Int:
+    var v = ax
+    if v < 0: v = v + rank
+    if v < 0: v = 0
+    if v >= rank: v = rank - 1
+    return v
 
+@always_inline
+fn is_identity_perm(clean: List[Int]) -> Bool:
+    var i = 0
+    var n = len(clean)
+    while i < n:
+        if clean[i] != i: return False
+        i = i + 1
+    return True
+
+ 
+
+@always_inline
+fn is_row_major(shape: List[Int], strides: List[Int]) -> Bool:
+    # Avoid allocating a temp stride list; check on-the-fly.
+    var r = len(shape)
+    if r != len(strides): return False
+    var expected = 1
+    var k = r - 1
+    while k >= 0:
+        if strides[k] != expected: return False
+        expected = expected * shape[k]
+        k = k - 1
+    return True
+# -----------------------------------------------------------------------------
 # Transpose by permuting shape/strides; data is not moved.
+# - Dedup/clamp 'perm' using BitSet (O(rank))
+# - Identity fast-path
+# -----------------------------------------------------------------------------
 @always_inline
 fn transpose[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], perm: List[Int]
 ) -> Tensor[T]:
     var rank = len(x._shape)
     if rank <= 1:
-        # Nothing to do for scalars and 1D tensors.
         return x.copy()
 
-    # ---- sanitize 'perm' into a deduplicated, clamped permutation 'clean' ----
-    var used = List[Int]()
-    used.reserve(rank)
-    var i = 0
-    while i < rank:
-        used.append(0)
-        i += 1
-
+    # Build a clean permutation
+    var used = BitSet(rank)          # faster than List[Int] mask
     var clean = List[Int]()
     clean.reserve(rank)
 
     var p = 0
     var pr = len(perm)
     while p < pr and p < rank:
-        var v = perm[p]
-        if v < 0:
-            v = v + rank
-        if v < 0:
-            v = 0
-        if v >= rank:
-            v = rank - 1
-        if used[v] == 0:
+        var v = clamp_axis(perm[p], rank)
+        if not used.get(v):
             clean.append(v)
-            used[v] = 1
-        p += 1
+            used.set(v)
+        p = p + 1
 
-    # Fill remaining axes in order to complete a full permutation.
+    # Fill remaining axes to complete a permutation
     var d = 0
     while d < rank:
-        if used[d] == 0:
+        if not used.get(d):
             clean.append(d)
-        d += 1
+        d = d + 1
 
-    # ---- identity fast-path ----
-    var is_id = 1
-    i = 0
-    while i < rank:
-        if clean[i] != i:
-            is_id = 0
-            break
-        i += 1
-    if is_id == 1:
+    # Identity fast-path
+    if is_identity_perm(clean):
         return x.copy()
 
-    # ---- build permuted meta (shape/strides), keep same data/offset ----
-    var new_shape = List[Int]()
-    var new_strides = List[Int]()
-    new_shape.reserve(rank)
-    new_strides.reserve(rank)
+    # Permute meta only
+    var new_shape = List[Int]();      new_shape.reserve(rank)
+    var new_strides = List[Int]();    new_strides.reserve(rank)
 
-    i = 0
-    while i < rank:
-        new_shape.append(x._shape[clean[i]])
-        new_strides.append(x._strides[clean[i]])
-        i += 1
-
-    # Constructor needs (data, shape, strides, offset)
-    return Tensor[T](x._data, new_shape, new_strides, x._offset)
-
-
-
-fn view[T: ImplicitlyCopyable & Copyable & Movable](self: Tensor[T], shape: List[Int]) -> Tensor[T]:
-    # Copy requested shape so we can edit it (infer -1) safely
-    var new_shape = List[Int]()
     var i = 0
-    var shape_len = len(shape)
-    while i < shape_len:
-        new_shape.append(shape[i])
+    while i < rank:
+        var ax = clean[i]
+        new_shape.append(x._shape[ax])
+        new_strides.append(x._strides[ax])
         i = i + 1
 
-    # Count/infer -1; compute product of known dims
+    return Tensor[T](x._data, new_shape, new_strides, x._offset)
+
+# -----------------------------------------------------------------------------
+# view (reshape):
+# - Single pass to copy shape & gather (-1) info
+# - Product checks with early exits
+# - Contiguity check without temp allocations
+# - Falls back to flatten(self) only if not row-major
+# -----------------------------------------------------------------------------
+@always_inline
+fn view[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], shape: List[Int]
+) -> Tensor[T]:
+    # Copy requested shape; detect one -1 and compute product of known dims
+    var new_shape = List[Int]()
     var infer_pos = -1
     var neg_count = 0
     var known = 1
-    i = 0
-    var new_len = len(new_shape)
-    while i < new_len:
-        var d = new_shape[i]
+
+    var i = 0
+    var nshape = len(shape)
+    new_shape.reserve(nshape)
+    while i < nshape:
+        var d = shape[i]
+        new_shape.append(d)
         if d == -1:
             neg_count = neg_count + 1
             infer_pos = i
         else:
-            # Reject zero/negative dims (except the single -1)
-            if d <= 0:
-                return self.copy()
+            if d <= 0:            # invalid (except the single -1)
+                return x.copy()
             known = known * d
         i = i + 1
 
-    # Only one -1 is allowed
     if neg_count > 1:
-        return self.copy()
+        return x.copy()
 
-    # Compute total number of elements in self
+    # Total elems of x
     var total = 1
+    var r = len(x._shape)
     i = 0
-    var self_rank = len(self._shape)
-    while i < self_rank:
-        total = total * self._shape[i]
+    while i < r:
+        total = total * x._shape[i]
         i = i + 1
 
-    # Infer the missing dim if needed; check divisibility
+    # Infer missing dim if needed
     if infer_pos >= 0:
-        if known == 0:
-            return self.copy()
-        if (total // known) * known != total:
-            return self.copy()
+        if known == 0: return x.copy()
+        if (total // known) * known != total: return x.copy()
         new_shape[infer_pos] = total // known
 
-    # Validate final product equals total
+    # Final product must match
     var prod = 1
     i = 0
-    new_len = len(new_shape)
-    while i < new_len:
+    var new_r = len(new_shape)
+    while i < new_r:
         prod = prod * new_shape[i]
         i = i + 1
     if prod != total:
-        return self.copy()
+        return x.copy()
 
-    # If not contiguous row-major, first flatten (to get row-major storage)
-    var want_strides = compute_row_major_strides(new_shape)
-    var have_strides = compute_row_major_strides(self._shape)
-    var base = self.copy()
-    i = 0
-    var same = True
-    var have_len = len(have_strides)
-    var self_strides_len = len(self._strides)
-    if have_len != self_strides_len:
-        same = False
-    else:
-        while i < have_len:
-            if self._strides[i] != have_strides[i]:
-                same = False
-                break
-            i = i + 1
+    # Ensure row-major storage; avoid allocating have_strides
+    var base = x.copy()
+    if not is_row_major(x._shape, x._strides):
+        # Note: project already has a fast flatten that materializes row-major
+        base = flatten(x)
 
-    if not same:
-        base = flatten(self)
-
-    # Construct output with row-major strides; data is reused (constructor copies lists as per project rules)
-    return Tensor[T](base._data, new_shape, want_strides)
+    # Build row-major strides for the new shape
+    var want_strides = row_major_strides(new_shape)
+    return Tensor[T](base._data, new_shape, want_strides, base._offset)
