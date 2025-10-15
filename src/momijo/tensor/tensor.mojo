@@ -219,7 +219,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return make_slice_sel((a, b, step))
 
     @always_inline
-    fn all(self) -> IndexSel:
+    fn all_axis(self) -> IndexSel:
         # Full axis: start=0, stop=dim will be normalized later per-axis
         return make_slice_sel((0, 0, 1))  # stop will be filled from axis dim
 
@@ -237,7 +237,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             out.append(sels[i].copy())
             i = i + 1
         while i < d:
-            out.append(self.all())
+            out.append(self.all_axis())
             i = i + 1
         return out.copy()
 
@@ -454,7 +454,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         sels.append(sel0.copy())
         var ax = 1
         while ax < d:
-            sels.append(self.all())
+            sels.append(self.all_axis())
             ax = ax + 1
         self.select_set_scalar(sels, value)
 
@@ -469,7 +469,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         while ax < n:
             var raw = trim_ascii(to_string_owned(tokens[ax]))
             if len(raw) == 0 or raw == ":":
-                sels.append(self.all())
+                sels.append(self.all_axis())
                 ax = ax + 1
                 continue
             var colon_pos = raw.find(":")
@@ -517,7 +517,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         sels.append(sel.copy())
         var ax = 1
         while ax < d:
-            sels.append(self.all())
+            sels.append(self.all_axis())
             ax = ax + 1
         return self.select(sels)
 
@@ -804,7 +804,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         sels.append(sel.copy())
         var ax = 1
         while ax < d:
-            sels.append(self.all())
+            sels.append(self.all_axis())
             ax = ax + 1
         self.select_set_scalar(sels, value)
 
@@ -819,7 +819,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         sels.append(sel.copy())
         var ax = 1
         while ax < d:
-            sels.append(self.all())
+            sels.append(self.all_axis())
             ax = ax + 1
         self.select_set_tensor(sels, src)
 
@@ -1164,26 +1164,56 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
  
 
-    # Tensor[Float64] -> Float64
-    fn mean(self: Tensor[Float64], axis: Int = 1) -> Tensor[Float64]:
-        var ax = Optional[Int](axis)      # Some(axis)
-        return _mean_free(self, ax, False)
+    
+    # ---------- Float64 overloads ----------
 
-    # Also handy to have a whole-tensor mean overload
     fn mean(self: Tensor[Float64]) -> Tensor[Float64]:
-        var none = Optional[Int]()        # None
+        var none = Optional[Int]()
         return _mean_free(self, none, False)
 
-    # Tensor[Int] -> upcast to Float64 then call the Float64 free mean
-    fn mean(self: Tensor[Int], axis: Int = 1) -> Tensor[Float64]:
-        var A = astype_f64_from_int(self)
+    fn mean(self: Tensor[Float64], axis: Int) -> Tensor[Float64]:
+        var ax = Optional[Int](axis)
+        return _mean_free(self, ax, False)
+
+    # allows x.mean(axis=[...]) i.e., keyword 'axis' is a List[Int]
+    fn mean(self: Tensor[Float64], axis: List[Int]) -> Tensor[Float64]:
+        return mean_axes_f64(self, axis, False)
+
+
+    # ---------- Float32 overloads (upcast to f64) ----------
+
+    fn mean(self: Tensor[Float32]) -> Tensor[Float64]:
+        var A = astype_f64_from_f32(self)
+        var none = Optional[Int]()
+        return _mean_free(A, none, False)
+
+    fn mean(self: Tensor[Float32], axis: Int) -> Tensor[Float64]:
+        var A = astype_f64_from_f32(self)
         var ax = Optional[Int](axis)
         return _mean_free(A, ax, False)
+
+    fn mean(self: Tensor[Float32], axis: List[Int]) -> Tensor[Float64]: 
+        var A = astype_f64_from_f32(self)
+        return mean_axes_f64(A, axis, False)
+
+
+    # ---------- Int overloads (upcast to f64) ----------
 
     fn mean(self: Tensor[Int]) -> Tensor[Float64]:
         var A = astype_f64_from_int(self)
         var none = Optional[Int]()
         return _mean_free(A, none, False)
+
+    fn mean(self: Tensor[Int], axis: Int) -> Tensor[Float64]:
+        var A = astype_f64_from_int(self)
+        var ax = Optional[Int](axis)
+        return _mean_free(A, ax, False)
+
+    # allows diff.mean(axis=[0,2,3])
+    fn mean(self: Tensor[Int], axis: List[Int]) -> Tensor[Float64]:
+        var A = astype_f64_from_int(self)
+        return mean_axes_f64(A, axis, False)
+ 
 
 
  
@@ -1744,8 +1774,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn maximum_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return where_f64(ge_t(self, to_float64(scalar32(s))), self, to_float64(scalar32(s)))           # max f32→f64
     fn maximum_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return where_f64(ge_t(self, to_float64(scalar_int(s))), self, to_float64(scalar_int(s)))       # max int→f64
 
-    fn min(self: Tensor[Float64]) -> Float64: return min(self)                                   # min f64
-    fn max(self: Tensor[Float64]) -> Float64: return max(self)                                   # max f64
+    fn min(self: Tensor[Float64]) -> Float64: return min_t(self)                                   # min f64
+    fn max(self: Tensor[Float64]) -> Float64: return max_t(self)                                   # max f64
     
 
  
@@ -1800,8 +1830,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn maximum_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return where_f32(ge_t(self, to_float32(scalar_int(s))), self, to_float32(scalar_int(s)))                      # max s=int ⇒ f32
 
 
-    fn min(self: Tensor[Float32]) -> Float32: return min(self)                                   
-    fn max(self: Tensor[Float32]) -> Float32: return max(self)       
+    fn min(self: Tensor[Float32]) -> Float32: return min_t(self)                                   
+    fn max(self: Tensor[Float32]) -> Float32: return max_t(self)       
     # ----------------------
     # self: Tensor[Int]
     # ----------------------
@@ -1831,8 +1861,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn minimum_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return where_int(le_t(self, scalar_int(s)), self, scalar_int(s))                               # min s=int ⇒ int
     fn maximum_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return where_int(ge_t(self, scalar_int(s)), self, scalar_int(s))                               # max s=int ⇒ int
 
-    fn min(self: Tensor[Int]) -> Int: return min(self)                                    
-    fn max(self: Tensor[Int]) -> Int: return max(self)       
+    fn min(self: Tensor[Int]) -> Int: return min_t(self)                                    
+    fn max(self: Tensor[Int]) -> Int: return max_t(self)       
 
 
     fn __bool__(self) -> Bool:
@@ -2657,6 +2687,19 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn logical_xor(self: Tensor[Float64], other: Tensor[Int])     -> Tensor[Bool]: return lxor_t(self, to_float64(other))                         # a(f64) ^ b(int→f64) ⇒ bool
 
 
+    # Logical (bitwise-style over numeric domain; result promoted by rule)
+    fn and_bitwise(self: Tensor[Float64], s:Tensor[Float64]) -> Tensor[Int]: return to_int(and_t(self, (s)))                                         # a(f64) & s(f64) ⇒ f64
+    fn and_bitwise(self: Tensor[Float64], s:Tensor[Float32]) -> Tensor[Int]: return to_int(and_t(self, to_float64((s))))                             # a(f64) & s(f32→f64) ⇒ f64
+    fn and_bitwise(self: Tensor[Float64], s:Tensor[Int])     -> Tensor[Int]: return to_int(and_t(self, to_float64((s))))                           # a(f64) & s(int→f64) ⇒ f64
+
+    fn or_bitwise(self: Tensor[Float64], s: Tensor[Float64]) -> Tensor[Int]: return to_int(or_t (self, (s)))                                         # a(f64) | s(f64) ⇒ f64
+    fn or_bitwise(self: Tensor[Float64], s: Tensor[Float32]) -> Tensor[Int]: return to_int(or_t (self, to_float64((s))))                             # a(f64) | s(f32→f64) ⇒ f64
+    fn or_bitwise(self: Tensor[Float64], s: Tensor[Int])     -> Tensor[Int]: return to_int(or_t (self, to_float64((s))))                           # a(f64) | s(int→f64) ⇒ f64
+
+    fn xor_bitwise(self: Tensor[Float64], s: Tensor[Float64]) -> Tensor[Int]: return to_int(xor_t(self, (s)))                                         # a(f64) ^ s(f64) ⇒ f64
+    fn xor_bitwise(self: Tensor[Float64], s: Tensor[Float32]) -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))                             # a(f64) ^ s(f32→f64) ⇒ f64
+    fn xor_bitwise(self: Tensor[Float64], s: Tensor[Int])     -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))                           # a(f64) ^ s(int→f64) ⇒ f64
+
     # =========================
     # Float32 overloads (full combos)
     # =========================
@@ -2688,6 +2731,18 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn logical_xor(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Bool]: return lxor_t(self, other)                                     # a(f32) ^ b(f32) ⇒ bool
     fn logical_xor(self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Bool]: return lxor_t(self, to_float32(other))                         # a(f32) ^ b(int→f32) ⇒ bool
 
+    # Numeric bitwise with scalar (result promoted by rule)
+    fn and_bitwise(self: Tensor[Float32], s: Tensor[Float64]) -> Tensor[Int]: return to_int(and_t(to_float64(self), (s)))                              # a(f32→f64) & s(f64) ⇒ f64
+    fn and_bitwise(self: Tensor[Float32], s: Tensor[Float32]) -> Tensor[Int]: return to_int(and_t(self, (s)))                                         # a(f32) & s(f32) ⇒ f32
+    fn and_bitwise(self: Tensor[Float32], s: Tensor[Int])     -> Tensor[Int]: return to_int(and_t(self, to_float32((s))))                           # a(f32) & s(int→f32) ⇒ f32
+
+    fn or_bitwise(self: Tensor[Float32], s: Tensor[Float64]) -> Tensor[Int]: return to_int(or_t (to_float64(self), (s)))                             # a(f32→f64) | s(f64) ⇒ f64
+    fn or_bitwise(self: Tensor[Float32], s: Tensor[Float32]) -> Tensor[Int]: return to_int(or_t (self, (s)))                                         # a(f32) | s(f32) ⇒ f32
+    fn or_bitwise(self: Tensor[Float32], s: Tensor[Int])     -> Tensor[Int]: return to_int(or_t (self, to_float32((s))))                           # a(f32) | s(int→f32) ⇒ f32
+
+    fn xor_bitwise(self: Tensor[Float32], s: Tensor[Float64]) -> Tensor[Int]: return to_int(xor_t(to_float64(self), (s)))                             # a(f32→f64) ^ s(f64) ⇒ f64
+    fn xor_bitwise(self: Tensor[Float32], s: Tensor[Float32]) -> Tensor[Int]: return to_int(xor_t(self, (s)))                                         # a(f32) ^ s(f32) ⇒ f32
+    fn xor_bitwise(self: Tensor[Float32], s: Tensor[Int])     -> Tensor[Int]: return to_int(xor_t(self, to_float32((s))))                           # a(f32) ^ s(int→f32) ⇒ f32
 
     # =========================
     # Int overloads (full combos)
@@ -2719,6 +2774,21 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn logical_xor(self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Bool]: return lxor_t(to_float64(self), other)                              # a(int→f64) ^ b(f64) ⇒ bool
     fn logical_xor(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Bool]: return lxor_t(to_float32(self), other)                              # a(int→f32) ^ b(f32) ⇒ bool
     fn logical_xor(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Bool]: return lxor_t(self, other)                                          # a(int) ^ b(int) ⇒ bool
+    
+    
+    # Numeric bitwise with scalar (result promoted by rule)
+    fn and_bitwise(self: Tensor[Int], s: Tensor[Float64]) -> Tensor[Int]: return to_int(and_t(to_float64(self), (s)))                                   # a(int→f64) & s(f64) ⇒ f64
+    fn and_bitwise(self: Tensor[Int], s: Tensor[Float32]) -> Tensor[Int]: return to_int(and_t(to_float32(self), (s)))                                  # a(int→f32) & s(f32) ⇒ f32
+    fn and_bitwise(self: Tensor[Int], s: Tensor[Int])     -> Tensor[Int]:     return and_t(self, (s))                                           # a(int) & s(int) ⇒ int
+
+    fn or_bitwise(self: Tensor[Int], s: Tensor[Float64]) -> Tensor[Int]: return to_int(or_t (to_float64(self), (s)))                                  # a(int→f64) | s(f64) ⇒ f64
+    fn or_bitwise(self: Tensor[Int], s: Tensor[Float32]) -> Tensor[Int]: return to_int(or_t (to_float32(self), (s)))                                  # a(int→f32) | s(f32) ⇒ f32
+    fn or_bitwise(self: Tensor[Int], s: Tensor[Int])     -> Tensor[Int]:     return or_t (self, (s))                                           # a(int) | s(int) ⇒ int
+
+    fn xor_bitwise(self: Tensor[Int], s: Tensor[Float64]) -> Tensor[Int]: return to_int(xor_t(to_float64(self), (s)))                                   # a(int→f64) ^ s(f64) ⇒ f64
+    fn xor_bitwise(self: Tensor[Int], s: Tensor[Float32]) -> Tensor[Int]: return to_int(xor_t(to_float32(self), (s)))                                   # a(int→f32) ^ s(f32) ⇒ f32
+    fn xor_bitwise(self: Tensor[Int], s: Tensor[Int])     -> Tensor[Int]:     return xor_t(self, (s))                                           # a(int) ^ s(int) ⇒ int
+
     # =========================
     # Float64 overloads — Shifts (full combos, one-liners)
     # Promotion: Int < Float32 < Float64
@@ -2959,28 +3029,28 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn to_int(self: Tensor[Float32])     -> Tensor[Int]:     return to_int(self) 
     fn to_int(self: Tensor[Int])         -> Tensor[Int]:     return to_int(self)
 
-    fn flatten(x: Tensor[Float64]) -> Tensor[Float64]:        return flatten(x)
-    fn flatten(x: Tensor[Float32]) -> Tensor[Float32]:        return flatten(x)
-    fn flatten(x: Tensor[Int]) -> Tensor[Int]:        return flatten(x)
+    fn flatten(self: Tensor[Float64]) -> Tensor[Float64]:        return flatten(self)
+    fn flatten(self: Tensor[Float32]) -> Tensor[Float32]:        return flatten(self)
+    fn flatten(self: Tensor[Int]) -> Tensor[Int]:        return flatten(self)
     
-    fn view(x: Tensor[Float64],shape: List[Int]) -> Tensor[Float64]:        return view(x,shape)
-    fn view(x: Tensor[Float32],shape: List[Int]) -> Tensor[Float32]:        return view(x,shape)
-    fn view(x: Tensor[Int],shape: List[Int]) -> Tensor[Int]:        return view(x,shape)
-    
+    #fn view(self: Tensor[Float64],shape: List[Int]) -> Tensor[Float64]:        return view(self,shape)
+    #fn view(self: Tensor[Float32],shape: List[Int]) -> Tensor[Float32]:        return view(self,shape)
+    #fn view(self: Tensor[Int],shape: List[Int]) -> Tensor[Int]:        return view(self,shape)
+    fn view(self ,shape: List[Int]) -> Tensor[T]:        return view(self,shape)
 
-    fn dtype_name(x: Tensor[Bool])    -> String: return "Bool"
-    fn dtype_name(x: Tensor[Int])     -> String: return "Int"
-    fn dtype_name(x: Tensor[UInt])    -> String: return "UInt"
-    fn dtype_name(x: Tensor[Int8])    -> String: return "Int8"
-    fn dtype_name(x: Tensor[Int16])   -> String: return "Int16"
-    fn dtype_name(x: Tensor[Int32])   -> String: return "Int32"
-    fn dtype_name(x: Tensor[Int64])   -> String: return "Int64"
-    fn dtype_name(x: Tensor[UInt8])   -> String: return "UInt8"
-    fn dtype_name(x: Tensor[UInt16])  -> String: return "UInt16"
-    fn dtype_name(x: Tensor[UInt32])  -> String: return "UInt32"
-    fn dtype_name(x: Tensor[UInt64])  -> String: return "UInt64"
-    fn dtype_name(x: Tensor[Float32]) -> String: return "Float32"
-    fn dtype_name(x: Tensor[Float64]) -> String: return "Float64"
+    fn dtype_name(self: Tensor[Bool])    -> String: return "Bool"
+    fn dtype_name(self: Tensor[Int])     -> String: return "Int"
+    fn dtype_name(self: Tensor[UInt])    -> String: return "UInt"
+    fn dtype_name(self: Tensor[Int8])    -> String: return "Int8"
+    fn dtype_name(self: Tensor[Int16])   -> String: return "Int16"
+    fn dtype_name(self: Tensor[Int32])   -> String: return "Int32"
+    fn dtype_name(self: Tensor[Int64])   -> String: return "Int64"
+    fn dtype_name(self: Tensor[UInt8])   -> String: return "UInt8"
+    fn dtype_name(self: Tensor[UInt16])  -> String: return "UInt16"
+    fn dtype_name(self: Tensor[UInt32])  -> String: return "UInt32"
+    fn dtype_name(self: Tensor[UInt64])  -> String: return "UInt64"
+    fn dtype_name(self: Tensor[Float32]) -> String: return "Float32"
+    fn dtype_name(self: Tensor[Float64]) -> String: return "Float64"
  
     fn is_contiguous(self: Tensor[Float64]) -> Bool:    return is_row_major_contiguous(self._shape, self._strides)
     fn is_contiguous(self: Tensor[Float32]) -> Bool:    return is_row_major_contiguous(self._shape, self._strides)
@@ -3096,777 +3166,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         self._strides = compute_row_major_strides(self._shape)
         self._offset = 0
 
-
-#     # MIT License
-# # SPDX-License-Identifier: MIT
-# # Project:      Momijo
-# # Module:       tensor.ops.generic
-# # File:         src/momijo/tensor/ops_generic.mojo
-# #
-# # Description:
-# #   Generic dunder/method surface for Tensor[T]:
-# #     - Arithmetic / power / unary / comparisons → generic for T
-# #     - Logical AND/OR/XOR (project-style) → generic for T
-# #     - True bitwise + shifts → Int-only overrides
-# #   Each function is multi-line and documented with a short usage hint. 
  
-
-#     # ---------- Arithmetic ----------
-
-#     @always_inline
-#     fn __add__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: c = a + b  # elementwise add, broadcasting supported
-#         return add_t(self, rhs)
-
-#     @always_inline
-#     fn __add__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = a + 3  # add scalar to tensor
-#         return add_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __sub__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: c = a - b  # elementwise subtract
-#         return sub_t(self, rhs)
-
-#     @always_inline
-#     fn __sub__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = a - 3  # subtract scalar
-#         return sub_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __mul__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: c = a * b  # elementwise multiply
-#         return mul_t(self, rhs)
-
-#     @always_inline
-#     fn __mul__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = a * 3  # multiply by scalar
-#         return mul_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __truediv__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: c = a / b  # elementwise division
-#         return div_t(self, rhs)
-
-#     @always_inline
-#     fn __truediv__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = a / 3  # divide by scalar
-#         return div_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __mod__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: c = a % b  # elementwise modulo
-#         return mod_t(self, rhs)
-
-#     @always_inline
-#     fn __mod__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = a % 3  # modulo with scalar
-#         return mod_t(self, _scalar_of(rhs))
-
-
-#     # ---------- Reflected arithmetic (scalar op on left) ----------
-
-#     @always_inline
-#     fn __radd__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = 3 + a  # scalar on the left
-#         return add_t(_scalar_of(lhs), self)
-
-#     @always_inline
-#     fn __rsub__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = 3 - a  # scalar minus tensor
-#         return sub_t(_scalar_of(lhs), self)
-
-#     @always_inline
-#     fn __rmul__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = 3 * a  # scalar times tensor
-#         return mul_t(_scalar_of(lhs), self)
-
-#     @always_inline
-#     fn __rtruediv__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = 3 / a  # scalar divided by tensor
-#         return div_t(_scalar_of(lhs), self)
-
-#     @always_inline
-#     fn __rmod__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = 3 % a  # scalar modulo tensor
-#         return mod_t(_scalar_of(lhs), self)
-
-
-#     # ---------- In-place arithmetic ----------
-
-#     @always_inline
-#     fn __iadd__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: a += b
-#         self = add_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __iadd__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: a += 3
-#         self = add_t(self, _scalar_of(rhs))
-#         return self
-
-#     @always_inline
-#     fn __isub__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: a -= b
-#         self = sub_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __isub__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: a -= 3
-#         self = sub_t(self, _scalar_of(rhs))
-#         return self
-
-#     @always_inline
-#     fn __imul__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: a *= b
-#         self = mul_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __imul__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: a *= 3
-#         self = mul_t(self, _scalar_of(rhs))
-#         return self
-
-#     @always_inline
-#     fn __itruediv__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: a /= b
-#         self = div_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __itruediv__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: a /= 3
-#         self = div_t(self, _scalar_of(rhs))
-#         return self
-
-#     @always_inline
-#     fn __imod__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: a %= b
-#         self = mod_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __imod__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: a %= 3
-#         self = mod_t(self, _scalar_of(rhs))
-#         return self
-
-
-#     # ---------- Power ----------
-
-#     @always_inline
-#     fn __pow__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: c = a ** b  # elementwise power
-#         return pow_t(self, rhs)
-
-#     @always_inline
-#     fn __pow__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = a ** 2  # power with scalar exponent
-#         return pow_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __rpow__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: c = 2 ** a  # scalar base, tensor exponent
-#         return pow_t(_scalar_of(lhs), self)
-
-#     @always_inline
-#     fn __ipow__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: a **= b
-#         self = pow_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __ipow__[T: ImplicitlyCopyable & Copyable & Movable](
-#         mut self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: a **= 2
-#         self = pow_t(self, _scalar_of(rhs))
-#         return self
-
-
-#     # ---------- Unary ----------
-
-#     @always_inline
-#     fn __neg__[T: ImplicitlyCopyable & Copyable & Movable](self: Tensor[T]) -> Tensor[T]:
-#         # Usage: b = -a
-#         return neg_t(self)
-
-#     @always_inline
-#     fn __pos__[T: ImplicitlyCopyable & Copyable & Movable](self: Tensor[T]) -> Tensor[T]:
-#         # Usage: b = +a  # no-op sign
-#         return pos_t(self)
-
-#     @always_inline
-#     fn __abs__[T: ImplicitlyCopyable & Copyable & Movable](self: Tensor[T]) -> Tensor[T]:
-#         # Usage: b = abs(a)
-#         return abs_t(self)
-
-
-#     # ---------- Logical (project-style masks for all T) ----------
-
-#     @always_inline
-#     fn __and__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: m = a & b  # logical-and via project convention
-#         return and_t(self, rhs)
-
-#     @always_inline
-#     fn __and__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: m = a & 1  # logical-and with scalar
-#         return and_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __or__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: m = a | b  # logical-or via project convention
-#         return or_t(self, rhs)
-
-#     @always_inline
-#     fn __or__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: m = a | 1  # logical-or with scalar
-#         return or_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __xor__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: m = a ^ b  # logical-xor via project convention
-#         return xor_t(self, rhs)
-
-#     @always_inline
-#     fn __xor__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[T]:
-#         # Usage: m = a ^ 1  # logical-xor with scalar
-#         return xor_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __invert__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = ~a  # logical-not → Int mask {0,1}
-#         return not_t(self)
-
-
-#     # ---------- Reflected logical ----------
-
-#     @always_inline
-#     fn __rand__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: m = 1 & a  # scalar on the left
-#         return and_t(_scalar_of(lhs), self)
-
-#     @always_inline
-#     fn __ror__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: m = 1 | a
-#         return or_t(_scalar_of(lhs), self)
-
-#     @always_inline
-#     fn __rxor__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], lhs: T
-#     ) -> Tensor[T]:
-#         # Usage: m = 1 ^ a
-#         return xor_t(_scalar_of(lhs), self)
-
-
-#     # ---------- Comparisons → mask(Int) ----------
-
-#     @always_inline
-#     fn __lt__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = a < b  # returns Int mask {0,1}
-#         return lt_t(self, rhs)
-
-#     @always_inline
-#     fn __lt__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = a < 3
-#         return lt_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __le__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = a <= b
-#         return le_t(self, rhs)
-
-#     @always_inline
-#     fn __le__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = a <= 3
-#         return le_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __gt__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = a > b
-#         return gt_t(self, rhs)
-
-#     @always_inline
-#     fn __gt__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = a > 3
-#         return gt_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __ge__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = a >= b
-#         return ge_t(self, rhs)
-
-#     @always_inline
-#     fn __ge__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = a >= 3
-#         return ge_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __eq__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = a == b
-#         return eq_t(self, rhs)
-
-#     @always_inline
-#     fn __eq__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = a == 3
-#         return eq_t(self, _scalar_of(rhs))
-
-#     @always_inline
-#     fn __ne__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = a != b
-#         return ne_t(self, rhs)
-
-#     @always_inline
-#     fn __ne__[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], rhs: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = a != 3
-#         return ne_t(self, _scalar_of(rhs))
-
-
-#     # =========================
-#     # Generic methods (T)
-#     # =========================
-
-#     # ---------- Arithmetic (scalar) ----------
-
-#     @always_inline
-#     fn add_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: y = x.add_scalar(3)
-#         return add_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn sub_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: y = x.sub_scalar(3)
-#         return sub_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn mul_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: y = x.mul_scalar(3)
-#         return mul_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn div_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: y = x.div_scalar(3)
-#         return div_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn mod_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: y = x.mod_scalar(3)
-#         return mod_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn pow_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], p: T
-#     ) -> Tensor[T]:
-#         # Usage: y = x.pow_scalar(2)
-#         return pow_t(self, _scalar_of(p))
-
-
-#     # ---------- Arithmetic (tensor) ----------
-
-#     @always_inline
-#     fn add[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: y = x.add(other)
-#         return add_t(self, other)
-
-#     @always_inline
-#     fn sub[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: y = x.sub(other)
-#         return sub_t(self, other)
-
-#     @always_inline
-#     fn mul[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: y = x.mul(other)
-#         return mul_t(self, other)
-
-#     @always_inline
-#     fn divide[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: y = x.divide(other)
-#         return div_t(self, other)
-
-#     @always_inline
-#     fn mod[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: y = x.mod(other)
-#         return mod_t(self, other)
-
-#     @always_inline
-#     fn pow[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: y = x.pow(other)
-#         return pow_t(self, other)
-
-
-#     # ---------- Logical (project-style) ----------
-
-#     @always_inline
-#     fn and_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: m = x.and_scalar(1)
-#         return and_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn or_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: m = x.or_scalar(1)
-#         return or_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn xor_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[T]:
-#         # Usage: m = x.xor_scalar(1)
-#         return xor_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn logical_not[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.logical_not()  # Int mask
-#         return not_t(self)
-
-#     @always_inline
-#     fn logical_and[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: m = x.logical_and(other)
-#         return and_t(self, other)
-
-#     @always_inline
-#     fn logical_or[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: m = x.logical_or(other)
-#         return or_t(self, other)
-
-#     @always_inline
-#     fn logical_xor[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: m = x.logical_xor(other)
-#         return xor_t(self, other)
-
-
-#     # ---------- Comparisons (→ Int mask) ----------
-
-#     @always_inline
-#     fn lt_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.lt_scalar(3)
-#         return lt_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn le_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.le_scalar(3)
-#         return le_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn gt_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.gt_scalar(3)
-#         return gt_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn ge_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.ge_scalar(3)
-#         return ge_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn eq_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.eq_scalar(3)
-#         return eq_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn ne_scalar[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], s: T
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.ne_scalar(3)
-#         return ne_t(self, _scalar_of(s))
-
-#     @always_inline
-#     fn lt[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.lt(other)
-#         return lt_t(self, other)
-
-#     @always_inline
-#     fn le[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.le(other)
-#         return le_t(self, other)
-
-#     @always_inline
-#     fn gt[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.gt(other)
-#         return gt_t(self, other)
-
-#     @always_inline
-#     fn ge[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.ge(other)
-#         return ge_t(self, other)
-
-#     @always_inline
-#     fn eq[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.eq(other)
-#         return eq_t(self, other)
-
-#     @always_inline
-#     fn ne[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], other: Tensor[T]
-#     ) -> Tensor[Int]:
-#         # Usage: m = x.ne(other)
-#         return ne_t(self, other)
-
-#     @always_inline
-#     fn where_mask[T: ImplicitlyCopyable & Copyable & Movable](
-#         self: Tensor[T], mask: Tensor[Int], other: Tensor[T]
-#     ) -> Tensor[T]:
-#         # Usage: y = x.where_mask(mask, other)  # select(mask, x, other)
-#         return where(mask, self, other)
-
-
-#     # =========================
-#     # Int-only true bitwise + shifts (override generic logical)
-#     # =========================
-
-#     @always_inline
-#     fn __and__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: m = ai & bi  # true bitwise AND
-#         return band_t(self, rhs)
-
-#     @always_inline
-#     fn __and__(self: Tensor[Int], rhs: Int) -> Tensor[Int]:
-#         # Usage: m = ai & 1  # bitwise AND with scalar
-#         return band_t(self, scalar_int(rhs))
-
-#     @always_inline
-#     fn __or__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: m = ai | bi  # true bitwise OR
-#         return bor_t(self, rhs)
-
-#     @always_inline
-#     fn __or__(self: Tensor[Int], rhs: Int) -> Tensor[Int]:
-#         # Usage: m = ai | 1  # bitwise OR with scalar
-#         return bor_t(self, scalar_int(rhs))
-
-#     @always_inline
-#     fn __xor__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: m = ai ^ bi  # true bitwise XOR
-#         return bxor_t(self, rhs)
-
-#     @always_inline
-#     fn __xor__(self: Tensor[Int], rhs: Int) -> Tensor[Int]:
-#         # Usage: m = ai ^ 1  # bitwise XOR with scalar
-#         return bxor_t(self, scalar_int(rhs))
-
-#     @always_inline
-#     fn __invert__(self: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: m = ~ai  # bitwise NOT
-#         return bnot_t(self)
-
-#     @always_inline
-#     fn __iand__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: ai &= bi
-#         self = band_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __ior__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: ai |= bi
-#         self = bor_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __ixor__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: ai ^= bi
-#         self = bxor_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __lshift__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: y = ai << bi
-#         return shl_t(self, rhs)
-
-#     @always_inline
-#     fn __lshift__(self: Tensor[Int], rhs: Int) -> Tensor[Int]:
-#         # Usage: y = ai << 3
-#         return shl_t(self, scalar_int(rhs))
-
-#     @always_inline
-#     fn __rshift__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: y = ai >> bi
-#         return shr_t(self, rhs)
-
-#     @always_inline
-#     fn __rshift__(self: Tensor[Int], rhs: Int) -> Tensor[Int]:
-#         # Usage: y = ai >> 3
-#         return shr_t(self, scalar_int(rhs))
-
-#     @always_inline
-#     fn __ilshift__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: ai <<= bi
-#         self = shl_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __ilshift__(mut self: Tensor[Int], rhs: Int) -> Tensor[Int]:
-#         # Usage: ai <<= 3
-#         self = shl_t(self, scalar_int(rhs))
-#         return self
-
-#     @always_inline
-#     fn __irshift__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]:
-#         # Usage: ai >>= bi
-#         self = shr_t(self, rhs)
-#         return self
-
-#     @always_inline
-#     fn __irshift__(mut self: Tensor[Int], rhs: Int) -> Tensor[Int]:
-#         # Usage: ai >>= 3
-#         self = shr_t(self, scalar_int(rhs))
-#         return self
-
 
     
 @always_inline
