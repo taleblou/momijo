@@ -1583,49 +1583,134 @@ fn keepdims_shape(shape: List[Int], ax: Int) -> List[Int]:
         i += 1
     return out.copy()
 
+# Broadcasting shape-compatibility checks
+# - NumPy-style: trailing alignment, missing leading dims treated as 1
+# - Strict: ranks must match, and each aligned pair must be equal or 1
+# Notes: English-only comments (Momijo rule), var-only, @always_inline for speed.
 
 @always_inline
-fn can_broadcast_shapes(a: List[Int], b: List[Int]) -> Bool:
+fn _dims_compatible(ad: Int, bd: Int) -> Bool:
+    # Both must be positive; zero/negatives are invalid here.
+    if ad <= 0 or bd <= 0: 
+        return False
+    # Equal or one of them is 1
+    return ad == bd or ad == 1 or bd == 1
+
+
+# -------------------------------
+# NumPy-style broadcasting check
+# -------------------------------
+@always_inline
+fn can_broadcast_shapes_numpy(a: List[Int], b: List[Int]) -> Bool:
     var ra = len(a)
     var rb = len(b)
 
     var ia = ra - 1
     var ib = rb - 1
 
-    var r :Int
-    if ra >= rb:
-        r = ra
-    else:
-        r = rb
+    # Max steps equals the larger rank
+    var steps = ra
+    if rb > steps:
+        steps = rb
 
-    var steps = 0
-    while steps < r:
+    var k = 0
+    while k < steps:
+        # Treat missing leading dims as 1
         var ad = 1
         var bd = 1
-
         if ia >= 0:
             ad = a[ia]
         if ib >= 0:
             bd = b[ib]
 
-        var ok = False
-        if ad == bd:
-            ok = True
-        else:
-            if ad == 1:
-                ok = True
-            else:
-                if bd == 1:
-                    ok = True
-
-        if not ok:
+        if not _dims_compatible(ad, bd):
             return False
 
         ia = ia - 1
         ib = ib - 1
-        steps = steps + 1
+        k = k + 1
 
     return True
 
 
+# -------------------------------
+# Strict broadcasting check
+# (Ranks must match)
+# -------------------------------
+@always_inline
+fn can_broadcast_shapes_strict(a: List[Int], b: List[Int]) -> Bool:
+    var ra = len(a)
+    var rb = len(b)
+    if ra != rb:
+        return False
+
+    var i = 0
+    while i < ra:
+        # No padding; dimensions align 1:1
+        var ad = a[i]
+        var bd = b[i]
+        if not _dims_compatible(ad, bd):
+            return False
+        i = i + 1
+
+    return True
+
+
+# ----------------------------------------------
+# Wrapper with compile-time behavior selection
+# Set STRICT=true to enforce strict broadcasting
+# ----------------------------------------------
  
+
+@always_inline
+fn can_broadcast_shapes(a: List[Int], b: List[Int] ,strict: Bool = False) -> Bool:
+    if strict:
+        return can_broadcast_shapes_strict(a, b)
+    else:
+        return can_broadcast_shapes_numpy(a, b)
+ 
+#@always_inline
+#fn can_broadcast_shapes(a: List[Int], b: List[Int]) -> Bool:
+#    var ra = len(a)
+#    var rb = len(b)
+#
+#    var ia = ra - 1
+#    var ib = rb - 1
+#
+#    var r :Int
+#    if ra >= rb:
+#        r = ra
+#    else:
+#        r = rb
+#
+#    var steps = 0
+#    while steps < r:
+#        var ad = 1
+#        var bd = 1
+#
+#        if ia >= 0:
+#            ad = a[ia]
+#        if ib >= 0:
+#            bd = b[ib]
+#
+#        var ok = False
+#        if ad == bd:
+#            ok = True
+#        else:
+#            if ad == 1:
+#                ok = True
+#            else:
+#                if bd == 1:
+#                    ok = True
+#
+#        if not ok:
+#            return False
+#
+#        ia = ia - 1
+#        ib = ib - 1
+#        steps = steps + 1
+#
+#    return True
+#
+#
+# 
