@@ -42,7 +42,7 @@ from momijo.tensor.creation import eye_int,eye_f64,eye_f32
 
 # Random helpers (Float64) 
 from momijo.tensor.creation import from_list_float64
-from momijo.tensor.creation import from_list_int32
+from momijo.tensor.creation import from_list_int
 from momijo.tensor.creation import randn,rand,randn_int,randn_f64,randn_f32
 from momijo.tensor.creation import zeros_like
 from momijo.tensor.creation import arange_f64 as arange
@@ -111,6 +111,9 @@ from momijo.tensor.io import save_npz_f64
 
 from momijo.tensor.helpers import write_plane
 from momijo.tensor.math import and_t
+
+
+from momijo.tensor.broadcast import broadcast_to
 
 
 from momijo.tensor.transform import reshape,reshape_infer,resize_like_with_pad,reshape_like
