@@ -50,11 +50,716 @@ from momijo.tensor.cast import *
 from momijo.tensor.creation import scalar64,scalar32,scalar_int
 from momijo.tensor.indexing import *
 from momijo.tensor.transform import flatten,view ,clamp_int
-# ========================= slice primitives =========================
-# --- SliceSpec and IndexSel as tuples (value types) ---
+
+
+ 
+# ---------- helpers: digit & int parsing (no-throw) ----------
+@always_inline
+fn _digit_val(ch: String) -> (Bool, Int):
+    if len(ch) != 1:
+        return (False, 0)
+    if ch == "0": return (True, 0)
+    if ch == "1": return (True, 1)
+    if ch == "2": return (True, 2)
+    if ch == "3": return (True, 3)
+    if ch == "4": return (True, 4)
+    if ch == "5": return (True, 5)
+    if ch == "6": return (True, 6)
+    if ch == "7": return (True, 7)
+    if ch == "8": return (True, 8)
+    if ch == "9": return (True, 9)
+    return (False, 0)
+
+@always_inline
+fn _parse_int_no_throw(s_in: String) -> (Bool, Int):
+    var s = String(s_in.strip())
+    if len(s) == 0:
+        return (False, 0)
+
+    var neg = False
+    var i = 0
+    if s[0] == "-":
+        neg = True
+        i = 1
+    elif s[0] == "+":
+        i = 1
+
+    if i >= len(s):
+        return (False, 0)
+
+    var acc: Int = 0
+    while i < len(s):
+        var (ok, d) = _digit_val(String(s[i]))
+        if ok == False:
+            return (False, 0)
+        acc = acc * 10 + d
+        i += 1
+
+    if neg:
+        acc = -acc
+    return (True, acc)
+
+# Optional[Int] برمی‌گرداند و هرگز استثناء پرتاب نمی‌کند
+@always_inline
+fn _parse_opt_int(s: String) -> Optional[Int]:
+    var ss = String(s.strip())
+    if len(ss) == 0:
+        return None
+    var (ok, v) = _parse_int_no_throw(ss)
+    if ok:
+        return Optional[Int](v)
+    return None
+
+# ---------- helper: stringify List[String] برای دیباگ ----------
+@always_inline
+fn _str_string_list(xs: List[String]) -> String:
+    var out = String("[")
+    var i = 0
+    while i < len(xs):
+        if i > 0: out += String(", ")
+        out += String("\"") + xs[i] + String("\"")
+        i += 1
+    out += String("]")
+    return out
+
+ 
+
+# کمکی: تبدیل (start?, stop?, step?) به سه‌تایی نرمال‌شده با قواعد پایتونی
+@always_inline
+fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Optional[Int]) -> (Int, Int, Int):
+    var step: Int
+    if c_opt is None:
+        step = 1
+    else:
+        step = c_opt.value()
+        if step == 0:
+            step = 1   # یا ارور بده؛ صفر مجاز نیست
+
+    var start: Int
+    var stop:  Int
+
+    if step > 0:
+        # defaults
+        if a_opt is None: start = 0        else: start = a_opt.value()
+        if b_opt is None: stop  = n        else: stop  = b_opt.value()
+
+        # wrap منفی‌ها
+        if start < 0: start += n
+        if stop  < 0: stop  += n
+
+        # clamp به [0..n]
+        if start < 0: start = 0
+        if start > n: start = n
+        if stop  < 0: stop  = 0
+        if stop  > n: stop  = n
+    else:
+        # defaults برای گام منفی
+        if a_opt is None: start = n - 1    else: start = a_opt.value()
+        if b_opt is None: stop  = -1       else: stop  = b_opt.value()
+
+        # start منفی را wrap کن، اما stop=-1 را دست نزن (سنّتینل)
+        if start < 0: start += n
+        if stop  < -1: stop += n   # فقط کمتر از -1 را wrap کن، -1 را نگه‌دار
+
+        # clamp: start ∈ [-1..n-1] ، stop ∈ [-1..n-1]
+        if start < -1: start = -1
+        if start >= n: start = n - 1
+        if stop  < -1: stop  = -1
+        if stop  >= n: stop  = n - 1
+
+    return (start, stop, step)
+
+
  
 
 
+
+
+ 
+
+@always_inline
+fn _ls_index(i: Int) -> IndexSel: 
+    return IndexSel.index(i)         
+
+@always_inline
+fn _ls_slice(a: Int, b: Int, st: Int) -> IndexSel: 
+    return IndexSel.slice(a, b, st)   
+
+@always_inline
+fn _ls_str(s: IndexSel) -> String:
+    if s.tag == 0:
+        return "[tag=0] index i=" + String(s.i)
+    else:
+        return "[tag=1] slice " + String(s.start) + ":" + String(s.stop) + ":" + String(s.step)
+
+@always_inline
+fn _ls_list_str(v: List[IndexSel]) -> String:
+    var out = String("[")
+    var n = len(v)
+    var k = 0
+    while k < n:
+        if k > 0:
+            out += String(", ")
+        out += _ls_str(v[k])
+        k += 1
+    out += String("]")
+    return out
+
+@always_inline
+fn _index_sel_str(sel: IndexSel) -> String:
+    var s = String("[tag=") + String(sel.tag) + "] "
+    if sel.tag == 0:
+        s += "index i=" + String(sel.i)
+    elif sel.tag == 1:
+        s += "slice " + String(sel.start) + ":" + String(sel.stop) + ":" + String(sel.step)
+    else:
+        s += "fancy idxs=" + _list_str(sel.idxs)
+    return s
+
+@always_inline
+fn _sels_str(sels: List[IndexSel]) -> String:
+    var parts = List[String]()
+    var k = 0
+    var n = len(sels)
+    while k < n:
+        var tmp = IndexSel.index(0)
+        tmp.__copyinit__(sels[k])
+        parts.append(_index_sel_str(tmp))
+        k += 1
+    var out = String("[")
+    var i = 0
+    var m = len(parts)
+    while i < m:
+        out += parts[i]
+        if i + 1 < m: out += ", "
+        i += 1
+    out += "]"
+    return out
+
+
+# ----------------------------
+# انتخاب هر محور: یا ایندکس تکی یا برش (start, stop, step)
+# ----------------------------
+ 
+struct _SelViewMeta(Copyable, Movable):
+    var base_offset: Int
+    var out_shape:   List[Int]
+    var out_coefs:   List[Int]
+
+    fn __init__(out self, base: Int, shp: List[Int], cof: List[Int]):
+        self.base_offset = base
+        self.out_shape   = shp.copy()     # deep copy (List غیر-implicit)
+        self.out_coefs   = cof.copy()
+
+    # چون List[Int] ImplicitlyCopyable نیست، کپی‌ساز دستی لازم است
+    fn __copyinit__(out self, other: Self):
+        self.base_offset = other.base_offset
+        self.out_shape   = other.out_shape.copy()
+        self.out_coefs   = other.out_coefs.copy()
+ 
+ 
+
+ 
+
+fn _trip_len(a: Int, b: Int, st: Int) -> Int:
+    # len(range(a,b,st)) برای step≠0 (فرض: ورودی نرمال‌شده است)
+    if st > 0:
+        if b <= a: return 0
+        var diff = b - a
+        return (diff + (st - 1)) // st
+    else:
+        if b >= a: return 0
+        var diff2 = a - b
+        return (diff2 + ((-st) - 1)) // (-st)
+
+
+@always_inline
+fn _flat_index_affine(base: Int, coefs: List[Int], idx: List[Int]) -> Int:
+    var j = base
+    var k = 0
+    while k < len(idx):
+        j += idx[k] * coefs[k]
+        k += 1
+    return j
+# ===== کمک‌تابع‌ها برای کار با IndexSel =====
+# اگر در کدت نام فیلد/متدها فرق دارد، فقط همین 3 تا آداپتر را با نوع IndexSel خودت هماهنگ کن.
+@always_inline
+fn _sel_is_index(sel: IndexSel) -> Bool:
+    var r = sel.kind == .Index            # ← تطبیق با تعریف خودت
+    return r
+
+@always_inline
+fn _sel_get_index(sel: IndexSel) -> Int:
+    return sel.i                           # ← index انتخاب‌شده
+
+@always_inline
+fn _sel_get_trip(sel: IndexSel) -> (Int, Int, Int):
+    return sel.trip                        # ← (start, stop, step) نرمال‌شده
+
+ 
+
+
+ 
+
+@always_inline
+fn _opt_int(x: Optional[Int]) -> String:
+    if x is None:
+        return "None"
+    else:
+        return String(x.value())
+@always_inline
+fn _prod_shape(shp: List[Int]) -> Int:
+    var n = 1
+    var i = 0
+    while i < len(shp):
+        n = n * shp[i]
+        i += 1
+    return n
+
+@always_inline
+fn _shapes_equal(a: List[Int], b: List[Int]) -> Bool:
+    if len(a) != len(b): return False
+    var i = 0
+    while i < len(a):
+        if a[i] != b[i]: return False
+        i += 1
+    return True
+
+@always_inline
+fn _flat_index(offset: Int, strides: List[Int], idx: List[Int]) -> Int:
+    var s = offset
+    var d = 0
+    while d < len(idx):
+        s = s + idx[d] * strides[d]
+        d += 1
+    return s
+
+# idxLike: شمارندهٔ چندبعدی روی شکل dst
+@always_inline
+fn _zero_indices(rank: Int) -> List[Int]:
+    var idx = List[Int]()
+    var i = 0
+    while i < rank:
+        idx.append(0)
+        i += 1
+    return idx.copy()
+
+@always_inline
+fn _bump_indices(mut idx: List[Int], shp: List[Int]) -> Bool:
+    # ++idx; return False when overflow (end)
+    var d = len(shp) - 1
+    while d >= 0:
+        idx[d] = idx[d] + 1
+        if idx[d] < shp[d]:
+            return True
+        idx[d] = 0
+        d -= 1
+    return False
+
+# ---------------- core: no external methods needed ----------------
+# ---------------- Debug helpers ----------------
+@always_inline
+fn _list_str(xs: List[Int]) -> String:
+    var s = String("[")
+    var i = 0
+    var n = len(xs)
+    while i < n:
+        s = s + String(xs[i])
+        if i + 1 < n: s = s + ", "
+        i += 1
+    s = s + "]"
+    return s
+
+@always_inline
+fn _dump_view[T: ImplicitlyCopyable & Copyable & Movable](label: String, x: Tensor[T]) -> None:
+    # Prints shape/strides/offset and computed numel
+    var numel = _prod_shape(x._shape)
+    print(label + " shape=" + _list_str(x._shape) +
+          " strides=" + _list_str(x._strides) +
+          " offset=" + String(x._offset) +
+          " numel=" + String(numel))
+ 
+ 
+# ---------------- Core with debug prints ----------------
+@always_inline
+fn _assign_view_tensor[T: ImplicitlyCopyable & Copyable & Movable](mut dst: Tensor[T], rhs: Tensor[T]) -> None:
+      
+    var rhs_total = _prod_shape(rhs._shape)   
+
+    # ---------- treat any single-element RHS as scalar (rank-0 OR shape=[1] OR any numel==1 view) ----------
+    if rhs_total == 1:
+        # get that single element robustly (works for any strides/offset)
+        var zeros = _zero_indices(len(rhs._shape))
+        var j_rhs = _flat_index(rhs._offset, rhs._strides, zeros)
+        var v = rhs._data[j_rhs] 
+
+        if len(dst._shape) == 0:
+            dst._data[dst._offset] = v 
+            return
+
+        var total = _prod_shape(dst._shape)
+        if total == 0: 
+            return
+
+        var idx = _zero_indices(len(dst._shape))
+        var wrote = 0
+        while True:
+            var j = _flat_index(dst._offset, dst._strides, idx)
+            dst._data[j] = v
+            wrote += 1
+            if wrote <= 4:
+                print("[SETITEM] fill @j=" + String(j))
+            if _bump_indices(idx, dst._shape) == False:
+                break 
+        return
+
+    # ---------- exact-shape copy (both non-contig OK) ----------
+    if _shapes_equal(dst._shape, rhs._shape) == False: 
+        print("  dst.shape=" + _list_str(dst._shape) + " rhs.shape=" + _list_str(rhs._shape))
+        return
+
+    if len(dst._shape) == 0:
+        var zeros_rhs = _zero_indices(len(rhs._shape))
+        var j_rhs0 = _flat_index(rhs._offset, rhs._strides, zeros_rhs)
+        dst._data[dst._offset] = rhs._data[j_rhs0] 
+        return
+ 
+    var idx2 = _zero_indices(len(dst._shape))
+    var copied = 0
+    while True:
+        var j_dst = _flat_index(dst._offset, dst._strides, idx2)
+        var j_rhs = _flat_index(rhs._offset, rhs._strides, idx2)
+        dst._data[j_dst] = rhs._data[j_rhs]
+        copied += 1
+        if copied <= 4:
+            print("[SETITEM] copy j_dst=" + String(j_dst) + " <= j_rhs=" + String(j_rhs))
+        if _bump_indices(idx2, dst._shape) == False:
+            break 
+
+
+    
+@always_inline
+fn _rank(shp: List[Int]) -> Int:
+    return len(shp)
+
+@always_inline
+fn _right_align_map(dst_shape: List[Int], src_shape: List[Int]) -> List[Int]:
+    var r_dst = len(dst_shape)
+    var r_src = len(src_shape)
+    var m = List[Int]()
+    m.reserve(r_dst)
+    var i = 0
+    while i < r_dst:
+        m.append(-1)
+        i += 1
+    var d = r_dst - 1
+    var s = r_src - 1
+    while d >= 0 and s >= 0:
+        m[d] = s
+        d -= 1
+        s -= 1
+    return m
+
+@always_inline
+fn _can_broadcast(dst_shape: List[Int], src_shape: List[Int]) -> Bool:
+    var r_dst = len(dst_shape)
+    var r_src = len(src_shape)
+    var d = r_dst - 1
+    var s = r_src - 1
+    while d >= 0:
+        var dd = dst_shape[d]
+        var ss = 1
+        if s >= 0:
+            ss = src_shape[s]
+        if not (ss == 1 or ss == dd):
+            return False
+        d -= 1
+        s -= 1
+    return True
+
+@always_inline
+fn _advance_index(mut idx: List[Int], shape: List[Int]) -> Bool:
+    var r = len(shape)
+    if r == 0:
+        return False
+    var ax = r - 1
+    while True:
+        idx[ax] = idx[ax] + 1
+        if idx[ax] < shape[ax]:
+            return True
+        idx[ax] = 0
+        if ax == 0:
+            return False
+        ax -= 1
+
+@always_inline
+fn _offset_of(shape: List[Int], strides: List[Int], base_off: Int, idx: List[Int]) -> Int:
+    var off = base_off
+    var i = 0
+    var r = len(shape)
+    while i < r:
+        off = off + idx[i] * strides[i]
+        i += 1
+    return off
+
+# In-place fill over a (possibly strided) view.
+@always_inline
+fn _fill_view[T: ImplicitlyCopyable & Copyable & Movable](mut v: Tensor[T], s: T) -> None:
+    var r = len(v._shape)
+    if r == 0:
+        v._data[v._offset] = s
+        return
+    var idx = List[Int]()
+    idx.reserve(r)
+    var i = 0
+    while i < r:
+        idx.append(0)
+        i += 1
+    while True:
+        var off = _offset_of(v._shape, v._strides, v._offset, idx)
+        v._data[off] = s
+        if _advance_index(idx, v._shape) == False:
+            break
+
+# In-place copy with right-aligned broadcasting from src -> dst view.
+@always_inline
+fn _copy_view_broadcast[T: ImplicitlyCopyable & Copyable & Movable](mut dst: Tensor[T], src: Tensor[T]) -> None:
+    # Fast path: exact shape match (including rank)
+    if len(dst._shape) == len(src._shape):
+        var same = True
+        var k = 0
+        while k < len(dst._shape):
+            if dst._shape[k] != src._shape[k]:
+                same = False
+                break
+            k += 1
+        if same:
+            # shape-equal strided copy
+            var r = len(dst._shape)
+            if r == 0:
+                dst._data[dst._offset] = src._data[src._offset]
+                return
+            var idx = List[Int]()
+            idx.reserve(r)
+            var i = 0
+            while i < r:
+                idx.append(0)
+                i += 1
+            while True:
+                var doff = _offset_of(dst._shape, dst._strides, dst._offset, idx)
+                var soff = _offset_of(src._shape, src._strides, src._offset, idx)
+                dst._data[doff] = src._data[soff]
+                if _advance_index(idx, dst._shape) == False:
+                    break
+            return
+
+    # General broadcast path
+    assert(_can_broadcast(dst._shape, src._shape), "broadcast mismatch in __setitem__")
+    var r = len(dst._shape)
+    if r == 0:
+        # dst scalar view
+        var sval = src
+        if len(src._shape) == 0:
+            dst._data[dst._offset] = src._data[src._offset]
+        else:
+            # src must broadcast to scalar (OK): just take first element by row-major
+            var first = src._data[src._offset]
+            dst._data[dst._offset] = first
+        return
+
+    var idx_dst = List[Int]()
+    idx_dst.reserve(r)
+    var i = 0
+    while i < r:
+        idx_dst.append(0)
+        i += 1
+
+    # Build a right-aligned map from dst axes to src axes
+    var map = _right_align_map(dst._shape, src._shape)
+
+    # We reuse idx_dst's length for on-the-fly src indexing (projected)
+    var idx_src = List[Int]()
+    idx_src.reserve(r)
+    i = 0
+    while i < r:
+        idx_src.append(0)
+        i += 1
+
+    while True:
+        # Project dst index -> src index
+        var a = 0
+        while a < r:
+            var s_ax = map[a]
+            if s_ax < 0:
+                idx_src[a] = 0
+            else:
+                if src._shape[s_ax] == 1:
+                    idx_src[a] = 0
+                else:
+                    idx_src[a] = idx_dst[a]
+            a += 1
+
+        var doff = _offset_of(dst._shape, dst._strides, dst._offset, idx_dst)
+        # Build a compact src idx along src rank to compute offset
+        # We can compute in-place by reading only mapped coordinates.
+        var so = src._offset
+        var sr = len(src._shape)
+        var ax = 0
+        while ax < sr:
+            # find the dst axis that maps to ax
+            # because map is right-aligned + ordered, we can reconstruct:
+            # dst axis d that has map[d] == ax
+            var d = len(map) - 1
+            var found = False
+            while d >= 0:
+                if map[d] == ax:
+                    var step = idx_dst[d]
+                    if src._shape[ax] == 1:
+                        step = 0
+                    so = so + step * src._strides[ax]
+                    found = True
+                    break
+                d -= 1
+            if found == False:
+                # extra leading axis on dst → src has no axis → broadcast as 0
+                # (so no addition needed)
+                pass
+            ax += 1
+
+        dst._data[doff] = src._data[so]
+
+        if _advance_index(idx_dst, dst._shape) == False:
+            break
+
+
+# ========================= slice primitives =========================
+struct StrIndex:
+    var spec: String
+
+    @always_inline
+    fn __init__(out self, spec: String):
+        self.spec = spec
+ 
+@always_inline
+fn S(spec: String) -> StrIndex:
+    return StrIndex(spec)
+
+@always_inline
+fn _opt_int(tok: String) -> Optional[Int]:
+    # empty → None ; valid int → Some(v) ; invalid → None
+    if len(tok) == 0:
+        return None
+    else:
+        var (ok, v) = parse_int_safe(tok)
+        if ok:
+            return Optional[Int](v)
+        else:
+            return None
+
+@always_inline
+fn _opt_step(tok: String) -> Optional[Int]:
+    # empty → None ; valid nonzero → Some(v) ; invalid/zero → Some(1) (non-raising clamp)
+    if len(tok) == 0:
+        return None
+    else:
+        var (ok, v) = parse_int_safe(tok)
+        if ok and v != 0:
+            return Optional[Int](v)
+        else:
+            return None
+
+struct EllipsisSpec:
+    fn __init__(out self): pass
+# ---------------------------------------------------------------------------
+# Slice normalization (Python semantics for 1-D axis)
+# ---------------------------------------------------------------------------
+@always_inline 
+fn _normalize_slice_1d(n: Int,
+                       start_opt: Optional[Int],
+                       stop_opt: Optional[Int],
+                       step_opt: Optional[Int]) -> Tuple[Int, Int, Int]:
+    # Debug: raw inputs
+  
+
+    var step: Int
+    if step_opt is None: step = 1 else: step = step_opt.value()
+    if step == 0: step = 1
+
+    var start: Int
+    var stop: Int
+
+    if step > 0:
+        if start_opt is None: start = 0 else: start = start_opt.value()
+        if stop_opt  is None: stop  = n else: stop  = stop_opt.value()
+        if start < 0: start += n
+        if stop  < 0: stop  += n
+        if start < 0: start = 0
+        if start > n: start = n
+        if stop  < 0: stop  = 0
+        if stop  > n: stop  = n
+       
+    else:
+        # step < 0
+        if start_opt is None: start = n - 1 else: start = start_opt.value()
+        if stop_opt  is None: stop  = -1      else: stop  = stop_opt.value()
+
+        # translate negatives (keep -1 sentinel)
+        if start < 0: start = start + n
+        if stop  < 0 and stop != -1: stop = stop + n
+
+        # clamp allowing -1
+        if start < -1: start = -1
+        if start >  n-1: start = n-1
+        if stop  < -1: stop  = -1
+        if stop  >  n-1: stop  = n-1
+
+    
+
+    # Final trip 
+    return (start, stop, step)
+
+
+ 
+@always_inline
+fn make_fancy_sel(js: List[Int]) -> IndexSel:
+    return IndexSel.fancy(js)
+
+@always_inline
+fn clone_sel(x: IndexSel) -> IndexSel:
+    # ctor خودش js.copy() انجام می‌دهد، پس alias نمی‌شود
+    return IndexSel(x.tag, x.i, x.start, x.stop, x.step, x.idxs)
+
+# ---------------------------------------------------------------------------
+# Sample 1D slice execution (only if your select(...) doesn't handle SLICE)
+# Remove if you already have a correct select().
+# ---------------------------------------------------------------------------
+
+@always_inline
+fn _apply_slice_axis0_1d[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], trip: SliceSpec
+) -> Tensor[T]:
+    # trip = (start, stop, step), half-open for step>0, mirrored rule for step<0
+    var start = trip[0]
+    var stop  = trip[1]
+    var step  = trip[2]
+
+    # Build output list by stepping through the view
+    var out = List[T]()
+    if step > 0:
+        var i = start
+        while i < stop:
+            out.append(x._data[i])
+            i += step
+    else:
+        var i2 = start
+        while i2 > stop:
+            out.append(x._data[i2])
+            i2 += step  # step is negative
+    # Shape/strides for 1-D result
+    var out_shape = List[Int]()
+    out_shape.append(len(out))
+    var out_strides = mk_strides(out_shape)
+    return Tensor[T](out, out_shape, out_strides, 0)
 
 
 # =============================== Tensor ===============================
@@ -234,56 +939,47 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var d = len(self._shape)
         var i = 0
         while i < len(sels) and i < d:
-            out.append(sels[i].copy())
+            out.append(clone_sel(sels[i]))   # ⬅️ کپیِ صریح
             i = i + 1
         while i < d:
-            out.append(self.all_axis())
+            out.append(self.all_axis())      # تازه ساخته می‌شود؛ مشکلی ندارد
             i = i + 1
         return out.copy()
 
+
     # Normalize a slice selector against dim and (possibly) negative step.
-    # Returns (start, stop, step) normalized s.t. resulting axis length >= 0.
+    # Returns (start, stop, step) normalized s.t. resulting axis length >= 0 
     @always_inline
-    fn _normalize_slice(self, dim: Int, st0: Int, sp0: Int, step0: Int) -> (Int, Int, Int):
+    fn _normalize_slice(self, dim: Int, st0: Int, sp0: Int, step0: Int) -> (Int, Int, Int): 
         var step = step0
-        if step == 0:
-            step = 1
+        if step == 0: step = 1
+
+        # all_axis() sentinel (0,0,1) → full
+        if st0 == 0 and sp0 == 0 and step == 1:
+            return (0, dim, 1)
 
         var start = st0
         var stop  = sp0
 
         if step > 0:
-            # Positive step defaults (NumPy-like):
-            # If stop token was empty in parsing (represented here as 0), take stop = dim.
-            # NOTE: This also makes "0:" behave as full to end, which is desirable.
-            if stop == 0:
+            # "to the end" if stop unspecified but start set
+            if sp0 == 0 and st0 != 0:
                 stop = dim
-
-            # Normalize negatives
             if start < 0: start = dim + start
             if stop  < 0: stop  = dim + stop
-
-            # Clamp into [0, dim]
             start = clamp_int(start, 0, dim)
             stop  = clamp_int(stop,  0, dim)
-
         else:
-            # Negative step defaults:
-            # If start token was empty => start = dim - 1
-            # If stop token was empty  => stop  = -1 (exclusive, one before 0)
-            if start == 0 and st0 == 0:
+            # reverse full when both unset/zero-ish
+            if st0 == 0 and sp0 == 0:
                 start = dim - 1
-            if stop == 0 and sp0 == 0:
-                stop = -1
-
-            # Normalize negatives
-            if start < 0: start = dim + start
-            if stop  < 0: stop  = dim + stop
-
-            # Clamp allowing -1 on stop and [-1, dim-1] on start
-            start = clamp_int(start, -1, dim - 1)
-            stop  = clamp_int(stop,  -1, dim)
-
+                stop  = -1
+            else:
+                if start < 0: start = dim + start
+                # IMPORTANT: for negative step keep stop negative if user passed -1;
+                # do NOT translate stop via (dim + stop). Just clamp to [-1, dim-1].
+                stop = clamp_int(stop, -1, dim - 1)
+            start = clamp_int(start, -1, dim - 1) 
         return (start, stop, step)
 
     # =========================== Core: select_view ===========================
@@ -292,9 +988,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var sels = self.pad_full_axes(sels_in)
         var ndim = len(self._shape)
 
-        var new_shape = List[Int]()
+        var new_shape   = List[Int]()
         var new_strides = List[Int]()
-        var new_off = self._offset
+        var new_off     = self._offset
 
         var ax = 0
         while ax < ndim:
@@ -302,20 +998,23 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             if is_index(sels[ax]):
                 var ii = wrap_axis_index(get_index(sels[ax]), dim)
                 new_off = new_off + ii * self._strides[ax]
-                # drop axis
             elif is_slice(sels[ax]):
-                var (st, sp, stp) = get_slice(sels[ax])
-                var (ns, np, nstep) = self._normalize_slice(dim, st, sp, stp)
-                var out_len = axis_len_from_slice(ns, np, nstep)
-                new_off = new_off + ns * self._strides[ax]
+                var (st0, sp0, step0) = get_slice(sels[ax]) 
+
+                var (st, sp, step1) = self._normalize_slice(dim, st0, sp0, step0)
+                var out_len = axis_len_from_slice(st, sp, step1) 
+
+                new_off = new_off + st * self._strides[ax]
                 new_shape.append(out_len)
-                new_strides.append(self._strides[ax] * nstep)
+                new_strides.append(self._strides[ax] * step1)
+
             else:
-                # Fancy index ⇒ cannot be a pure view; fall back to copy path
-                return self.select_copy(sels)
+                return self.select_copy(sels)   # fancy ⇒ کپی
             ax = ax + 1
 
         return self._make_view(new_shape, new_strides, new_off)
+
+
 
     # =========================== Core: select_copy ===========================
     fn select_copy(self, sels_in: List[IndexSel]) -> Tensor[T]:
@@ -408,125 +1107,135 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     # =========================== Public: select (prefers view) ===========================
     fn select(self, sels_in: List[IndexSel]) -> Tensor[T]:
-        # If selection is viewable (no fancy), return zero-copy view; else copy.
-        var viewable = True
         var sels = self.pad_full_axes(sels_in)
+        var viewable = True
         var i = 0
         while i < len(sels):
             if is_fancy(sels[i]):
                 viewable = False
                 break
-            i = i + 1
-        if viewable:
-            return self.select_view(sels)
+            i += 1
+
+        
+
+        if viewable: 
+            return self.select_view(sels) 
         return self.select_copy(sels)
+ 
 
-    # =========================== __getitem__ family ===========================
-
-    # NumPy-like: single Int on an N-D tensor drops axis-0 and returns a ZERO-COPY VIEW.
-    # - If rank==1, the result is a 0-D tensor (shape=[]). If you want a plain scalar,
-    #   call `get_nd([i])` or add a separate helper, but we keep operator semantics uniform.
-    fn __getitem__(self, i: Int) -> Tensor[T]:
-        var d = len(self._shape)
-        if d == 0:
-            # Return an empty 0-D view
-            var shp = List[Int]()
-            var strd = List[Int]()
-            return self._make_view(shp, strd, self._offset)
-        var ii = wrap_axis_index(i, self._shape[0])
-        var new_off = self._offset + ii * self._strides[0]
-        # drop axis-0
-        var new_shape = List[Int]()
-        var new_strides = List[Int]()
-        var ax = 1
-        while ax < d:
-            new_shape.append(self._shape[ax])
-            new_strides.append(self._strides[ax])
-            ax = ax + 1
-        return self._make_view(new_shape, new_strides, new_off)
-
-    # Convenience setter: single-Int on axis-0; sets the selected sub-array to a scalar.
-    fn __setitem__(mut self, i: Int, value: T) -> None:
-        var sel0 = make_index_sel(i)
-        var d = len(self._shape)
-        var sels = List[IndexSel]()
-        sels.reserve(d)
-        sels.append(sel0.copy())
-        var ax = 1
-        while ax < d:
-            sels.append(self.all_axis())
-            ax = ax + 1
-        self.select_set_scalar(sels, value)
-
-
-    # String parser: supports tokens per axis separated by commas.
-    # Forms: ":", "1", "-1", "1:3", "::2", "5:1:-1". (No per-axis fancy list in string.)
+    # ------------------------------------------
+    # String parser across axes ("," separated)
+    # Supports ":", "1", "-1", "1:3", "::2", "5:1:-1"
+    # ------------------------------------------
+    @always_inline
     fn _parse_selector_string(self, spec: String) -> List[IndexSel]:
         var sels = List[IndexSel]()
         var tokens = spec.split(",")
-        var n = len(tokens)
-        var ax = 0
-        while ax < n:
-            var raw = trim_ascii(to_string_owned(tokens[ax]))
-            if len(raw) == 0 or raw == ":":
-                sels.append(self.all_axis())
-                ax = ax + 1
+        var tcount = len(tokens)
+
+        var d = len(self._shape)        # rank
+        var ax = 0                      # current axis we are filling
+        var i = 0
+
+        # پیش‌اسکن برای محاسبهٔ بسط Ellipsis:
+        # explicit = تعداد توکن‌هایی که Ellipsis نیستند ( ":"/خالی هم حساب می‌شوند )
+        var explicit = 0
+        var k = 0
+        while k < tcount:
+            var rawk = trim_ascii(to_string_owned(tokens[k]))
+            if rawk != "...":
+                explicit = explicit + 1
+            k = k + 1
+
+        var saw_ellipsis = False
+
+        while i < tcount and ax < d:
+            var raw = trim_ascii(to_string_owned(tokens[i]))
+
+            # -------------------------
+            # Ellipsis: expand to fill remaining axes
+            # -------------------------
+            if raw == "...":
+                if not saw_ellipsis:
+                    var remaining = d - explicit
+                    if remaining < 0:
+                        remaining = 0
+                    var c = 0
+                    while c < remaining and ax < d:
+                        var n_ax = self._axis_len(ax)
+                        sels.append(make_slice_sel((0, n_ax, 1)))
+                        ax = ax + 1
+                        c = c + 1
+                    saw_ellipsis = True
+                else:
+                    # سیاست non-raising: Ellipsis اضافه را نادیده بگیر
+                    pass
+                i = i + 1
                 continue
+
+            # -------------------------
+            # ":" یا خالی → فول‌اسلایس روی محور جاری
+            # -------------------------
+            if len(raw) == 0 or raw == ":":
+                var n_ax2 = self._axis_len(ax)
+                sels.append(make_slice_sel((0, n_ax2, 1)))
+                ax = ax + 1
+                i = i + 1
+                continue
+
+            # -------------------------
+            # برسی وجود ":" برای حالت اسلایس
+            # -------------------------
             var colon_pos = raw.find(":")
             if colon_pos >= 0:
                 var parts = raw.split(":")
                 var p0 = String("")
                 var p1 = String("")
                 var p2 = String("")
-                if len(parts) >= 1: p0 = trim_ascii(to_string_owned(parts[0]))
-                if len(parts) >= 2: p1 = trim_ascii(to_string_owned(parts[1]))
-                if len(parts) >= 3: p2 = trim_ascii(to_string_owned(parts[2]))
-                var st = 0
-                var sp = 0
-                var stp = 1
-                if len(p2) != 0:
-                    var (ok_st, vst) = parse_int_safe(p2)
-                    if ok_st: stp = vst
-                    if stp == 0: stp = 1
-                if len(p0) != 0:
-                    var (ok0, v0) = parse_int_safe(p0)
-                    if ok0: st = v0
-                if len(p1) != 0:
-                    var (ok1, v1) = parse_int_safe(p1)
-                    if ok1: sp = v1
-                sels.append(make_slice_sel((st, sp, stp)))
-            else:
-                var ii = 0
-                var (ok_i, v_i) = parse_int_safe(raw)
-                if ok_i: ii = v_i
-                sels.append(make_index_sel(ii))
+                if len(parts) >= 1:
+                    p0 = trim_ascii(to_string_owned(parts[0]))
+                if len(parts) >= 2:
+                    p1 = trim_ascii(to_string_owned(parts[1]))
+                if len(parts) >= 3:
+                    p2 = trim_ascii(to_string_owned(parts[2]))
+
+                # Tokens → Optional[Int]
+                var start_opt = _opt_int(p0)
+                var stop_opt  = _opt_int(p1)
+                var step_opt  = _opt_step(p2)
+
+                var n_ax3 = self._axis_len(ax)
+                var trip = _normalize_slice_1d(n_ax3, start_opt, stop_opt, step_opt)
+
+                # دقیقاً ":" (سه None) → فول‌اسلایس صریح
+                if start_opt is None and stop_opt is None and step_opt is None:
+                    trip = (0, n_ax3, 1)
+
+                sels.append(make_slice_sel(trip))
+                ax = ax + 1
+                i = i + 1
+                continue
+
+            # -------------------------
+            # ایندکس عددی تکی
+            # -------------------------
+            var ii = 0
+            var (ok_i, v_i) = parse_int_safe(raw)
+            if ok_i:
+                ii = v_i
+            sels.append(make_index_sel(ii))
             ax = ax + 1
+            i = i + 1
+
+        # اگر توکن‌ها کمتر از رتبه بود، محورهای باقی‌مانده را فول‌اسلایس کن
+        while ax < d:
+            var n_ax4 = self._axis_len(ax)
+            sels.append(make_slice_sel((0, n_ax4, 1)))
+            ax = ax + 1
+
         return sels.copy()
 
 
-    # Get via string (prefers view)
-    fn __getitem__(self, spec: String) -> Tensor[T]:
-        var sels = self._parse_selector_string(spec)
-        return self.select(sels)
-
-    # Apply one selector to axis 0, full on others (prefers view)
-    fn __getitem__(self, sel: IndexSel) -> Tensor[T]:
-        var d = len(self._shape)
-        var sels = List[IndexSel]()
-        sels.reserve(d)
-        sels.append(sel.copy())
-        var ax = 1
-        while ax < d:
-            sels.append(self.all_axis())
-            ax = ax + 1
-        return self.select(sels)
-
-    # Fancy indexing on axis 0: x[[i0,i1,...]]
-    fn __getitem__(self, idxs: List[Int]) -> Tensor[T]:
-        var sel0 = make_fancy_sel(idxs)
-        return self.__getitem__(sel0)
-
-    @always_inline
     fn _view_after_prefix_ints(self: Tensor[T], idxs: List[Int]) -> Tensor[T]:
         var d = len(self._shape)
         var k = len(idxs)
@@ -550,48 +1259,620 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
         return self._make_view(new_shape, new_strides, off)
 
-    # 2-int → view (rank-2 drop). If exactly rank==2, this is a 0-D tensor.
-    fn __getitem__(self: Tensor[T], i0: Int, i1: Int) -> Tensor[T]:
-        var idxs = List[Int](); idxs.append(i0); idxs.append(i1)
-        return self._view_after_prefix_ints(idxs)
+    @always_inline
+    fn _axis_len(self, axis: Int) -> Int:
+        var r = len(self._shape)
+        if r == 0: return 1
+        return self._shape[axis]
 
-    # 3-int
-    fn __getitem__(self: Tensor[T], i0: Int, i1: Int, i2: Int) -> Tensor[T]:
-        var idxs = List[Int](); idxs.append(i0); idxs.append(i1); idxs.append(i2)
-        return self._view_after_prefix_ints(idxs)
+    @always_inline
+    fn _sel_from_int(self, axis: Int, i: Int) -> IndexSel:
+        return make_index_sel(i)
 
-    # 4-int
-    fn __getitem__(self: Tensor[T], i0: Int, i1: Int, i2: Int, i3: Int) -> Tensor[T]:
-        var idxs = List[Int]()
-        idxs.append(i0); idxs.append(i1); idxs.append(i2); idxs.append(i3)
-        return self._view_after_prefix_ints(idxs)
+    @always_inline
+    fn _sel_from_empty(self, axis: Int) -> IndexSel:
+        var n = self._axis_len(axis)
+        return make_slice_sel((0, n, 1))
 
-    # 5-int
-    fn __getitem__(self: Tensor[T], i0: Int, i1: Int, i2: Int, i3: Int, i4: Int) -> Tensor[T]:
-        var idxs = List[Int]()
-        idxs.append(i0); idxs.append(i1); idxs.append(i2); idxs.append(i3); idxs.append(i4)
-        return self._view_after_prefix_ints(idxs)
+    @always_inline
+    fn _sel_from_slice(self, axis: Int, s: Slice) -> IndexSel:
+        var n = self._axis_len(axis)
+        var st: Optional[Int] = if s.start is None: None else: Optional[Int](s.start.value())
+        var sp: Optional[Int] = if s.end   is None: None else: Optional[Int](s.end.value())
+        var stp: Optional[Int]= if s.step  is None: None else: Optional[Int](s.step.value())
+        var trip = _normalize_slice_1d(n, st, sp, stp)   # (start, stop, step) — با نگه‌داشتن -1 برای step<0
+        return make_slice_sel(trip)
 
+    # ===================== Native slice-based __getitem__ overloads ===================== 
 
-    # Mixed IndexSel up to 5D (prefers view)
-    fn __getitem__(self, a: IndexSel, b: IndexSel) -> Tensor[T]:
-        var sels = List[IndexSel]()
-        sels.append(a.copy()); sels.append(b.copy())
+     
+    # --------------------------------------
+    # 2) __getitem__ برای StrIndex
+    # --------------------------------------
+    @always_inline
+    fn __getitem__(self, s: StrIndex) -> Tensor[T]:
+        var sels = self._parse_selector_string(s.spec)
         return self.select(sels)
 
-    fn __getitem__(self, a: IndexSel, b: IndexSel, c: IndexSel) -> Tensor[T]:
+    # --------------------------------------
+    # 3) شیم برای StringLiteral تا arr["1:3"] مستقیم کار کند
+    #    (توجه: امضای __getitem__(self, spec: String) باید حذف باشد)
+    # --------------------------------------
+    @always_inline
+    fn __getitem__(self, lit: StringLiteral) -> Tensor[T]:
+        return self.__getitem__(StrIndex(String(lit)))
+
+    @always_inline
+    fn __getitem__(self, i0: Int) -> Tensor[T]:
         var sels = List[IndexSel]()
-        sels.append(a.copy()); sels.append(b.copy()); sels.append(c.copy())
+        sels.append(make_index_sel(i0))
         return self.select(sels)
 
-    fn __getitem__(self, a: IndexSel, b: IndexSel, c: IndexSel, d: IndexSel) -> Tensor[T]:
+    @always_inline
+    fn __getitem__(self, s: Slice) -> Tensor[T]:
+        var n: Int
+        var r = len(self._shape)
+        if r == 0: n = 1 else: n = self._shape[0]
+
+        var start_opt: Optional[Int]
+        if s.start is None: start_opt = None else: start_opt = Optional[Int](s.start.value())
+        var stop_opt: Optional[Int]
+        if s.end   is None: stop_opt  = None else: stop_opt  = Optional[Int](s.end.value())
+        var step_opt: Optional[Int]
+        if s.step  is None: step_opt  = None else: step_opt  = Optional[Int](s.step.value())
+
+        var trip = _normalize_slice_1d(n, start_opt, stop_opt, step_opt)
+
         var sels = List[IndexSel]()
-        sels.append(a.copy()); sels.append(b.copy()); sels.append(c.copy()); sels.append(d.copy())
+        sels.append(make_slice_sel(trip))
+        return self.select(sels)
+ 
+
+    @always_inline
+    fn _getitem_slice_spec(self, trip: (Int, Int, Int)) -> Tensor[T]:
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip))
+        return self.select(sels)
+ 
+    # ------------------------------------------------------------------------------
+    # 0) Full 2D "[: , :]" using two empty tuples (native ":")
+    # ------------------------------------------------------------------------------
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n1 = self._axis_len(1)
+        var trip0 = (0, n0, 1)
+        var trip1 = (0, n1, 1)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_slice_sel(trip1))
+        print("[EE] TRIP0:", trip0[0], trip0[1], trip0[2])
+        print("[EE] TRIP1:", trip1[0], trip1[1], trip1[2])
         return self.select(sels)
 
-    fn __getitem__(self, a: IndexSel, b: IndexSel, c: IndexSel, d: IndexSel, e: IndexSel) -> Tensor[T]:
+    # ------------------------------------------------------------------------------
+    # 1) Mixed with empty tuple: arr[ :, i ]  and  arr[ i, : ]
+    # ------------------------------------------------------------------------------
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], i1: Int) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var trip0 = (0, n0, 1)
+
         var sels = List[IndexSel]()
-        sels.append(a.copy()); sels.append(b.copy()); sels.append(c.copy()); sels.append(d.copy()); sels.append(e.copy())
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_index_sel(i1))
+
+        print("TRIP0:", trip0[0], trip0[1], trip0[2])
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, i0: Int, _e1: Tuple[]) -> Tensor[T]:
+        var n1 = self._axis_len(1)
+        var trip1 = (0, n1, 1)
+
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel(trip1))
+
+        print("TRIP1:", trip1[0], trip1[1], trip1[2])
+        return self.select(sels)
+
+   
+
+    # ------------------------------------------------------------------------------
+    # 3) Mixed index/slice (native Slice on one axis)
+    #     arr[i, a:b:c]   and   arr[a:b:c, i]
+    # ------------------------------------------------------------------------------
+    @always_inline
+    fn __getitem__(self, i0: Int, s1: Slice) -> Tensor[T]:
+        var n1 = self._axis_len(1)
+
+        var start1: Optional[Int]
+        if s1.start is None: start1 = None else: start1 = Optional[Int](s1.start.value())
+
+        var stop1: Optional[Int]
+        if s1.end is None:   stop1 = None else: stop1 = Optional[Int](s1.end.value())
+
+        var step1: Optional[Int]
+        if s1.step is None:  step1 = None else: step1 = Optional[Int](s1.step.value())
+
+        var trip1 = _normalize_slice_1d(n1, start1, stop1, step1)
+
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel(trip1))
+
+        print("TRIP1:", trip1[0], trip1[1], trip1[2])  # e.g., for[::-1] -> (n1-1, -1, -1)
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, s0: Slice, i1: Int) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+
+        var start0: Optional[Int]
+        if s0.start is None: start0 = None else: start0 = Optional[Int](s0.start.value())
+
+        var stop0: Optional[Int]
+        if s0.end is None:   stop0 = None else: stop0 = Optional[Int](s0.end.value())
+
+        var step0: Optional[Int]
+        if s0.step is None:  step0 = None else: step0 = Optional[Int](s0.step.value())
+
+        var trip0 = _normalize_slice_1d(n0, start0, stop0, step0)
+
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_index_sel(i1))
+
+        print("TRIP0:", trip0[0], trip0[1], trip0[2])
+        return self.select(sels)
+
+    # ------------------------------------------------------------------------------
+    # 4) Pure slices on both axes: arr[a:b:c, d:e:f]
+    #     covers "[: , :]", "[::2, 1:]" , "[::-1, ::-1]" , "[0:2, 0:2]" , "[1:, 1:]" ...
+    # ------------------------------------------------------------------------------
+    @always_inline
+    fn __getitem__(self, s0: Slice, s1: Slice) -> Tensor[T]:
+        # axis-0
+        var n0 = self._axis_len(0)
+        var start0: Optional[Int]
+        if s0.start is None: start0 = None else: start0 = Optional[Int](s0.start.value())
+        var stop0: Optional[Int]
+        if s0.end is None:   stop0 = None else: stop0 = Optional[Int](s0.end.value())
+        var step0: Optional[Int]
+        if s0.step is None:  step0 = None else: step0 = Optional[Int](s0.step.value())
+        var trip0 = _normalize_slice_1d(n0, start0, stop0, step0)
+        # force full-slice if ":" exactly
+        if s0.start is None and s0.end is None and s0.step is None:
+            trip0 = (0, n0, 1)
+
+        # axis-1
+        var n1 = self._axis_len(1)
+        var start1: Optional[Int]
+        if s1.start is None: start1 = None else: start1 = Optional[Int](s1.start.value())
+        var stop1: Optional[Int]
+        if s1.end is None:   stop1 = None else: stop1 = Optional[Int](s1.end.value())
+        var step1: Optional[Int]
+        if s1.step is None:  step1 = None else: step1 = Optional[Int](s1.step.value())
+        var trip1 = _normalize_slice_1d(n1, start1, stop1, step1)
+        if s1.start is None and s1.end is None and s1.step is None:
+            trip1 = (0, n1, 1)
+
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_slice_sel(trip1))
+ 
+        return self.select(sels)
+
+
+    # ------------------------------------------------------------------------------
+    # 5) Mixed "empty tuple + slice" (for completeness):
+    #     arr[:, a:b:c]   and   arr[a:b:c, :]
+    # ------------------------------------------------------------------------------
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], s1: Slice) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var trip0 = (0, n0, 1)
+
+        var n1 = self._axis_len(1)
+        var start1: Optional[Int]
+        if s1.start is None: start1 = None else: start1 = Optional[Int](s1.start.value())
+        var stop1: Optional[Int]
+        if s1.end is None:   stop1 = None else: stop1 = Optional[Int](s1.end.value())
+        var step1: Optional[Int]
+        if s1.step is None:  step1 = None else: step1 = Optional[Int](s1.step.value())
+        var trip1 = _normalize_slice_1d(n1, start1, stop1, step1)
+
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_slice_sel(trip1))
+
+        print("TRIP0:", trip0[0], trip0[1], trip0[2])
+        print("TRIP1:", trip1[0], trip1[1], trip1[2])
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, s0: Slice, _e1: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var start0: Optional[Int]
+        if s0.start is None: start0 = None else: start0 = Optional[Int](s0.start.value())
+        var stop0: Optional[Int]
+        if s0.end is None:   stop0 = None else: stop0 = Optional[Int](s0.end.value())
+        var step0: Optional[Int]
+        if s0.step is None:  step0 = None else: step0 = Optional[Int](s0.step.value())
+        var trip0 = _normalize_slice_1d(n0, start0, stop0, step0)
+
+        var n1 = self._axis_len(1)
+        var trip1 = (0, n1, 1)
+
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_slice_sel(trip1))
+
+        print("TRIP0:", trip0[0], trip0[1], trip0[2])
+        print("TRIP1:", trip1[0], trip1[1], trip1[2])
+        return self.select(sels)
+
+    # --------------------------------------------------------------------------
+    # 3D indexing/slicing
+    # سازگار با الگوی موجود: Tuple[] برای ":" و Slice برای a:b:c
+    # --------------------------------------------------------------------------
+
+    
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], i1: Int, _e2: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n2 = self._axis_len(2)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        sels.append(make_slice_sel((0, n2, 1)))
+        return self.select(sels)
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], i2: Int) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        return self.select(sels)
+    @always_inline
+    fn __getitem__(self, i0: Int, _e1: Tuple[], i2: Int) -> Tensor[T]:
+        var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        return self.select(sels)
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], s2: Slice) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n1 = self._axis_len(1)
+
+        # normalize slice of axis-2
+        var start2: Optional[Int]
+        if s2.start is None: start2 = None else: start2 = Optional[Int](s2.start.value())
+        var stop2: Optional[Int]
+        if s2.end is None:   stop2 = None else:   stop2 = Optional[Int](s2.end.value())
+        var step2: Optional[Int]
+        if s2.step is None:  step2 = None else:  step2 = Optional[Int](s2.step.value())
+        var trip2 = _normalize_slice_1d(self._axis_len(2), start2, stop2, step2)
+
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel(trip2))
+        return self.select(sels) 
+ 
+    @always_inline
+    fn __getitem__(self, i0: Int, i1: Int) -> Tensor[T]:
+        # index on axes 0 and 1; keep axis 2 as-is (view)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_index_sel(i1))
+        return self.select(sels)
+
+    # [..., i]  ≡ [:, :, i]
+    @always_inline
+    fn __getitem__(self, _e: EllipsisSpec, i2: Int) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        return self.select(sels)
+
+    # [i, ...]  ≡ [i, :, :]
+    @always_inline
+    fn __getitem__(self, i0: Int, _e: EllipsisSpec) -> Tensor[T]:
+        var n1 = self._axis_len(1)
+        var n2 = self._axis_len(2)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        return self.select(sels)
+
+
+   
+    @always_inline
+    fn __getitem__(self, i0: Int, i1: Int, i2: Int, i3: Int) -> Tensor[T]:
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_index_sel(i1))
+        sels.append(make_index_sel(i2))
+        sels.append(make_index_sel(i3))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, i0: Int, _e1: Tuple[], _e2: Tuple[], _e3: Tuple[]) -> Tensor[T]:
+        var n1 = self._axis_len(1); var n2 = self._axis_len(2); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel((0, n3, 1)))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], i1: Int, _e2: Tuple[], _e3: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n2 = self._axis_len(2); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel((0, n3, 1)))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], i2: Int, _e3: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        sels.append(make_slice_sel((0, n3, 1)))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], _e2: Tuple[], i3: Int) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n2 = self._axis_len(2)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_index_sel(i3))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, i0: Int, i1: Int, _e2: Tuple[], _e3: Tuple[]) -> Tensor[T]:
+        var n2 = self._axis_len(2); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_index_sel(i1))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel((0, n3, 1)))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, i0: Int, _e1: Tuple[], i2: Int, _e3: Tuple[]) -> Tensor[T]:
+        var n1 = self._axis_len(1); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        sels.append(make_slice_sel((0, n3, 1)))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, i0: Int, _e1: Tuple[], _e2: Tuple[], i3: Int) -> Tensor[T]:
+        var n1 = self._axis_len(1); var n2 = self._axis_len(2)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_index_sel(i3))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], i1: Int, i2: Int, _e3: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        sels.append(make_index_sel(i2))
+        sels.append(make_slice_sel((0, n3, 1)))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], i1: Int, _e2: Tuple[], i3: Int) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n2 = self._axis_len(2)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_index_sel(i3))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], i2: Int, i3: Int) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        sels.append(make_index_sel(i3))
+        return self.select(sels)
+
+ 
+
+    # [:, :, :, a:b:c]
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], _e2: Tuple[], s3: Slice) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n2 = self._axis_len(2)
+        var trip3 = self._trip_from_slice(3, s3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel(trip3))
+        return self.select(sels)
+
+    # [:, :, a:b:c, :]
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], s2: Slice, _e3: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n3 = self._axis_len(3)
+        var trip2 = self._trip_from_slice(2, s2)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel(trip2))
+        sels.append(make_slice_sel((0, n3, 1)))
+        return self.select(sels)
+
+    # [:, 1:, 1:, :2]  → [E, S, S, S]
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], s1: Slice, s2: Slice, s3: Slice) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var trip1 = self._trip_from_slice(1, s1)
+        var trip2 = self._trip_from_slice(2, s2)
+        var trip3 = self._trip_from_slice(3, s3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel(trip1))
+        sels.append(make_slice_sel(trip2))
+        sels.append(make_slice_sel(trip3))
+        return self.select(sels)
+
+    @always_inline
+    fn __getitem__(self, i0: Int, i1: Int, i2: Int) -> Tensor[T]:
+        # Index axes 0,1,2; keep axis-3 as is (view of length shape[3])
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_index_sel(i1))
+        sels.append(make_index_sel(i2))
+        return self.select(sels)
+
+
+    # -----------------------------
+    # Extend ":" (single Tuple[]) up to rank 5
+    # -----------------------------
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[]) -> Tensor[T]:
+        var r = len(self._shape)
+        var sels = List[IndexSel]()
+
+        var n0 = self._axis_len(0)
+        sels.append(make_slice_sel((0, n0, 1)))
+
+        if r > 1:
+            var n1 = self._axis_len(1)
+            sels.append(make_slice_sel((0, n1, 1)))
+        if r > 2:
+            var n2 = self._axis_len(2)
+            sels.append(make_slice_sel((0, n2, 1)))
+        if r > 3:
+            var n3 = self._axis_len(3)
+            sels.append(make_slice_sel((0, n3, 1)))
+        if r > 4:
+            var n4 = self._axis_len(4)
+            sels.append(make_slice_sel((0, n4, 1)))
+
+        return self.select(sels)
+
+    # --------------------------------------
+    # Helper (reuse if you already have it)
+    # --------------------------------------
+    @always_inline
+    fn self._trip_from_slice( axis: Int, s: Slice) -> (Int, Int, Int):
+        var n = self._axis_len(axis)
+        var start_opt: Optional[Int]
+        if s.start is None: start_opt = None else: start_opt = Optional[Int](s.start.value())
+        var stop_opt: Optional[Int]
+        if s.end   is None: stop_opt  = None else: stop_opt  = Optional[Int](s.end.value())
+        var step_opt: Optional[Int]
+        if s.step  is None: step_opt  = None else: step_opt  = Optional[Int](s.step.value())
+        var trip = _normalize_slice_1d(n, start_opt, stop_opt, step_opt)
+        if s.start is None and s.end is None and s.step is None:
+            trip = (0, n, 1)
+        return trip
+
+    # --------------------------------------
+    # 5D-specific overloads needed by your demo
+    # --------------------------------------
+
+    # (A) Five indices: arr5[i0,i1,i2,i3,i4]  → scalar
+    @always_inline
+    fn __getitem__(self, i0: Int, i1: Int, i2: Int, i3: Int, i4: Int) -> Tensor[T]:
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_index_sel(i1))
+        sels.append(make_index_sel(i2))
+        sels.append(make_index_sel(i3))
+        sels.append(make_index_sel(i4))
+        return self.select(sels)
+
+    # (B) [:, :, 1, :, :]  → [E, E, I, E, E]
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], i2: Int, _e3: Tuple[], _e4: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n1 = self._axis_len(1)
+        var n3 = self._axis_len(3)
+        var n4 = self._axis_len(4)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        sels.append(make_slice_sel((0, n3, 1)))
+        sels.append(make_slice_sel((0, n4, 1)))
+        return self.select(sels)
+
+    # (C) [::2, :, :, :, 0]  → [S, E, E, E, I]
+    @always_inline
+    fn __getitem__(self, s0: Slice, _e1: Tuple[], _e2: Tuple[], _e3: Tuple[], i4: Int) -> Tensor[T]:
+        var trip0 = self._trip_from_slice(0, s0)
+        var n1 = self._axis_len(1)
+        var n2 = self._axis_len(2)
+        var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel((0, n3, 1)))
+        sels.append(make_index_sel(i4))
+        return self.select(sels)
+
+    # (D) [:, 1, :, :, 1:3]  → [E, I, E, E, S]
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], i1: Int, _e2: Tuple[], _e3: Tuple[], s4: Slice) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n2 = self._axis_len(2)
+        var n3 = self._axis_len(3)
+        var trip4 = self._trip_from_slice(4, s4)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel((0, n3, 1)))
+        sels.append(make_slice_sel(trip4))
+        return self.select(sels)
+
+    # (E) [:, :, :, ::-1, :]  → [E, E, E, S, E]
+    @always_inline
+    fn __getitem__(self, _e0: Tuple[], _e1: Tuple[], _e2: Tuple[], s3: Slice, _e4: Tuple[]) -> Tensor[T]:
+        var n0 = self._axis_len(0)
+        var n1 = self._axis_len(1)
+        var n2 = self._axis_len(2)
+        var n4 = self._axis_len(4)
+        var trip3 = self._trip_from_slice(3, s3)   # e.g., ::-1 -> (n3-1, -1, -1)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel(trip3))
+        sels.append(make_slice_sel((0, n4, 1)))
         return self.select(sels)
 
     # =========================== __setitem__ (scalar) ===========================
@@ -789,44 +2070,549 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 a3 = a3 + 1
             self._data[lin_dst] = src._data[q]
             q = q + 1
+ 
+    # --- 1D index: scalar + tensor ---
+    # -----------------------------------------------------------------------------
+    # Scalar casting helpers: pick a Float64->T converter for current T
+    # -----------------------------------------------------------------------------
+    @always_inline
+    fn _from_f64_for[T: ImplicitlyCopyable & Copyable & Movable]() -> fn (Float64) -> T:
+        if T is Int:
+            return to_int_from_f64
+        elif T is Float32:
+            return to_f32_from_f64
+        else:
+            return to_f64_from_f64      # default: Float64
 
-
-    # ---------------- convenience setitem overloads ----------------
-
-    fn __setitem__(mut self, spec: String, value: T) -> None:
-        var sels = self._parse_selector_string(spec)
-        self.select_set_scalar(sels, value)
-
-    fn __setitem__(mut self, sel: IndexSel, value: T) -> None:
-        var d = len(self._shape)
+    # Write a single scalar (provided as f64) into index i0
+    @always_inline
+    fn _setitem_scalar_f64(
+        mut self, i0: Int, s64: Float64
+    ) -> None:
         var sels = List[IndexSel]()
-        sels.reserve(d)
-        sels.append(sel.copy())
-        var ax = 1
-        while ax < d:
-            sels.append(self.all_axis())
-            ax = ax + 1
-        self.select_set_scalar(sels, value)
+        sels.append(make_index_sel(i0))
+        var v = self.select(sels)                 # VIEW
+        var from_f64 = _from_f64_for[T]()
+        _fill_view_scalar_T(v, from_f64(s64))     # write as T
 
-    fn __setitem__(mut self, spec: String, src: Tensor[T]) -> None:
-        var sels = self._parse_selector_string(spec)
-        self.select_set_tensor(sels, src)
+    # -------------------------
+    # -------------------------
+    # 1) ساخت متادیتا از sels
+    # -------------------------
+    @always_inline
+    fn _build_sel_meta(self, sels: List[IndexSel]) -> _SelViewMeta: 
 
-    fn __setitem__(mut self, sel: IndexSel, src: Tensor[T]) -> None:
-        var d = len(self._shape)
+        var base = self._offset
+        var out_shape = List[Int]()
+        var out_coefs = List[Int]()
+
+        var r = len(self._shape)
+        var ax = 0
+        while ax < r:
+            var stride_ax = self._strides[ax]
+            var sel = sels[ax]          # IndexSel: ImplicitlyCopyable → OK
+
+            if sel.tag == 0:
+                # index
+                var i = sel.i 
+                if i < 0:
+                    i += self._axis_len(ax) 
+                base += i * stride_ax
+
+            else:
+                # slice
+                var s  = sel.start
+                var e  = sel.stop
+                var st = sel.step
+                var ln = _trip_len(s, e, st) 
+
+                base += s * stride_ax
+                out_shape.append(ln)
+                out_coefs.append(st * stride_ax)
+
+            ax += 1 
+        var meta = _SelViewMeta(base, out_shape, out_coefs)
+        return meta.copy()
+
+ 
+    @always_inline
+    fn _assign_into_self_from_meta(
+        mut self, meta: _SelViewMeta, rhs: Tensor[T]
+    ) -> None:
+ 
+
+        var rhs_total = _prod_shape(rhs._shape) 
+ 
+        if len(meta.out_shape) == 0:
+            if rhs_total != 1:
+                print("[ASG ERROR] scalar-dst but rhs_total=" + String(rhs_total))
+                print("  dst.shape=[] rhs.shape=" + _list_str(rhs._shape))
+                return
+            var zeros = _zero_indices(len(rhs._shape))
+            var j_rhs = _flat_index(rhs._offset, rhs._strides, zeros)
+            self._data[meta.base_offset] = rhs._data[j_rhs] 
+            return
+ 
+        if rhs_total == 1:
+            var zeros2 = _zero_indices(len(rhs._shape))
+            var j_rhs2 = _flat_index(rhs._offset, rhs._strides, zeros2)
+            var v = rhs._data[j_rhs2]
+            var idx = _zero_indices(len(meta.out_shape))
+            var wrote = 0
+            while True:
+                var j_dst = _flat_index(meta.base_offset, meta.out_coefs, idx)
+                self._data[j_dst] = v
+                wrote += 1
+                #if wrote <= 6:
+                #    print("[ASG] fill j_dst=" + String(j_dst))
+                if _bump_indices(idx, meta.out_shape) == False:
+                    break 
+            return 
+        if _shapes_equal(meta.out_shape, rhs._shape) == False:
+            print("[ASG ERROR] shape mismatch")
+            print("  dst.shape=" + _list_str(meta.out_shape) + " rhs.shape=" + _list_str(rhs._shape))
+            return
+
+        var idx2 = _zero_indices(len(meta.out_shape))
+        var copied = 0
+        while True:
+            var j_dst2 = _flat_index(meta.base_offset, meta.out_coefs, idx2)
+            var j_rhs3 = _flat_index(rhs._offset, rhs._strides, idx2)
+            self._data[j_dst2] = rhs._data[j_rhs3]
+            copied += 1
+            #if copied <= 6:
+            #    print("[ASG] copy j_dst=" + String(j_dst2) + " <= j_rhs=" + String(j_rhs3))
+            if _bump_indices(idx2, meta.out_shape) == False:
+                break 
+
+ 
+    @always_inline
+    fn _assign_with_sels_tensor(mut self, sels: List[IndexSel], rhs: Tensor[T]) -> None: 
+        var meta = self._build_sel_meta(sels) 
+        self._assign_into_self_from_meta(meta, rhs) 
+ 
+
+    @always_inline
+    fn _trip_from_slice(self, axis: Int, s: Slice) -> (Int, Int, Int):
+        var n = self._axis_len(axis)
+        var start_opt: Optional[Int]
+        if s.start is None: start_opt = None else: start_opt = Optional[Int](s.start.value())
+        var stop_opt: Optional[Int]
+        if s.end   is None: stop_opt  = None else: stop_opt  = Optional[Int](s.end.value())
+        var step_opt: Optional[Int]
+        if s.step  is None: step_opt  = None else: step_opt  = Optional[Int](s.step.value())
+        var trip = _normalize_slice_1d(n, start_opt, stop_opt, step_opt)
+        if s.start is None and s.end is None and s.step is None:
+            trip = (0, n, 1)
+        return trip
+
+    
+   
+
+    # --- خودِ پارسر: مستقیماً List[IndexSel] می‌سازد و sliceها را نرمال می‌کند ---
+    @always_inline
+    fn _parse_selector_string_lite(self, spec: String) -> List[IndexSel]:
+        var r = len(self._shape)
         var sels = List[IndexSel]()
-        sels.reserve(d)
-        sels.append(sel.copy())
-        var ax = 1
-        while ax < d:
-            sels.append(self.all_axis())
-            ax = ax + 1
-        self.select_set_tensor(sels, src)
 
-    fn __setitem__(mut self, idxs: List[Int], src: Tensor[T]) -> None:
-        var s0 = make_fancy_sel(idxs)
-        self.__setitem__(s0, src)
+        var raw = String(spec.strip())
+        if len(raw) == 0:
+            var ax = 0
+            while ax < r:
+                sels.append(IndexSel.slice(0, self._axis_len(ax), 1))
+                ax += 1 
+            return sels.copy()
 
+        # split به String
+        var parts_slice = raw.split(",")
+        var parts = List[String]()
+        var pi = 0
+        while pi < len(parts_slice):
+            parts.append(String(parts_slice[pi]))
+            pi += 1
+
+        # ellipsis
+        var has_ellipsis = False
+        var ellipsis_pos = -1
+        var i = 0
+        while i < len(parts):
+            var ptrim = String(parts[i].strip())
+            if ptrim == "...":
+                has_ellipsis = True
+                ellipsis_pos = i
+                break
+            i += 1
+
+        var tokens = List[String]()
+        if has_ellipsis:
+            var left_count  = ellipsis_pos
+            var right_count = len(parts) - ellipsis_pos - 1
+            var missing = r - (left_count + right_count)
+            if missing < 0:
+                print("[PARSE ERROR] too many indices for rank=" + String(r))
+                missing = 0
+
+            var j = 0
+            while j < left_count:
+                tokens.append(String(parts[j].strip()))
+                j += 1
+            var k = 0
+            while k < missing:
+                tokens.append(String(":"))
+                k += 1
+            var m = ellipsis_pos + 1
+            while m < len(parts):
+                tokens.append(String(parts[m].strip()))
+                m += 1
+        else:
+            var t = 0
+            while t < len(parts):
+                tokens.append(String(parts[t].strip()))
+                t += 1
+
+        # تراز با rank
+        if len(tokens) < r:
+            var pad = r - len(tokens)
+            var p = 0
+            while p < pad:
+                tokens.append(String(":"))
+                p += 1
+        elif len(tokens) > r: 
+            var clipped = List[String]()
+            var q = 0
+            while q < r:
+                clipped.append(tokens[q])
+                q += 1
+            tokens = clipped.copy()   
+ 
+ 
+        var ax2 = 0
+        while ax2 < r:
+            var tok = tokens[ax2]
+            var n_ax = self._axis_len(ax2)
+
+            # شمارش ':' با split
+            var trio_slice = tok.split(":")
+            var colon_cnt = len(trio_slice) - 1
+
+            if colon_cnt > 0:
+                # slice
+                var trio = List[String]()
+                var ti = 0
+                while ti < len(trio_slice):
+                    trio.append(String(trio_slice[ti]))
+                    ti += 1
+
+                var a_opt = Optional[Int]()
+                var b_opt = Optional[Int]()
+                var c_opt = Optional[Int]()
+                if len(trio) >= 1: a_opt = _parse_opt_int(trio[0])
+                if len(trio) >= 2: b_opt = _parse_opt_int(trio[1])
+                if len(trio) >= 3: c_opt = _parse_opt_int(trio[2])
+
+                var trip = _normalize_trip(n_ax, a_opt, b_opt, c_opt)
+                var s = IndexSel.slice(trip[0], trip[1], trip[2])
+                sels.append(s) 
+            else:
+                # index (بدون throw)
+                var i_opt = _parse_opt_int(tok)   # "" -> None، عدد معتبر -> Some
+                var i_val: Int
+                if i_opt is None:
+                    print("[PARSE ERROR] invalid integer token \"" + tok + "\"; using 0")
+                    i_val = 0
+                else:
+                    i_val = i_opt.value()
+                var s2 = IndexSel.index(i_val)
+                sels.append(s2) 
+
+            ax2 += 1
+ 
+        return sels.copy()
+
+
+    # -----------------------------------------------------------------------------
+        # __setitem__ overloads (single index, scalar RHS)
+    # ----------------------------------------------------------------------------- 
+    @always_inline
+    fn _assign_after_dump(mut self, label: String, sels: List[IndexSel], rhs: Tensor[T]) -> None: 
+        var dbg = self.select(sels)
+        # _dump_view("[VIEW dst]", dbg)
+        # _dump_view("[VIEW rhs]", rhs) 
+        self._assign_with_sels_tensor(sels, rhs)
+
+
+    @always_inline
+    fn __setitem__(mut self, s: StrIndex, rhs: Tensor[T]) -> None:  
+        var sels = self._parse_selector_string_lite(s.spec)  # خروجی: List[IndexSel] 
+        self._assign_with_sels_tensor(sels, rhs)
+
+    @always_inline
+    fn __setitem__(mut self, lit: StringLiteral, rhs: Tensor[T]) -> None:
+        self.__setitem__(StrIndex(String(lit)), rhs)
+
+    @always_inline
+    fn __setitem__(mut self, i0: Int, rhs: Tensor[T]) -> None: 
+        var sels = List[IndexSel]()
+        sels.append(_ls_index(i0)) 
+        self._assign_with_sels_tensor(sels, rhs)
+
+    @always_inline
+    fn __setitem__(mut self, s: Slice, rhs: Tensor[T]) -> None: 
+        var trip = self._trip_from_slice(0, s)
+        var sels = List[IndexSel]()
+        sels.append(_ls_slice(trip[0], trip[1], trip[2])) 
+        self._assign_with_sels_tensor(sels, rhs)
+
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], rhs: Tensor[T]) -> None:
+        var r = len(self._shape)
+        var sels = List[IndexSel]()
+        if r >= 1: sels.append(_ls_slice(0, self._axis_len(0), 1))
+        if r >= 2: sels.append(_ls_slice(0, self._axis_len(1), 1))
+        if r >= 3: sels.append(_ls_slice(0, self._axis_len(2), 1))
+        if r >= 4: sels.append(_ls_slice(0, self._axis_len(3), 1))
+        if r >= 5: sels.append(_ls_slice(0, self._axis_len(4), 1)) 
+        self._assign_with_sels_tensor(sels, rhs)
+
+
+    # [:, :]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], _e1: Tuple[], rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [i, :]
+    @always_inline
+    fn __setitem__(mut self, i0: Int, _e1: Tuple[], rhs: Tensor[T]) -> None:
+        var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], i1: Int, rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        self._assign_after_dump("2D [:,i]", sels, rhs)
+
+    # [i, a:b:c]
+    @always_inline
+    fn __setitem__(mut self, i0: Int, s1: Slice, rhs: Tensor[T]) -> None:
+        var trip1 = self._trip_from_slice( 1, s1)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel(trip1))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [a:b:c, j]
+    @always_inline
+    fn __setitem__(mut self, s0: Slice, i1: Int, rhs: Tensor[T]) -> None:
+        var trip0 = self._trip_from_slice( 0, s0)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_index_sel(i1))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [a:b:c, d:e:f]
+    @always_inline
+    fn __setitem__(mut self, s0: Slice, s1: Slice, rhs: Tensor[T]) -> None:
+        var t0 = self._trip_from_slice(0, s0)
+        var t1 = self._trip_from_slice(1, s1)
+        var sels = List[IndexSel]()
+        sels.append(_ls_slice(t0[0], t0[1], t0[2]))
+        sels.append(_ls_slice(t1[0], t1[1], t1[2])) 
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [i, j, :]
+    @always_inline
+    fn __setitem__(mut self, i0: Int, i1: Int, rhs: Tensor[T]) -> None:
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_index_sel(i1))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [:, j, :]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], i1: Int, _e2: Tuple[], rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n2 = self._axis_len(2)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        sels.append(make_slice_sel((0, n2, 1)))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [:, :, k]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], _e1: Tuple[], i2: Int, rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        self._assign_after_dump("3D [:,:,i]", sels, rhs)
+
+    # [i, :, k]
+    @always_inline
+    fn __setitem__(mut self, i0: Int, _e1: Tuple[], i2: Int, rhs: Tensor[T]) -> None:
+        var n1 = self._axis_len(1)
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [:, :, a:b:c]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], _e1: Tuple[], s2: Slice, rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1)
+        var trip2 = self._trip_from_slice( 2, s2)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel(trip2))
+        self._assign_with_sels_tensor(sels, rhs)
+
+
+    # [i, j, k, l]
+    @always_inline
+    fn __setitem__(mut self, i0: Int, i1: Int, i2: Int, i3: Int, rhs: Tensor[T]) -> None:
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0))
+        sels.append(make_index_sel(i1))
+        sels.append(make_index_sel(i2))
+        sels.append(make_index_sel(i3))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [:, :, :, k]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], _e1: Tuple[], _e2: Tuple[], i3: Int, rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n2 = self._axis_len(2)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_index_sel(i3))
+        self._assign_after_dump("4D [:,:,:,i]", sels, rhs)
+
+    # [:, :, i, :]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], _e1: Tuple[], i2: Int, _e3: Tuple[], rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        sels.append(make_slice_sel((0, n3, 1)))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # [:, 1:, 1:, :2]  → [E, S, S, S]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], s1: Slice, s2: Slice, s3: Slice, rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0)
+        var trip1 = self._trip_from_slice( 1, s1)
+        var trip2 = self._trip_from_slice( 2, s2)
+        var trip3 = self._trip_from_slice( 3, s3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel(trip1))
+        sels.append(make_slice_sel(trip2))
+        sels.append(make_slice_sel(trip3))
+        self._assign_with_sels_tensor(sels, rhs)
+
+
+    # (A) [i0,i1,i2,i3,i4]
+    @always_inline
+    fn __setitem__(mut self, i0: Int, i1: Int, i2: Int, i3: Int, i4: Int, rhs: Tensor[T]) -> None:
+        var sels = List[IndexSel]()
+        sels.append(make_index_sel(i0)); sels.append(make_index_sel(i1))
+        sels.append(make_index_sel(i2)); sels.append(make_index_sel(i3))
+        sels.append(make_index_sel(i4))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # (B) [:, :, 1, :, :]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], _e1: Tuple[], i2: Int, _e3: Tuple[], _e4: Tuple[], rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n3 = self._axis_len(3); var n4 = self._axis_len(4)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_index_sel(i2))
+        sels.append(make_slice_sel((0, n3, 1)))
+        sels.append(make_slice_sel((0, n4, 1)))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # (C) [::2, :, :, :, 0]
+    @always_inline
+    fn __setitem__(mut self, s0: Slice, _e1: Tuple[], _e2: Tuple[], _e3: Tuple[], i4: Int, rhs: Tensor[T]) -> None:
+        var trip0 = self._trip_from_slice( 0, s0)
+        var n1 = self._axis_len(1); var n2 = self._axis_len(2); var n3 = self._axis_len(3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel(trip0))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel((0, n3, 1)))
+        sels.append(make_index_sel(i4))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # (D) [:, 1, :, :, 1:3]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], i1: Int, _e2: Tuple[], _e3: Tuple[], s4: Slice, rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n2 = self._axis_len(2); var n3 = self._axis_len(3)
+        var trip4 = self._trip_from_slice( 4, s4)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_index_sel(i1))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel((0, n3, 1)))
+        sels.append(make_slice_sel(trip4))
+        self._assign_with_sels_tensor(sels, rhs)
+
+    # (E) [:, :, :, ::-1, :]
+    @always_inline
+    fn __setitem__(mut self, _e0: Tuple[], _e1: Tuple[], _e2: Tuple[], s3: Slice, _e4: Tuple[], rhs: Tensor[T]) -> None:
+        var n0 = self._axis_len(0); var n1 = self._axis_len(1); var n2 = self._axis_len(2); var n4 = self._axis_len(4)
+        var trip3 = self._trip_from_slice( 3, s3)
+        var sels = List[IndexSel]()
+        sels.append(make_slice_sel((0, n0, 1)))
+        sels.append(make_slice_sel((0, n1, 1)))
+        sels.append(make_slice_sel((0, n2, 1)))
+        sels.append(make_slice_sel(trip3))
+        sels.append(make_slice_sel((0, n4, 1)))
+        self._assign_with_sels_tensor(sels, rhs)
+
+
+
+    # Central dispatcher
+    @always_inline
+    fn _assign_sels_scalar(mut self: Tensor[T], sels: List[IndexSel], s: T) -> None:
+        var view = self.select(sels)   # view over self
+        _fill_view(view, s)
+
+    @always_inline
+    fn _assign_sels_tensor(mut self: Tensor[T], sels: List[IndexSel], rhs: Tensor[T]) -> None:
+        var view = self.select(sels)   # view over self
+        _copy_view_broadcast(view, rhs)
+
+    # Convenience: normalized 1D slice for a given axis (you already have _trip_from_slice)
+    @always_inline
+    fn _trip_from_slice_axis(self: Tensor[T], axis: Int, s: Slice) -> (Int, Int, Int):
+        var n = self._axis_len(axis)
+        var start_opt: Optional[Int]
+        if s.start is None: start_opt = None else: start_opt = Optional[Int](s.start.value())
+        var stop_opt: Optional[Int]
+        if s.end   is None: stop_opt  = None else: stop_opt  = Optional[Int](s.end.value())
+        var step_opt: Optional[Int]
+        if s.step  is None: step_opt  = None else: step_opt  = Optional[Int](s.step.value())
+        var trip = _normalize_slice_1d(n, start_opt, stop_opt, step_opt)
+        if s.start is None and s.end is None and s.step is None:
+            trip = (0, n, 1)
+        return trip
     # ---------- Introspection ---------- 
 
     fn len(self) -> Int:
@@ -1779,32 +3565,32 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     
 
  
-    fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Float64]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Float64],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
  
-    fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Float32]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Float32],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
  
-    fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Int]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Int],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
 
-    fn can_broadcast_with(self: Tensor[Float32], other: Tensor[Float64]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Float32], other: Tensor[Float64],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
 
-    fn can_broadcast_with(self: Tensor[Float32], other: Tensor[Float32]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Float32], other: Tensor[Float32],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
 
-    fn can_broadcast_with(self: Tensor[Float32], other: Tensor[Int]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Float32], other: Tensor[Int],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
 
-    fn can_broadcast_with(self: Tensor[Int], other: Tensor[Float64]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Int], other: Tensor[Float64],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
 
-    fn can_broadcast_with(self: Tensor[Int], other: Tensor[Float32]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Int], other: Tensor[Float32],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
 
-    fn can_broadcast_with(self: Tensor[Int], other: Tensor[Int]) -> Bool:
-        return can_broadcast_shapes(self._shape, other._shape)
+    fn can_broadcast_with(self: Tensor[Int], other: Tensor[Int],strict: Bool = False) -> Bool:
+        return can_broadcast_shapes(self._shape, other._shape,strict)
 
     # ----------------------
     # self: Tensor[Float32]
@@ -3031,11 +4817,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn flatten(self: Tensor[Float64]) -> Tensor[Float64]:        return flatten(self)
     fn flatten(self: Tensor[Float32]) -> Tensor[Float32]:        return flatten(self)
-    fn flatten(self: Tensor[Int]) -> Tensor[Int]:        return flatten(self)
+    fn flatten(self: Tensor[Int]) -> Tensor[Int]:        return flatten(self) 
+
     
-    #fn view(self: Tensor[Float64],shape: List[Int]) -> Tensor[Float64]:        return view(self,shape)
-    #fn view(self: Tensor[Float32],shape: List[Int]) -> Tensor[Float32]:        return view(self,shape)
-    #fn view(self: Tensor[Int],shape: List[Int]) -> Tensor[Int]:        return view(self,shape)
     fn view(self ,shape: List[Int]) -> Tensor[T]:        return view(self,shape)
 
     fn dtype_name(self: Tensor[Bool])    -> String: return "Bool"
@@ -3165,6 +4949,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         # compute_row_major_strides(..) must exist in your module:
         self._strides = compute_row_major_strides(self._shape)
         self._offset = 0
+
+    fn gather(self, axis: Int, index: Tensor[Int]) -> Tensor[T]:
+        return gather(self, axis, index)
 
  
 
