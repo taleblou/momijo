@@ -1056,31 +1056,45 @@ fn linspace_list_f64(a: Float64, b: Float64, n: Int, endpoint: Bool = True) -> L
 
 # ------------------------------- empty -------------------------------
 # Zero-initialized tensor. 'from_f64' must come BEFORE the optional 'shape'.
-
 @always_inline
 fn empty_tensor_with[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T,
     shape: Optional[List[Int]] = None
 ) -> Tensor[T]:
-    var shp = if shape is None:
-        (var tmp = List[Int](); tmp.append(0); tmp)
+    # Resolve shape (default to [0])
+    var shp = List[Int]()
+    if shape is None:
+        shp.append(0)
     else:
-        shape.value().copy()
+        shp = shape.value().copy()
 
-    var n = 1; var i = 0
-    while i < len(shp): n = n * shp[i]; i += 1
+    # Compute element count
+    var n = 1
+    var i = 0
+    var r = len(shp)
+    while i < r:
+        n = n * shp[i]
+        i += 1
 
-    var data = List[T](); data.reserve(n)
+    # Allocate and fill with zeros (unrolled)
+    var data = List[T]()
+    data.reserve(n)
     var z = from_f64(0.0)
-    var k = 0; var lim = (n // 8) * 8
+
+    var k = 0
+    var lim = (n // 8) * 8
     while k < lim:
         data.append(z); data.append(z); data.append(z); data.append(z)
         data.append(z); data.append(z); data.append(z); data.append(z)
         k += 8
-    while k < n: data.append(z); k += 1
+    while k < n:
+        data.append(z)
+        k += 1
 
+    # Row-major strides and construct tensor (offset = 0)
     var strides = compute_row_major_strides(shp)
     return Tensor[T](data, shp, strides, 0)
+
     
 fn empty_tensor[T: ImplicitlyCopyable & Copyable & Movable]() -> Tensor[T]:
     var data = List[T]()        # no elements
@@ -1133,27 +1147,32 @@ fn from_list_int(data: List[Int]) -> Tensor[Int]:
     var n = len(data)
     var shape = List[Int]()
     shape.append(n)
-    return Tensor[Int](data.copy(), shape)
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Int](data.copy(), shape, strides, 0)
+
 
 @always_inline
 fn from_list_float32(data: List[Float32]) -> Tensor[Float32]:
-    var n = len(data)
+    # 1D tensor from a flat list (row-major)
     var shape = List[Int]()
-    shape.append(n)
-    return Tensor[Float32](data.copy(), shape)
+    shape.append(len(data))
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Float32](data.copy(), shape, strides, 0)
 
 @always_inline
 fn scalar_zero_tensor[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T
 ) -> Tensor[T]:
     # Rank-0 tensor (shape == [], numel == 1)
-    var shape = List[Int]()                       # []
-    var strides = compute_row_major_strides(shape) # []
+    var shape = List[Int]()              # []
+    var strides = List[Int]()            # row-major for rank-0 is []
     var data = List[T]()
-    data.append(from_f64(0.0))                    # one element for scalar
-    # Positional args only; include offset=0 for the 4-arg ctor
+    data.reserve(1)
+    data.append(from_f64(0.0))
     return Tensor[T](data, shape, strides, 0)
 
+
+ 
 
 
  
