@@ -770,11 +770,10 @@ fn upsample_nearest[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], sc
     return out.copy()
 
 @always_inline
-fn clamp_int(x: Int, lo: Int, hi: Int) -> Int:
-    if x < lo:
-        return lo
-    if x > hi:
-        return hi
+fn clamp_int(x0: Int, lo: Int, hi: Int) -> Int:
+    var x = x0
+    if x < lo: x = lo
+    if x > hi: x = hi
     return x
 @always_inline
 fn clamp_f64(x: Float64, lo: Float64, hi: Float64) -> Float64:
@@ -1819,23 +1818,28 @@ fn transpose[T: ImplicitlyCopyable & Copyable & Movable](
 fn view[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], shape: List[Int]
 ) -> Tensor[T]:
-    # Copy requested shape; detect one -1 and compute product of known dims
+    # ----------------------------
+    # 1) Validate & prepare shape
+    # ----------------------------
     var new_shape = List[Int]()
     var infer_pos = -1
     var neg_count = 0
     var known = 1
 
-    var i = 0
     var nshape = len(shape)
     new_shape.reserve(nshape)
+
+    var i = 0
     while i < nshape:
         var d = shape[i]
         new_shape.append(d)
+
         if d == -1:
             neg_count = neg_count + 1
             infer_pos = i
         else:
-            if d <= 0:            # invalid (except the single -1)
+            # Disallow non-positive dims (0 and negatives other than -1)
+            if d <= 0:
                 return x.copy()
             known = known * d
         i = i + 1
@@ -1843,7 +1847,9 @@ fn view[T: ImplicitlyCopyable & Copyable & Movable](
     if neg_count > 1:
         return x.copy()
 
-    # Total elems of x
+    # ----------------------------
+    # 2) Compute total elements
+    # ----------------------------
     var total = 1
     var r = len(x._shape)
     i = 0
@@ -1851,28 +1857,47 @@ fn view[T: ImplicitlyCopyable & Copyable & Movable](
         total = total * x._shape[i]
         i = i + 1
 
-    # Infer missing dim if needed
+    # ----------------------------
+    # 3) Infer the -1 dimension
+    # ----------------------------
     if infer_pos >= 0:
-        if known == 0: return x.copy()
-        if (total // known) * known != total: return x.copy()
-        new_shape[infer_pos] = total // known
+        # known cannot be 0 here because we rejected d <= 0 above
+        var q = total // known
+        if q * known != total:
+            return x.copy()
+        new_shape[infer_pos] = q
 
-    # Final product must match
+    # ----------------------------
+    # 4) Final product must match
+    # ----------------------------
     var prod = 1
     i = 0
     var new_r = len(new_shape)
     while i < new_r:
+        # new_shape[i] is guaranteed > 0 now
         prod = prod * new_shape[i]
         i = i + 1
+
     if prod != total:
         return x.copy()
 
-    # Ensure row-major storage; avoid allocating have_strides
-    var base = x.copy()
-    if not is_row_major(x._shape, x._strides):
-        # Note: project already has a fast flatten that materializes row-major
-        base = flatten(x)
+    # -------------------------------------------------
+    # 5) Ensure row-major contiguity (zero-copy if possible)
+    # -------------------------------------------------
+    # If x is already row-major contiguous, avoid copying.
+    # Otherwise, materialize a contiguous base using flatten(x).
+    var base: Tensor[T]
+    if is_row_major(x._shape, x._strides):
+        base = x.copy()
+    else:
+        base = flatten(x)  # project fast path: produces row-major contiguous storage
 
-    # Build row-major strides for the new shape
+    # ----------------------------
+    # 6) Build row-major strides
+    # ----------------------------
     var want_strides = row_major_strides(new_shape)
+
+    # ----------------------------
+    # 7) Zero-copy rewrap
+    # ----------------------------
     return Tensor[T](base._data, new_shape, want_strides, base._offset)
