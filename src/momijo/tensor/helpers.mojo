@@ -25,23 +25,59 @@ from momijo.tensor.cast import *
 from momijo.tensor.math import *
 from momijo.tensor.transform import clamp_int
 
-alias SliceSpec = (Int, Int, Int)          # (start, stop, step)    
+# ---------------------------------------------------------------------------
+# Public alias for a normalized 1-D slice triplet: (start, stop, step)
+# ---------------------------------------------------------------------------
+alias SliceSpec = (Int, Int, Int)
 
-struct IndexSel(Copyable, Movable):
-    var tag: Int8            # 0=index, 1=slice, 2=fancy
-    var i: Int               # index (for tag=0)
-    var start: Int           # slice start (for tag=1)
-    var stop: Int            # slice stop (for tag=1)
-    var step: Int            # slice step (for tag=1)
-    var idxs: List[Int]      # fancy list (for tag=2)
+# ---------------------------------------------------------------------------
+# IndexSel (index | slice | fancy)
+# --------------------------------------------------------------------------- 
+# Value-type selector (no shared refs/aliases)
+struct IndexSel(ImplicitlyCopyable, Copyable, Movable):
+    var tag:   Int8        # 0=index, 1=slice, 2=fancy
+    var i:     Int         # for tag=0
+    var start: Int         # for tag=1
+    var stop:  Int         # for tag=1
+    var step:  Int         # for tag=1
+    var idxs:  List[Int]   # for tag=2
 
+     
     fn __init__(out self, t: Int8, ii: Int, a: Int, b: Int, c: Int, js: List[Int]):
-        self.tag = t
-        self.i = ii
+        self.tag   = t
+        self.i     = ii
         self.start = a
-        self.stop = b
-        self.step = c
-        self.idxs = js.copy()
+        self.stop  = b
+        self.step  = c
+        self.idxs  = js.copy()        # avoid aliasing
+
+    # Manual copy constructor (because List[Int] is not implicitly copyable)
+    fn __copyinit__(out self, other: Self):
+        self.tag   = other.tag
+        self.i     = other.i
+        self.start = other.start
+        self.stop  = other.stop
+        self.step  = other.step
+        self.idxs  = other.idxs.copy()  # deep copy
+
+    @staticmethod
+    @always_inline
+    fn index(i: Int) -> IndexSel:
+        var js = List[Int]()
+        return IndexSel(0, i, 0, 0, 1, js)
+
+    @staticmethod
+    @always_inline
+    fn slice(a: Int, b: Int, s: Int = 1) -> IndexSel:
+        var js = List[Int]()
+        return IndexSel(1, 0, a, b, s, js)
+
+    @staticmethod
+    @always_inline
+    fn fancy(js_in: List[Int]) -> IndexSel:
+        return IndexSel(2, 0, 0, 0, 1, js_in.copy())
+
+
 # ============================== Core list utils ==============================
 
 @always_inline
@@ -1678,11 +1714,10 @@ struct UniqueResult:
         self.p2 = p2.copy()
 
 @always_inline
-fn wrap_axis_index(i: Int, dim: Int) -> Int:
-    var idx = i
-    if idx < 0:
-        idx = dim + idx
-    return clamp_int(idx, 0, math_max(dim - 1, 0))
+fn wrap_axis_index(i0: Int, dim: Int) -> Int:
+    var i = i0
+    if i < 0: i = i + dim
+    return clamp_int(i, 0, dim - 1)
 
 @always_inline
 fn ceil_div_pos(a: Int, b: Int) -> Int:
@@ -1691,18 +1726,23 @@ fn ceil_div_pos(a: Int, b: Int) -> Int:
 
 @always_inline
 fn axis_len_from_slice(start: Int, stop: Int, step: Int) -> Int:
-    if step == 0:
-        return 0
-    if step > 0:
-        var span = stop - start
-        if span <= 0: return 0
-        return ceil_div_pos(span, step)
-    # step < 0
-    var span_neg = start - stop
-    if span_neg <= 0: return 0
-    return ceil_div_pos(span_neg, -step)
+    var s = step
+    if s == 0: s = 1
+    var out: Int
+    if s > 0:
+        if stop <= start: out = 0
+        else:
+            var diff = stop - start
+            out = (diff + s - 1) // s
+    else:
+        if stop >= start: out = 0
+        else:
+            var diff = start - stop
+            var m = -s
+            out = (diff + m - 1) // m 
+    return out
 
- 
+
 
 @always_inline
 fn copy_ints(xs: List[Int]) -> List[Int]:
@@ -1714,30 +1754,54 @@ fn copy_ints(xs: List[Int]) -> List[Int]:
         out.append(xs[i])
         i += 1
     return out.copy()
-
-# Constructors
-@always_inline
-fn make_index_sel(ii: Int) -> IndexSel:
-    var empty = List[Int]()
-    return IndexSel(0, ii, 0, 0, 1, empty.copy())
+ 
 
 
 @always_inline
-fn make_slice_sel(t: (Int, Int, Int)) -> IndexSel:
-    var empty = List[Int]()
-    return IndexSel(1, 0, t[0], t[1], t[2], empty.copy())
+fn _index_sel_str(sel: IndexSel) -> String:
+    var s = String("[tag=") + String(sel.tag) + "] "
+    if sel.tag == 0:
+        s += "index i=" + String(sel.i)
+    elif sel.tag == 1:
+        s += "slice " + String(sel.start) + ":" + String(sel.stop) + ":" + String(sel.step)
+    else:
+        s += "fancy idxs=" + _list_str(sel.idxs)
+    return s
+@always_inline
+fn _list_str(xs: List[Int]) -> String:
+    var s = String("[")
+    var i = 0
+    var n = len(xs)
+    while i < n:
+        s = s + String(xs[i])
+        if i + 1 < n: s = s + ", "
+        i += 1
+    s = s + "]"
+    return s
+# Shorthands used across indexing paths
+# ---------------------------------------------------------------------------
+@always_inline
+fn make_index_sel(i: Int) -> IndexSel:
+    var s = IndexSel.index(i) 
+    return s.copy()
 
+@always_inline
+fn make_slice_sel(t: Tuple[Int, Int, Int]) -> IndexSel: 
+    var s = IndexSel.slice(t[0], t[1], t[2]) 
+    return s.copy()
+@always_inline
+fn make_slice_sel(start: Int, stop: Int, step: Int) -> IndexSel:
+    var s = IndexSel.slice(start, stop, step) 
+    return s.copy()
 
 @always_inline
 fn make_fancy_sel(js: List[Int]) -> IndexSel:
-    return IndexSel(2, 0, 0, 0, 1, js.copy())  
+    return IndexSel.fancy(js)
 
 @always_inline
 fn make_slice(start: Int, stop: Int, step: Int) -> SliceSpec:
-    # Convenience constructor used throughout indexing paths.
     return SliceSpec(start, stop, step)
 
-# Optional convenience for a full-axis slice: [0:dim:1]
 @always_inline
 fn full_axis_slice(dim: Int) -> SliceSpec:
     return SliceSpec(0, dim, 1)
@@ -1753,24 +1817,24 @@ fn is_slice(s: IndexSel) -> Bool:
 fn is_fancy(s: IndexSel) -> Bool: 
     return s.tag == 2
 
-
 # Accessors
 @always_inline 
 fn get_index(s: IndexSel) -> Int: 
     return s.i
 @always_inline 
-fn get_slice(s: IndexSel) -> (Int, Int, Int): 
+fn get_slice(s: IndexSel) -> Tuple[Int, Int, Int]: 
     return (s.start, s.stop, s.step)
 @always_inline 
 fn get_fancy_list(s: IndexSel) -> List[Int]: 
     return s.idxs.copy()
 
-
- 
+# Strides helper (assumes you already have compute_row_major_strides)
 @always_inline
 fn mk_strides(shape: List[Int]) -> List[Int]:
     return compute_row_major_strides(shape)
 
+  
+  
 
 
  
