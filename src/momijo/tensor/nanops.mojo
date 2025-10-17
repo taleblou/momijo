@@ -21,12 +21,12 @@
 
 from collections.list import List
 from momijo.tensor.tensor import Tensor
+from momijo.tensor.cast import *
 from momijo.tensor.helpers import (
     is_row_major_contiguous,
     normalize_axis,
 )
-from momijo.tensor.math import (
-    clone_header_share_data,
+from momijo.tensor.transform import ( 
     contiguous,
 )
 
@@ -66,41 +66,23 @@ fn _shape_without_axis(shape: List[Int], ax: Int, keepdims: Bool) -> List[Int]:
         while i < r:
             out.append(1 if i == ax else shape[i])
             i += 1
-        return out
+        return out.copy()
     var i2 = 0
     while i2 < r:
         if i2 != ax: out.append(shape[i2])
         i2 += 1
     if len(out) == 0:
         out.append(1)
-    return out
+    return out.copy()
 
 @always_inline
 fn _ensure_contig[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
     if is_row_major_contiguous(x._shape, x._strides):
-        return clone_header_share_data[T](x, x._shape, x._strides)
+        # share data; copy shape/strides (header only), keep same offset
+        return Tensor[T](x._data, x._shape.copy(), x._strides.copy(), x._offset)
     return contiguous(x)
-
-@always_inline
-fn _to_f64_tensor[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[Float64]:
-    var n = len(x._data)
-    var out = List[Float64](); out.reserve(n)
-    var i = 0
-    var lim = (n // 8) * 8
-    while i < lim:
-        out.append(Float64(x._data[i + 0]))
-        out.append(Float64(x._data[i + 1]))
-        out.append(Float64(x._data[i + 2]))
-        out.append(Float64(x._data[i + 3]))
-        out.append(Float64(x._data[i + 4]))
-        out.append(Float64(x._data[i + 5]))
-        out.append(Float64(x._data[i + 6]))
-        out.append(Float64(x._data[i + 7]))
-        i += 8
-    while i < n:
-        out.append(Float64(x._data[i]))
-        i += 1
-    return Tensor[Float64](out, x._shape)
+ 
+ 
 
 @always_inline
 fn _from_f64_tensor[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[Float64]) -> Tensor[T]:
@@ -207,13 +189,13 @@ fn safe_sqrt(x: Tensor[Float64], eps: Float64 = 0.0) -> Tensor[Float64]:
 
 # Generic wrappers for safe helpers
 fn safe_div[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], y: Tensor[T], eps: Float64 = 1e-12) -> Tensor[Float64]:
-    return safe_div(_to_f64_tensor[T](x), _to_f64_tensor[T](y), eps)
+    return safe_div(to_float64(x), to_float64(y), eps)
 
 fn safe_log[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], eps: Float64 = 1e-12) -> Tensor[Float64]:
-    return safe_log(_to_f64_tensor[T](x), eps)
+    return safe_log(to_float64(x), eps)
 
 fn safe_sqrt[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], eps: Float64 = 0.0) -> Tensor[Float64]:
-    return safe_sqrt(_to_f64_tensor[T](x), eps)
+    return safe_sqrt(to_float64(x), eps)
 
 # ================================ Masks =================================
 
@@ -280,13 +262,13 @@ fn isfinite_f64(x: Tensor[Float64]) -> Tensor[Int]:
 
 # Generic wrappers (accept Tensor[T] -> convert to Float64)
 fn isnan[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[Int]:
-    return isnan_f64(_to_f64_tensor[T](x))
+    return isnan_f64(to_int[T](x))
 
 fn isinf[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[Int]:
-    return isinf_f64(_to_f64_tensor[T](x))
+    return isinf_f64(to_int[T](x))
 
 fn isfinite[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[Int]:
-    return isfinite_f64(_to_f64_tensor[T](x))
+    return isfinite_f64(to_int[T](x))
 
 # ============================= nan_to_num ===============================
 
@@ -340,7 +322,7 @@ fn nan_to_num[T: ImplicitlyCopyable & Copyable & Movable](
     posinf: Optional[Float64] = None,
     neginf: Optional[Float64] = None
 ) -> Tensor[T]:
-    var xf = _to_f64_tensor[T](x)
+    var xf = to_float64(x)
     var yf = nan_to_num_f64(xf, nan, posinf, neginf)
     return _from_f64_tensor[T](yf)
 
@@ -349,44 +331,103 @@ fn nan_to_num[T: ImplicitlyCopyable & Copyable & Movable](
 
 # ---- All-elements (axis=None), computed in Float64 ----
 
+@always_inline
 fn nansum_all_f64(x: Tensor[Float64]) -> Tensor[Float64]:
     var a = _ensure_contig(x)
     var n = len(a._data)
-    var s0 = 0.0; var s1 = 0.0; var s2 = 0.0; var s3 = 0.0
+
+    var s0 = 0.0
+    var s1 = 0.0
+    var s2 = 0.0
+    var s3 = 0.0
+
     var i = 0
     var lim = (n // 4) * 4
     while i < lim:
-        var v0 = a._data[i + 0]; if v0 == v0: s0 = s0 + v0
-        var v1 = a._data[i + 1]; if v1 == v1: s1 = s1 + v1
-        var v2 = a._data[i + 2]; if v2 == v2: s2 = s2 + v2
-        var v3 = a._data[i + 3]; if v3 == v3: s3 = s3 + v3
-        i += 4
-    while i < n:
-        var v = a._data[i]; if v == v: s0 = s0 + v
-        i += 1
-    var total = ((s0 + s1) + (s2 + s3))
-    return Tensor[Float64]([total], [1])
+        var v0 = a._data[i + 0]
+        if v0 == v0:
+            s0 = s0 + v0
 
+        var v1 = a._data[i + 1]
+        if v1 == v1:
+            s1 = s1 + v1
+
+        var v2 = a._data[i + 2]
+        if v2 == v2:
+            s2 = s2 + v2
+
+        var v3 = a._data[i + 3]
+        if v3 == v3:
+            s3 = s3 + v3
+
+        i = i + 4
+
+    while i < n:
+        var v = a._data[i]
+        if v == v:
+            s0 = s0 + v
+        i = i + 1
+
+    var total = (s0 + s1) + (s2 + s3)
+
+    var out_shape = List[Int](); out_shape.append(1)
+    var out_data  = List[Float64](); out_data.append(total)
+    var st = compute_row_major_strides(out_shape)
+    return Tensor[Float64](out_data, out_shape, st, 0)
+
+
+@always_inline
 fn nanmean_all_f64(x: Tensor[Float64]) -> Tensor[Float64]:
     var a = _ensure_contig(x)
     var n = len(a._data)
-    var sum0 = 0.0; var cnt0 = 0.0
+
+    var sum0 = 0.0
+    var cnt0 = 0.0
+
     var i = 0
     var lim = (n // 4) * 4
     while i < lim:
-        var v0 = a._data[i + 0]; if v0 == v0: sum0 = sum0 + v0; cnt0 = cnt0 + 1.0
-        var v1 = a._data[i + 1]; if v1 == v1: sum0 = sum0 + v1; cnt0 = cnt0 + 1.0
-        var v2 = a._data[i + 2]; if v2 == v2: sum0 = sum0 + v2; cnt0 = cnt0 + 1.0
-        var v3 = a._data[i + 3]; if v3 == v3: sum0 = sum0 + v3; cnt0 = cnt0 + 1.0
-        i += 4
+        var v0 = a._data[i + 0]
+        if v0 == v0:
+            sum0 = sum0 + v0
+            cnt0 = cnt0 + 1.0
+
+        var v1 = a._data[i + 1]
+        if v1 == v1:
+            sum0 = sum0 + v1
+            cnt0 = cnt0 + 1.0
+
+        var v2 = a._data[i + 2]
+        if v2 == v2:
+            sum0 = sum0 + v2
+            cnt0 = cnt0 + 1.0
+
+        var v3 = a._data[i + 3]
+        if v3 == v3:
+            sum0 = sum0 + v3
+            cnt0 = cnt0 + 1.0
+
+        i = i + 4
+
     while i < n:
-        var v = a._data[i]; if v == v: sum0 = sum0 + v; cnt0 = cnt0 + 1.0
-        i += 1
+        var v = a._data[i]
+        if v == v:
+            sum0 = sum0 + v
+            cnt0 = cnt0 + 1.0
+        i = i + 1
+
+    var out_shape = List[Int](); out_shape.append(1)
+    var st = compute_row_major_strides(out_shape)
+
     if cnt0 == 0.0:
         var nanv = 0.0 / 0.0
-        return Tensor[Float64]([nanv], [1])
+        var out_nan = List[Float64](); out_nan.append(nanv)
+        return Tensor[Float64](out_nan, out_shape, st, 0)
+
     var meanv = sum0 / cnt0
-    return Tensor[Float64]([meanv], [1])
+    var out_data = List[Float64](); out_data.append(meanv)
+    return Tensor[Float64](out_data, out_shape, st, 0)
+
 
 fn nanmin_all_f64(x: Tensor[Float64]) -> Tensor[Float64]:
     var a = _ensure_contig(x)
@@ -408,8 +449,13 @@ fn nanmin_all_f64(x: Tensor[Float64]) -> Tensor[Float64]:
     return Tensor[Float64]([cur], [1])
 
 # ---- Axis-aware (contiguous fast path), computed in Float64 ----
-
-fn nansum_axis_contig_f64(data: List[Float64], shape: List[Int], axis: Int, keepdims: Bool) -> Tensor[Float64]:
+@always_inline
+fn nansum_axis_contig_f64(
+    data: List[Float64],
+    shape: List[Int],
+    axis: Int,
+    keepdims: Bool
+) -> Tensor[Float64]:
     var r = len(shape)
     var ax = axis
 
@@ -417,20 +463,24 @@ fn nansum_axis_contig_f64(data: List[Float64], shape: List[Int], axis: Int, keep
     var i = 0
     while i < ax:
         outer = outer * shape[i]
-        i += 1
+        i = i + 1
+
     var axis_len = shape[ax]
+
     var inner = 1
     var j = ax + 1
     while j < r:
         inner = inner * shape[j]
-        j += 1
+        j = j + 1
 
     var out_elems = outer * inner
-    var out = List[Float64](); out.reserve(out_elems)
+    var out = List[Float64]()
+    out.reserve(out_elems)
+
     var z = 0
     while z < out_elems:
         out.append(0.0)
-        z += 1
+        z = z + 1
 
     var base = 0
     var o = 0
@@ -439,24 +489,42 @@ fn nansum_axis_contig_f64(data: List[Float64], shape: List[Int], axis: Int, keep
         var k = 0
         while k < axis_len:
             var b = base + k * inner
+
             var t = 0
             var lim = (inner // 4) * 4
             while t < lim:
-                var v0 = data[b + t + 0]; if v0 == v0: out[off + t + 0] = out[off + t + 0] + v0
-                var v1 = data[b + t + 1]; if v1 == v1: out[off + t + 1] = out[off + t + 1] + v1
-                var v2 = data[b + t + 2]; if v2 == v2: out[off + t + 2] = out[off + t + 2] + v2
-                var v3 = data[b + t + 3]; if v3 == v3: out[off + t + 3] = out[off + t + 3] + v3
-                t += 4
+                var v0 = data[b + t + 0]
+                if v0 == v0:
+                    out[off + t + 0] = out[off + t + 0] + v0
+
+                var v1 = data[b + t + 1]
+                if v1 == v1:
+                    out[off + t + 1] = out[off + t + 1] + v1
+
+                var v2 = data[b + t + 2]
+                if v2 == v2:
+                    out[off + t + 2] = out[off + t + 2] + v2
+
+                var v3 = data[b + t + 3]
+                if v3 == v3:
+                    out[off + t + 3] = out[off + t + 3] + v3
+
+                t = t + 4
+
             while t < inner:
                 var v = data[b + t]
-                if v == v: out[off + t] = out[off + t] + v
-                t += 1
-            k += 1
+                if v == v:
+                    out[off + t] = out[off + t] + v
+                t = t + 1
+
+            k = k + 1
+
         base = base + axis_len * inner
-        o += 1
+        o = o + 1
 
     var out_shape = _shape_without_axis(shape, ax, keepdims)
-    return Tensor[Float64](out, out_shape)
+    var st = compute_row_major_strides(out_shape)
+    return Tensor[Float64](out, out_shape, st, 0)
 
 fn nanmean_axis_contig_f64(data: List[Float64], shape: List[Int], axis: Int, keepdims: Bool) -> Tensor[Float64]:
     var r = len(shape)
@@ -566,27 +634,76 @@ fn nanmin_axis_contig_f64(data: List[Float64], shape: List[Int], axis: Int, keep
     return Tensor[Float64](out, out_shape)
 
 # ---- Public API (T -> Float64 compute) ----
+ 
 
-fn nansum[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
-    var xf = _to_f64_tensor[T](x)
-    if axis is None:
-        return nansum_all_f64(xf)
-    var a = _ensure_contig(xf)
-    var ax = normalize_axis(axis.value(), len(a._shape))
-    return nansum_axis_contig_f64(a._data, a._shape, ax, keepdims)
-
-fn nanmean[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
-    var xf = _to_f64_tensor[T](x)
+fn nanmean(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
     if axis is None:
         return nanmean_all_f64(xf)
     var a = _ensure_contig(xf)
     var ax = normalize_axis(axis.value(), len(a._shape))
     return nanmean_axis_contig_f64(a._data, a._shape, ax, keepdims)
 
-fn nanmin[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
-    var xf = _to_f64_tensor[T](x)
+fn nanmin(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
     if axis is None:
         return nanmin_all_f64(xf)
     var a = _ensure_contig(xf)
     var ax = normalize_axis(axis.value(), len(a._shape))
     return nanmin_axis_contig_f64(a._data, a._shape, ax, keepdims)
+
+fn nansum(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
+    if axis is None:
+        return nansum_all_f64(xf)
+    var a = _ensure_contig(xf)
+    var ax = normalize_axis(axis.value(), len(a._shape))
+    return nansum_axis_contig_f64(a._data, a._shape, ax, keepdims)
+
+fn nanmean(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
+    if axis is None:
+        return nanmean_all_f64(xf)
+    var a = _ensure_contig(xf)
+    var ax = normalize_axis(axis.value(), len(a._shape))
+    return nanmean_axis_contig_f64(a._data, a._shape, ax, keepdims)
+
+fn nanmin(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
+    if axis is None:
+        return nanmin_all_f64(xf)
+    var a = _ensure_contig(xf)
+    var ax = normalize_axis(axis.value(), len(a._shape))
+    return nanmin_axis_contig_f64(a._data, a._shape, ax, keepdims)
+
+fn nansum(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
+    if axis is None:
+        return nansum_all_f64(xf)
+    var a = _ensure_contig(xf)
+    var ax = normalize_axis(axis.value(), len(a._shape))
+    return nansum_axis_contig_f64(a._data, a._shape, ax, keepdims)
+
+fn nanmean(x: Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
+    if axis is None:
+        return nanmean_all_f64(xf)
+    var a = _ensure_contig(xf)
+    var ax = normalize_axis(axis.value(), len(a._shape))
+    return nanmean_axis_contig_f64(a._data, a._shape, ax, keepdims)
+
+fn nanmin(x: Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
+    if axis is None:
+        return nanmin_all_f64(xf)
+    var a = _ensure_contig(xf)
+    var ax = normalize_axis(axis.value(), len(a._shape))
+    return nanmin_axis_contig_f64(a._data, a._shape, ax, keepdims)
+
+fn nansum(x: Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    var xf = to_float64(x)
+    if axis is None:
+        return nansum_all_f64(xf)
+    var a = _ensure_contig(xf)
+    var ax = normalize_axis(axis.value(), len(a._shape))
+    return nansum_axis_contig_f64(a._data, a._shape, ax, keepdims)
