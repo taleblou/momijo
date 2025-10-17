@@ -39,12 +39,13 @@ from momijo.tensor.creation import zeros_int,zeros_f64 ,zeros_f32
 from momijo.tensor.creation import ones_int,ones_f64,ones_f32
 from momijo.tensor.creation import full,empty,empty_f32,empty_f64
 from momijo.tensor.creation import eye_int,eye_f64,eye_f32
+from momijo.tensor.creation import randperm_int,randperm_f64,randperm_f32
+from momijo.tensor.creation import scalar_f64,scalar_f32,scalar_int
 
 # Random helpers (Float64) 
-from momijo.tensor.creation import from_list_float64
-from momijo.tensor.creation import from_list_int
+from momijo.tensor.creation import from_list_float64,from_list_float32,from_list_int ,from_list_int32 ,from_list_int16,from_list_bool 
 from momijo.tensor.creation import randn,rand,randn_int,randn_f64,randn_f32
-from momijo.tensor.creation import zeros_like
+from momijo.tensor.creation import zeros_like,normal
 from momijo.tensor.creation import arange_f64 as arange
 
 # ----------------------------- Axis operations --------------------------------
@@ -110,7 +111,7 @@ from momijo.tensor.io import save_npz_f64
 # from momijo.tensor.io import load_csv
 
 from momijo.tensor.helpers import write_plane
-from momijo.tensor.math import and_t
+from momijo.tensor.math import and_t,complex,complex_abs,complex_real,complex_imag
 
 
 from momijo.tensor.broadcast import broadcast_to
