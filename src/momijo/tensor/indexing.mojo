@@ -1022,42 +1022,64 @@ fn nonzero[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[I
         yi += 1
     return out.copy()
 
-fn masked_select[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], mask: Tensor[UInt8]) -> Tensor[T]:
-    var out_shape = broadcast_shapes(x._shape, mask._shape)
-    if len(out_shape) == 0:
+@always_inline
+fn masked_select[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T],
+    mask: Tensor[Int]
+) -> Tensor[T]:
+    # Get broadcasted logical shape from the BroadcastResult
+    var br = broadcast_shapes(x._shape, mask._shape)
+    var sh = br.shape.copy()        # NOTE: if your field is 'out_shape', use br.out_shape instead.
+
+    var n = numel(sh)
+    if n == 0:
         return Tensor[T](shape=[0], fill=zero_scalar_of[T](cast_from_f64[T]))
-    var rm = compute_row_major_strides(out_shape)
-    var n = numel(out_shape)
+
+    var rm = compute_row_major_strides(sh)
+
     var out_list = List[T]()
     out_list.reserve(n)
+
     var st_x = x._strides.copy()
-    var st_m = mask._strides
+    var st_m = mask._strides.copy()
+    var base_x = x._offset.copy()
+    var base_m = mask._offset.copy()
+
     var i = 0
     while i < n:
-        var offx = 0
-        var offm = 0
+        var offx = base_x
+        var offm = base_m
+
         var d = 0
-        while d < len(out_shape):
+        while d < len(sh):
             var stride = rm[d]
             var s = 0
-            if stride != 0 and out_shape[d] != 0:
-                s = (i // stride) % out_shape[d]
-            var jx = d + len(x._shape) - len(out_shape)
+            if stride != 0 and sh[d] != 0:
+                s = (i // stride) % sh[d]
+
+            # map to x
+            var jx = d + len(x._shape) - len(sh)
             var ix = s
             if jx < 0 or x._shape[jx] == 1:
                 ix = 0
             if jx >= 0:
                 offx = offx + ix * st_x[jx]
-            var jm = d + len(mask._shape) - len(out_shape)
+
+            # map to mask
+            var jm = d + len(mask._shape) - len(sh)
             var im = s
             if jm < 0 or mask._shape[jm] == 1:
                 im = 0
             if jm >= 0:
                 offm = offm + im * st_m[jm]
+
             d += 1
+
         if mask._data[offm] != 0:
             out_list.append(x._data[offx])
+
         i += 1
+
     var out = Tensor[T](shape=[len(out_list)], fill=zero_scalar_of[T](cast_from_f64[T]))
     var k = 0
     while k < len(out_list):
@@ -1065,37 +1087,59 @@ fn masked_select[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], mask:
         k += 1
     return out.copy()
 
-fn masked_fill[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], mask: Tensor[UInt8], value: T):
-    var sh = broadcast_shapes(x._shape, mask._shape)
+@always_inline
+fn masked_fill[T: ImplicitlyCopyable & Copyable & Movable](
+    mut x: Tensor[T],
+    mask: Tensor[UInt8],
+    value: T
+) -> None:
+    # Get broadcasted logical shape
+    var br = broadcast_shapes(x._shape, mask._shape)
+    var sh = br.shape.copy()       # NOTE: if your field is 'out_shape', use br.out_shape instead.
+
     var n = numel(sh)
-    var rm = compute_row_major_strides(sh)
-    var stx = x._strides.copy()
-    var stm = mask._strides
+    if n == 0:
+        return
+
+    var rm   = compute_row_major_strides(sh)
+    var st_x = x._strides
+    var st_m = mask._strides
+    var base_x = x._offset
+    var base_m = mask._offset
+
     var idx = 0
     while idx < n:
-        var offx = 0
-        var offm = 0
+        var offx = base_x
+        var offm = base_m
+
         var d = 0
         while d < len(sh):
             var stride = rm[d]
             var s = 0
             if stride != 0 and sh[d] != 0:
                 s = (idx // stride) % sh[d]
+
+            # map to x
             var jx = d + len(x._shape) - len(sh)
             var ix = s
             if jx < 0 or x._shape[jx] == 1:
                 ix = 0
             if jx >= 0:
-                offx = offx + ix * stx[jx]
+                offx = offx + ix * st_x[jx]
+
+            # map to mask
             var jm = d + len(mask._shape) - len(sh)
             var im = s
             if jm < 0 or mask._shape[jm] == 1:
                 im = 0
             if jm >= 0:
-                offm = offm + im * stm[jm]
+                offm = offm + im * st_m[jm]
+
             d += 1
+
         if mask._data[offm] != 0:
             x._data[offx] = value
+
         idx += 1
 
 
@@ -1547,63 +1591,65 @@ fn argwhere_any(x: AnyTensor) -> Tensor[Int32]:
 # topk (Tensor[T]) and topk_any (AnyTensor)
 # -----------------------------------------------------------------------------
 
-fn topk[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], k: Int, largest: Bool = True, axis: Optional[Int] = None) -> (Tensor[T], Tensor[Int32]):
-    if axis is None:
-        var n = len(x._data)
-        var idx = List[Int]()
-        idx.reserve(n)
-        var i = 0
-        while i < n:
-            idx.append(i)
-            i += 1
-        var a = x._data
-        var j = 0
-        while j < n:
-            var best = j
-            var t = j + 1
-            while t < n:
-                var cond = a[t] > a[best] if largest else a[t] < a[best]
-                if cond:
-                    best = t
-                t += 1
-            var tmp = a[j]
-            a[j] = a[best]
-            a[best] = tmp
-            var ti = idx[j]
-            idx[j] = idx[best]
-            idx[best] = ti
-            j += 1
-        var take = min_i(k, n)
-        var kv = List[T]()
-        var ki = List[Int32]()
-        kv.reserve(take)
-        ki.reserve(take)
-        i = 0
-        while i < take:
-            kv.append(a[i])
-            ki.append(Int32(idx[i]))
-            i += 1
-        return (Tensor[T](kv, [take]), Tensor[Int32](ki, [take]))
+@always_inline
+fn _topk_whole_Int(x: Tensor[Int], k: Int, largest: Bool)
+    -> (Tensor[Int], Tensor[Int32]):
+    var n = len(x._data)
+    var idx = List[Int](); idx.reserve(n)
+    var a = x._data.copy()
+    var i = 0
+    while i < n: idx.append(i); i += 1
 
-    var ax = normalize_axis(axis.value(), len(x._shape))
+    var j = 0
+    while j < n:
+        var best = j
+        var t = j + 1
+        while t < n:
+            var cond = a[t] > a[best] if largest else a[t] < a[best]
+            if cond: best = t
+            t += 1
+        var tmp = a[j]; a[j] = a[best]; a[best] = tmp
+        var ti = idx[j]; idx[j] = idx[best]; idx[best] = ti
+        j += 1
+    var k_eff = min_i(k, n)
+
+    var kv = List[Int](); var ki = List[Int32]()
+    kv.reserve(k_eff); ki.reserve(k_eff)
+    i = 0
+    while i < k_eff:
+        kv.append(a[i]); ki.append(Int32(idx[i])); i += 1
+
+    var shp = List[Int](); shp.append(k_eff)
+    var st = compute_row_major_strides(shp)
+    return (Tensor[Int](kv, shp, st, 0), Tensor[Int32](ki, shp, st, 0))
+
+
+@always_inline
+fn _topk_axis_Int(x: Tensor[Int], k: Int, largest: Bool, ax: Int)
+    -> (Tensor[Int], Tensor[Int32]):
     var rank = len(x._shape)
     var out_shape = List[Int]()
     var d = 0
     while d < rank:
-        if d != ax:
-            out_shape.append(x._shape[d])
+        if d != ax: out_shape.append(x._shape[d])
         d += 1
-    if len(out_shape) == 0:
-        out_shape.append(1)
+    if len(out_shape) == 0: out_shape.append(1)
+
+    var L = x._shape[ax]
+    var k_eff = min_i(k, L)
     var outer_n = numel(out_shape)
 
-    var values = List[T]()
+    var values = List[Int]()
     var indices = List[Int32]()
-    var base_idx = List[Int]()
-    var full = List[Int]()
+    values.reserve(outer_n * k_eff)
+    indices.reserve(outer_n * k_eff)
+
+    var rm = compute_row_major_strides(out_shape)
+    var base_idx = List[Int](); base_idx.reserve(len(out_shape))
+    var full = List[Int](); full.reserve(rank)
+
     var oi = 0
     while oi < outer_n:
-        var rm = compute_row_major_strides(out_shape)
         base_idx.clear()
         var dd = 0
         while dd < len(out_shape):
@@ -1613,21 +1659,17 @@ fn topk[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], k: Int, larges
                 s = (oi // stride) % out_shape[dd]
             base_idx.append(s)
             dd += 1
+
         full.clear()
-        var p = 0
-        var j2 = 0
+        var p = 0; var j2 = 0
         while j2 < rank:
-            if j2 == ax:
-                full.append(0)
-            else:
-                full.append(base_idx[p])
-                p += 1
+            if j2 == ax: full.append(0)
+            else: full.append(base_idx[p]); p += 1
             j2 += 1
-        var L = x._shape[ax]
-        var line = List[T]()
-        var idline = List[Int]()
-        line.reserve(L)
-        idline.reserve(L)
+
+        var line = List[Int](); line.reserve(L)
+        var idline = List[Int](); idline.reserve(L)
+
         var t2 = 0
         while t2 < L:
             full[ax] = t2
@@ -1639,103 +1681,92 @@ fn topk[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], k: Int, larges
             line.append(x._data[li])
             idline.append(t2)
             t2 += 1
+
         var i2 = 0
         while i2 < L:
             var best = i2
             var u = i2 + 1
             while u < L:
                 var cond2 = line[u] > line[best] if largest else line[u] < line[best]
-                if cond2:
-                    best = u
+                if cond2: best = u
                 u += 1
-            var tmp2 = line[i2]
-            line[i2] = line[best]
-            line[best] = tmp2
-            var ti2 = idline[i2]
-            idline[i2] = idline[best]
-            idline[best] = ti2
+            var tmp2 = line[i2]; line[i2] = line[best]; line[best] = tmp2
+            var ti2 = idline[i2]; idline[i2] = idline[best]; idline[best] = ti2
             i2 += 1
-        var take = min_i(k, L)
         var r2 = 0
-        while r2 < take:
+        while r2 < k_eff:
             values.append(line[r2])
             indices.append(Int32(idline[r2]))
             r2 += 1
-        oi += 1
-    var final_shape = List[Int]()
-    d = 0
-    while d < len(out_shape):
-        final_shape.append(out_shape[d])
-        d += 1
-    final_shape.append(k)
-    return (Tensor[T](values, final_shape), Tensor[Int32](indices, final_shape))
 
-fn topk_any(x: AnyTensor, k: Int, largest: Bool = True, axis: Optional[Int] = None) -> (AnyTensor, Tensor[Int32]):
+        oi += 1
+    var final_shape = out_shape.copy()
+    final_shape.append(k_eff)
+    var st = compute_row_major_strides(final_shape)
+    return (Tensor[Int](values, final_shape, st, 0),
+            Tensor[Int32](indices, final_shape, st, 0))
+
+
+@always_inline
+fn topk(x: Tensor[Int], k: Int, largest: Bool = True, axis: Optional[Int] = None)
+    -> (Tensor[Int], Tensor[Int32]):
     if axis is None:
-        var n = x._buf.length()
-        var outv = AnyTensor()
-        var outi_vals = List[Int32]()
-        var take = k if k < n else n
-        outv._dtype = x._dtype
-        outv._shape = [take]
-        outv._strides = compute_row_major_strides(outv._shape)
-        outv._buf = AnyBuffer()
-        outv._buf.tag = x._buf.tag
-        var used = List[Int]()
-        var u = 0
-        while u < n:
-            used.append(0)
-            u += 1
-        var r = 0
-        while r < take:
-            var besti = -1
-            var bestv = 0.0
-            var init = True
-            var t = 0
+        return _topk_whole_Int(x, k, largest)
+    var ax = normalize_axis(axis.value(), len(x._shape))
+    return _topk_axis_Int(x, k, largest, ax)
+
+@always_inline
+fn topk(x: Tensor[Float32], k: Int, largest: Bool = True, axis: Optional[Int] = None)
+    -> (Tensor[Float32], Tensor[Int32]):
+    if axis is None:
+        var n = len(x._data)
+        var idx = List[Int](); idx.reserve(n)
+        var a = x._data.copy()
+        var i = 0
+        while i < n: idx.append(i); i += 1
+        var j = 0
+        while j < n:
+            var best = j
+            var t = j + 1
             while t < n:
-                if used[t] == 0:
-                    var v = x._buf.get_f64(t)
-                    if init or (largest and v > bestv) or ((not largest) and v < bestv):
-                        bestv = v
-                        besti = t
-                        init = False
+                var cond = a[t] > a[best] if largest else a[t] < a[best]
+                if cond: best = t
                 t += 1
-            outv._buf.append_cast_from_f64(bestv, outv._buf.tag)
-            outi_vals.append(Int32(besti))
-            used[besti] = 1
-            r += 1
-        return (outv, Tensor[Int32](outi_vals, [take]))
+            var tmp = a[j]; a[j] = a[best]; a[best] = tmp
+            var ti = idx[j]; idx[j] = idx[best]; idx[best] = ti
+            j += 1
+        var k_eff = min_i(k, n)
+        var kv = List[Float32](); var ki = List[Int32]()
+        kv.reserve(k_eff); ki.reserve(k_eff)
+        i = 0
+        while i < k_eff:
+            kv.append(a[i]); ki.append(Int32(idx[i])); i += 1
+        var shp = List[Int](); shp.append(k_eff)
+        var st = compute_row_major_strides(shp)
+        return (Tensor[Float32](kv, shp, st, 0), Tensor[Int32](ki, shp, st, 0))
 
     var ax = normalize_axis(axis.value(), len(x._shape))
     var rank = len(x._shape)
-    var out_shape = List[Int]()
-    var d = 0
+
+    var out_shape = List[Int](); var d = 0
     while d < rank:
-        if d != ax:
-            out_shape.append(x._shape[d])
+        if d != ax: out_shape.append(x._shape[d])
         d += 1
-    if len(out_shape) == 0:
-        out_shape.append(1)
+    if len(out_shape) == 0: out_shape.append(1)
+
+    var L = x._shape[ax]
+    var k_eff = min_i(k, L)
     var outer_n = numel(out_shape)
 
-    var outv = AnyTensor()
-    var outi_vals = List[Int32]()
-    outv._dtype = x._dtype
-    outv._shape = List[Int]()
-    d = 0
-    while d < len(out_shape):
-        outv._shape.append(out_shape[d])
-        d += 1
-    outv._shape.append(k)
-    outv._strides = compute_row_major_strides(outv._shape)
-    outv._buf = AnyBuffer()
-    outv._buf.tag = x._buf.tag
+    var values = List[Float32](); var indices = List[Int32]()
+    values.reserve(outer_n * k_eff); indices.reserve(outer_n * k_eff)
 
-    var base_idx = List[Int]()
-    var full = List[Int]()
+    var rm = compute_row_major_strides(out_shape)
+    var base_idx = List[Int](); base_idx.reserve(len(out_shape))
+    var full = List[Int](); full.reserve(rank)
+
     var oi = 0
     while oi < outer_n:
-        var rm = compute_row_major_strides(out_shape)
         base_idx.clear()
         var dd = 0
         while dd < len(out_shape):
@@ -1745,55 +1776,156 @@ fn topk_any(x: AnyTensor, k: Int, largest: Bool = True, axis: Optional[Int] = No
                 s = (oi // stride) % out_shape[dd]
             base_idx.append(s)
             dd += 1
+
         full.clear()
-        var p = 0
-        var j = 0
-        while j < rank:
-            if j == ax:
-                full.append(0)
-            else:
-                full.append(base_idx[p])
-                p += 1
-            j += 1
-        var L = x._shape[ax]
-        var used = List[Int]()
-        var u = 0
-        while u < L:
-            used.append(0)
-            u += 1
-        var r = 0
-        var take = k if k < L else L
-        while r < take:
-            var besti = -1
-            var bestv = 0.0
-            var init = True
-            var t = 0
-            while t < L:
-                if used[t] == 0:
-                    full[ax] = t
-                    var li = 0
-                    var q = 0
-                    while q < rank:
-                        li = li + full[q] * x._strides[q]
-                        q += 1
-                    var v = x._buf.get_f64(li)
-                    if init or (largest and v > bestv) or ((not largest) and v < bestv):
-                        bestv = v
-                        besti = t
-                        init = False
-                t += 1
-            outv._buf.append_cast_from_f64(bestv, outv._buf.tag)
-            outi_vals.append(Int32(besti))
-            used[besti] = 1
-            r += 1
+        var p = 0; var j2 = 0
+        while j2 < rank:
+            if j2 == ax: full.append(0)
+            else: full.append(base_idx[p]); p += 1
+            j2 += 1
+
+        var line = List[Float32](); line.reserve(L)
+        var idline = List[Int](); idline.reserve(L)
+
+        var t2 = 0
+        while t2 < L:
+            full[ax] = t2
+            var li = 0
+            var q = 0
+            while q < rank:
+                li = li + full[q] * x._strides[q]
+                q += 1
+            line.append(x._data[li]); idline.append(t2)
+            t2 += 1
+
+        var i2 = 0
+        while i2 < L:
+            var best = i2
+            var u = i2 + 1
+            while u < L:
+                var cond2 = line[u] > line[best] if largest else line[u] < line[best]
+                if cond2: best = u
+                u += 1
+            var tmp2 = line[i2]; line[i2] = line[best]; line[best] = tmp2
+            var ti2 = idline[i2]; idline[i2] = idline[best]; idline[best] = ti2
+            i2 += 1
+
+        var r2 = 0
+        while r2 < k_eff:
+            values.append(line[r2]); indices.append(Int32(idline[r2])); r2 += 1
         oi += 1
-    var ishape = List[Int]()
-    d = 0
-    while d < len(out_shape):
-        ishape.append(out_shape[d])
+
+    var final_shape = out_shape.copy(); final_shape.append(k_eff)
+    var st = compute_row_major_strides(final_shape)
+    return (Tensor[Float32](values, final_shape, st, 0),
+            Tensor[Int32](indices, final_shape, st, 0))
+
+
+@always_inline
+fn topk(x: Tensor[Float64], k: Int, largest: Bool = True, axis: Optional[Int] = None)
+    -> (Tensor[Float64], Tensor[Int32]):
+    if axis is None:
+        var n = len(x._data)
+        var idx = List[Int](); idx.reserve(n)
+        var a = x._data.copy()
+        var i = 0
+        while i < n: idx.append(i); i += 1
+        var j = 0
+        while j < n:
+            var best = j
+            var t = j + 1
+            while t < n:
+                var cond = a[t] > a[best] if largest else a[t] < a[best]
+                if cond: best = t
+                t += 1
+            var tmp = a[j]; a[j] = a[best]; a[best] = tmp
+            var ti = idx[j]; idx[j] = idx[best]; idx[best] = ti
+            j += 1
+        var k_eff = min_i(k, n)
+        var kv = List[Float64](); var ki = List[Int32]()
+        kv.reserve(k_eff); ki.reserve(k_eff)
+        i = 0
+        while i < k_eff:
+            kv.append(a[i]); ki.append(Int32(idx[i])); i += 1
+        var shp = List[Int](); shp.append(k_eff)
+        var st = compute_row_major_strides(shp)
+        return (Tensor[Float64](kv, shp, st, 0), Tensor[Int32](ki, shp, st, 0))
+
+    var ax = normalize_axis(axis.value(), len(x._shape))
+    var rank = len(x._shape)
+
+    var out_shape = List[Int](); var d = 0
+    while d < rank:
+        if d != ax: out_shape.append(x._shape[d])
         d += 1
-    ishape.append(k)
-    return (outv, Tensor[Int32](outi_vals, ishape))
+    if len(out_shape) == 0: out_shape.append(1)
+
+    var L = x._shape[ax]
+    var k_eff = min_i(k, L)
+    var outer_n = numel(out_shape)
+
+    var values = List[Float64](); var indices = List[Int32]()
+    values.reserve(outer_n * k_eff); indices.reserve(outer_n * k_eff)
+
+    var rm = compute_row_major_strides(out_shape)
+    var base_idx = List[Int](); base_idx.reserve(len(out_shape))
+    var full = List[Int](); full.reserve(rank)
+
+    var oi = 0
+    while oi < outer_n:
+        base_idx.clear()
+        var dd = 0
+        while dd < len(out_shape):
+            var stride = rm[dd]
+            var s = 0
+            if stride != 0 and out_shape[dd] != 0:
+                s = (oi // stride) % out_shape[dd]
+            base_idx.append(s)
+            dd += 1
+
+        full.clear()
+        var p = 0; var j2 = 0
+        while j2 < rank:
+            if j2 == ax: full.append(0)
+            else: full.append(base_idx[p]); p += 1
+            j2 += 1
+
+        var line = List[Float64](); line.reserve(L)
+        var idline = List[Int](); idline.reserve(L)
+
+        var t2 = 0
+        while t2 < L:
+            full[ax] = t2
+            var li = 0
+            var q = 0
+            while q < rank:
+                li = li + full[q] * x._strides[q]
+                q += 1
+            line.append(x._data[li]); idline.append(t2)
+            t2 += 1
+
+        var i2 = 0
+        while i2 < L:
+            var best = i2
+            var u = i2 + 1
+            while u < L:
+                var cond2 = line[u] > line[best] if largest else line[u] < line[best]
+                if cond2: best = u
+                u += 1
+            var tmp2 = line[i2]; line[i2] = line[best]; line[best] = tmp2
+            var ti2 = idline[i2]; idline[i2] = idline[best]; idline[best] = ti2
+            i2 += 1
+
+        var r2 = 0
+        while r2 < k_eff:
+            values.append(line[r2]); indices.append(Int32(idline[r2])); r2 += 1
+        oi += 1
+
+    var final_shape = out_shape.copy(); final_shape.append(k_eff)
+    var st = compute_row_major_strides(final_shape)
+    return (Tensor[Float64](values, final_shape, st, 0),
+            Tensor[Int32](indices, final_shape, st, 0))
+
 
 # -----------------------------------------------------------------------------
 # im2col / col2im (2D core)
@@ -2736,3 +2868,70 @@ fn flatten_5d[T: ImplicitlyCopyable & Copyable & Movable](
             j += 1
         i += 1
     return out.copy()
+
+@always_inline
+fn fill[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], v: T) -> None:
+    var r = len(x._shape)
+
+    # Rank-0 (scalar)
+    if r == 0:
+        x._data[x._offset] = v
+        return
+
+    # Fast path: contiguous logical layout
+    var expect = compute_row_major_strides(x._shape)
+    var is_contig = True
+    var i = 0
+    while i < r:
+        if x._strides[i] != expect[i]:
+            is_contig = False
+            break
+        i += 1
+
+    if is_contig:
+        # Only the logical block starting at offset is written
+        var total = 1
+        i = 0
+        while i < r:
+            total = total * x._shape[i]
+            i += 1
+        var base = x._offset
+        var k = 0
+        while k < total:
+            x._data[base + k] = v
+            k += 1
+        return
+
+    # General ND path: odometer over shape using strides
+    var idx = List[Int]()
+    idx.reserve(r)
+    i = 0
+    while i < r:
+        idx.append(0)
+        i += 1
+
+    var done = False
+    while True:
+        var lin = x._offset
+        i = 0
+        while i < r:
+            lin = lin + idx[i] * x._strides[i]
+            i += 1
+        x._data[lin] = v
+
+        # increment multi-index
+        i = r - 1
+        while True:
+            if i < 0:
+                done = True
+                break
+            idx[i] = idx[i] + 1
+            if idx[i] < x._shape[i]:
+                break
+            idx[i] = 0
+            i = i - 1
+        if done:
+            break
+
+
+ 
