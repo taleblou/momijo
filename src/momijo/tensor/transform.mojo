@@ -468,7 +468,7 @@ fn pad_constant[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], pads: 
                 k += 1
             out._data[off_out] = x._data[off_in]
         i += 1
-    return out
+    return out.copy()
 
 fn pad_nd_map[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], pads: List[Int], mode: Int, constant: T) -> Tensor[T]:
     # mode: 0=replicate, 1=reflect, 2=symmetric, 3=circular, 4=constant
@@ -513,7 +513,7 @@ fn pad_nd_map[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], pads: Li
             d += 1
         out._data[off_out] = x._data[off_in]
         i += 1
-    return out
+    return out.copy()
 
 fn pad_dispatch[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], pads: List[Int], mode: String = "constant", value: T = zero_scalar_of[T](f)
@@ -1167,7 +1167,7 @@ fn as_strided[T: ImplicitlyCopyable & Copyable & Movable](
     var out = clone_header_share_data[T](x, x._shape, x._strides)
     out._shape = copy_list_int(size)
     out._strides = copy_list_int(stride)
-    return out
+    return out.copy()
 
 # expand: broadcast via stride=0 on expanded dims
 fn expand[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], new_shape: List[Int]) -> Tensor[T]:
@@ -1212,26 +1212,77 @@ fn expand[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], new_shape: L
     var out = clone_header_share_data[T](x, x._shape, x._strides)
     out._shape = copy_list_int(new_shape)
     out._strides = out_strides
-    return out
+    return out.copy()
 
 @always_inline
 fn expand_as[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], other: Tensor[T]) -> Tensor[T]:
     return expand(x, other._shape)
 
-# permute axes (header-only)
+# -----------------------------------------------------------------------------
+# permute: header-only view (no data copy)
+# - axes length must equal rank
+# - each axis must be in-range and appear exactly once
+# -----------------------------------------------------------------------------
+@always_inline
+fn _clamp_axis(ax: Int, rank: Int) -> Int:
+    var i = ax
+    if i < 0: i = i + rank
+    #assert(0 <= i and i < rank and "permute: axis out of range")
+    return i
+
+# -----------------------------------------------------------------------------
+# Safe axis normalize without assert: returns Optional[Int]
+# -----------------------------------------------------------------------------
+@always_inline
+fn _norm_axis_safe(ax: Int, rank: Int) -> Optional[Int]:
+    var i = ax
+    if i < 0:
+        i = i + rank
+    if 0 <= i and i < rank:
+        return Optional[Int](i)
+    return None
+
+# -----------------------------------------------------------------------------
+# permute: header-only view (no data copy), no asserts.
+# If axes invalid → returns x.copy() as a safe fallback.
+# -----------------------------------------------------------------------------
+@always_inline
 fn permute[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axes: List[Int]) -> Tensor[T]:
     var r = len(x._shape)
+    if r <= 1:
+        return x.copy()
+
+    if len(axes) != r:
+        return x.copy()
+
+    # seen mask without BitSet
+    var seen = List[Bool]()
+    seen.reserve(r)
+    var t = 0
+    while t < r:
+        seen.append(False)
+        t += 1
+
     var a = List[Int]()
-    a.reserve(len(axes))
+    a.reserve(r)
+
     var i = 0
-    while i < len(axes):
-        a.append(normalize_axis(axes[i], r))
+    while i < r:
+        var v_opt = _norm_axis_safe(axes[i], r)
+        if v_opt is None:
+            return x.copy()
+        var v = v_opt.value()
+        if seen[v]:
+            return x.copy()
+        seen[v] = True
+        a.append(v)
         i += 1
 
     var new_shape = List[Int]()
     new_shape.reserve(r)
     var new_strides = List[Int]()
     new_strides.reserve(r)
+
     var k = 0
     while k < r:
         var idx = a[k]
@@ -1240,9 +1291,10 @@ fn permute[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axes: List[
         k += 1
 
     var out = clone_header_share_data[T](x, x._shape, x._strides)
-    out._shape = new_shape
-    out._strides = new_strides
-    return out
+    out._shape = new_shape.copy()
+    out._strides = new_strides.copy()
+    return out.copy()
+
 
 # size
 @always_inline
@@ -1495,20 +1547,7 @@ fn resize_like_with_pad(x: Tensor[Float64], target_like: Tensor[Float64]) -> Ten
 
 
         
-
-# flatten / ravel
-fn flatten[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
-    var n = numel(x._shape)
-    if is_row_major_full(x._shape, x._strides):
-        var out = clone_header_share_data[T](x, x._shape, x._strides)
-        out._shape = [n]
-        out._strides = [1]
-        return out.copy()
-    var c = contiguous(x)
-    var out2 = clone_header_share_data[T](c, c._shape, c._strides)
-    out2._shape = [n]
-    out2._strides = [1]
-    return out2.copy()
+ 
 
 @always_inline
 fn ravel[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
@@ -1531,8 +1570,8 @@ fn squeeze_all[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tens
         keep.append(1)
         ks.append(1)
     var out = clone_header_share_data[T](x, x._shape, x._strides)
-    out._shape = keep
-    out._strides = ks
+    out._shape = keep.copy()
+    out._strides = ks.copy()
     return out.copy()
 
 fn squeeze_axis[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Int) -> Tensor[T]:
@@ -1552,8 +1591,8 @@ fn squeeze_axis[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: 
         keep.append(1)
         ks.append(1)
     var out = clone_header_share_data[T](x, x._shape, x._strides)
-    out._shape = keep
-    out._strides = ks
+    out._shape = keep.copy()
+    out._strides = ks.copy()
     return out.copy()
 
 fn unsqueeze[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis_in: Int) -> Tensor[T]:
@@ -1582,8 +1621,8 @@ fn unsqueeze[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis_in: 
         st.append(x._strides[j])
         j += 1
     var out = clone_header_share_data[T](x, x._shape, x._strides)
-    out._shape = ns
-    out._strides = st
+    out._shape = ns.copy()
+    out._strides = st.copy()
     return out.copy()
 
 # ============================================================================
@@ -1644,7 +1683,7 @@ fn tensor_as_strided[T: Copyable & Movable](x: Tensor[T], size: List[Int], strid
     var _ = storage_offset
     var out = Tensor[T](x._data, size)
     out._strides = stride
-    return out
+    return out.copy()
 
 fn tensor_expand[T: Copyable & Movable](x: Tensor[T], new_shape: List[Int]) -> Tensor[T]:
     var xr = len(x._shape)
@@ -1685,7 +1724,7 @@ fn tensor_expand[T: Copyable & Movable](x: Tensor[T], new_shape: List[Int]) -> T
 
     var out = Tensor[T](x._data, new_shape)
     out._strides = out_strides
-    return out
+    return out.copy()
 
 fn tensor_permute[T: Copyable & Movable](x: Tensor[T], axes: List[Int]) -> Tensor[T]:
     var r = len(x._shape)
@@ -1715,8 +1754,8 @@ fn tensor_permute[T: Copyable & Movable](x: Tensor[T], axes: List[Int]) -> Tenso
         k += 1
 
     var out = Tensor[T](x._data, new_shape)
-    out._strides = new_strides
-    return out
+    out._strides = new_strides.copy()
+    return out.copy()
 
 
 
@@ -1756,63 +1795,15 @@ fn is_row_major(shape: List[Int], strides: List[Int]) -> Bool:
         expected = expected * shape[k]
         k = k - 1
     return True
-# -----------------------------------------------------------------------------
-# Transpose by permuting shape/strides; data is not moved.
-# - Dedup/clamp 'perm' using BitSet (O(rank))
-# - Identity fast-path
-# -----------------------------------------------------------------------------
-@always_inline
-fn transpose[T: ImplicitlyCopyable & Copyable & Movable](
-    x: Tensor[T], perm: List[Int]
-) -> Tensor[T]:
-    var rank = len(x._shape)
-    if rank <= 1:
-        return x.copy()
-
-    # Build a clean permutation
-    var used = BitSet(rank)          # faster than List[Int] mask
-    var clean = List[Int]()
-    clean.reserve(rank)
-
-    var p = 0
-    var pr = len(perm)
-    while p < pr and p < rank:
-        var v = clamp_axis(perm[p], rank)
-        if not used.get(v):
-            clean.append(v)
-            used.set(v)
-        p = p + 1
-
-    # Fill remaining axes to complete a permutation
-    var d = 0
-    while d < rank:
-        if not used.get(d):
-            clean.append(d)
-        d = d + 1
-
-    # Identity fast-path
-    if is_identity_perm(clean):
-        return x.copy()
-
-    # Permute meta only
-    var new_shape = List[Int]();      new_shape.reserve(rank)
-    var new_strides = List[Int]();    new_strides.reserve(rank)
-
-    var i = 0
-    while i < rank:
-        var ax = clean[i]
-        new_shape.append(x._shape[ax])
-        new_strides.append(x._strides[ax])
-        i = i + 1
-
-    return Tensor[T](x._data, new_shape, new_strides, x._offset)
+ 
+ 
 
 # -----------------------------------------------------------------------------
 # view (reshape):
 # - Single pass to copy shape & gather (-1) info
 # - Product checks with early exits
 # - Contiguity check without temp allocations
-# - Falls back to flatten(self) only if not row-major
+# - Falls back to flatten(x) only if not row-major
 # -----------------------------------------------------------------------------
 @always_inline
 fn view[T: ImplicitlyCopyable & Copyable & Movable](
@@ -1901,3 +1892,262 @@ fn view[T: ImplicitlyCopyable & Copyable & Movable](
     # 7) Zero-copy rewrap
     # ----------------------------
     return Tensor[T](base._data, new_shape, want_strides, base._offset)
+
+
+@always_inline
+fn _normalize_reps(rank: Int, reps: List[Int]) -> List[Int]:
+    # Normalize reps to match tensor rank without throwing.
+    # - Scalars (rank==0): shape becomes reps (negatives -> 0).
+    # - Non-scalars:
+    #   * If len(reps) < rank: left-pad with 1s.
+    #   * If len(reps) > rank: keep the rightmost `rank` values (tail-align).
+    #   * Clamp negatives to 0 in all cases.
+
+    var rlen = len(reps)
+    var out  = List[Int]()
+
+    if rank == 0:
+        var i = 0
+        while i < rlen:
+            var v = reps[i]
+            if v < 0: v = 0
+            out.append(v)
+            i += 1
+        return out.copy()
+
+    # Non-scalar
+    if rlen < rank:
+        # left-pad with 1s
+        var pad = rank - rlen
+        var i = 0
+        while i < pad:
+            out.append(1)
+            i += 1
+        # then append reps
+        i = 0
+        while i < rlen:
+            var v = reps[i]
+            if v < 0: v = 0
+            out.append(v)
+            i += 1
+        return out.copy()
+
+    # rlen >= rank → tail-align: take the last `rank` entries
+    var start = rlen - rank
+    var i = 0
+    while i < rank:
+        var v = reps[start + i]
+        if v < 0: v = 0
+        out.append(v)
+        i += 1
+    return out.copy()
+
+# -----------------------------------------------------------------------------
+# Repeat (tile) values along each dimension.
+# - reps[d] == k replicates size along dim d by factor k
+# - reps shorter than rank is left-padded with 1s
+# - For rank==0 (scalar), result rank becomes len(reps) with shape==reps
+# -----------------------------------------------------------------------------
+@always_inline
+fn repeat[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], reps: List[Int]
+) -> Tensor[T]:
+    var rank = len(x._shape)
+
+    # Fast path: nothing to do
+    if rank == 0 and len(reps) == 0:
+        return x.copy()
+    if rank > 0 and len(reps) == 0:
+        return x.copy()
+
+    var nreps = _normalize_reps(rank, reps)
+
+    # Build output shape
+    var out_shape = List[Int]()
+    if rank == 0:
+        # Scalar: shape is the reps themselves
+        var i = 0
+        while i < len(nreps):
+            out_shape.append(nreps[i])
+            i += 1
+    else:
+        var d = 0
+        while d < rank:
+            var r = nreps[d]
+            var dim = x._shape[d]
+            # If r==0 the output size becomes 0 along this dim
+            out_shape.append(dim * r)
+            d += 1
+
+    # Compute counts
+    var out_numel: Int = 1
+    var i = 0
+    while i < len(out_shape):
+        out_numel = out_numel * out_shape[i]
+        i += 1
+
+    # Early exit for any zero-sized dimension
+    if out_numel == 0:
+        # Build an empty tensor with the right shape
+        var strides = compute_row_major_strides(out_shape)
+        var data = List[T]()            # empty data
+        return Tensor[T](data, out_shape, strides, 0)
+
+    # Prepare strides (row-major) for output to decode multi-index
+    var out_strides = compute_row_major_strides(out_shape)
+
+    # Allocate output; we'll append in a single pass
+    var out_data = List[T]()
+    out_data.reserve(out_numel)
+
+    if rank == 0:
+        # Tile the scalar value to the whole output
+        var val = x._data[x._offset]
+        var k = 0
+        # unrolled append in chunks of 8 for speed
+        var lim = (out_numel // 8) * 8
+        while k < lim:
+            out_data.append(val); out_data.append(val); out_data.append(val); out_data.append(val)
+            out_data.append(val); out_data.append(val); out_data.append(val); out_data.append(val)
+            k += 8
+        while k < out_numel:
+            out_data.append(val)
+            k += 1
+        return Tensor[T](out_data, out_shape, out_strides, 0)
+
+    # General case (rank >= 1):
+    # Map each output index to input index via modulo on each dimension.
+    var in_shape = x._shape.copy()
+    var in_strides = x._strides.copy()
+    var base_off = x._offset
+
+    var k = 0
+    while k < out_numel:
+        # Decode k into multi-index using out_strides
+        var rem = k
+        var in_lin = base_off
+
+        var d = 0
+        while d < rank:
+            var step = out_strides[d]
+            # idx along dim d in output
+            var idx_out = rem // step
+            rem = rem - idx_out * step
+            # fold back into input range
+            var idx_in =(idx_out % in_shape[d])
+            if in_shape[d] == 0: dx_in =0
+            in_lin = in_lin + idx_in * in_strides[d]
+            d += 1
+        # Append the corresponding input element
+        out_data.append(x._data[in_lin])
+
+        k += 1
+
+    return Tensor[T](out_data, out_shape, out_strides, 0)
+
+# Optional: NumPy-style alias
+@always_inline
+fn tile[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], reps: List[Int]
+) -> Tensor[T]:
+    return x.repeat(reps)
+
+
+@always_inline
+fn _swap_perm(rank: Int, a: Int, b: Int) -> List[Int]:
+    var r = rank
+    var i = a; var j = b
+    # clamp_axis(i, r) و clamp_axis(j, r) را قبلاً داری
+    i = clamp_axis(i, r)
+    j = clamp_axis(j, r)
+    var perm = List[Int]()
+    var k = 0
+    while k < r:
+        perm.append(k)
+        k += 1
+    if i != j and r > 1:
+        var tmp = perm[i]
+        perm[i] = perm[j]
+        perm[j] = tmp
+    return perm.copy()
+ 
+@always_inline
+fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], i: Int, j: Int) -> Tensor[T]:
+    var r = len(x._shape)
+    if r <= 1 or i == j:
+        return x.copy()
+
+    var ii = _clamp_axis(i, r)
+    var jj = _clamp_axis(j, r)
+
+    var perm = List[Int]()
+    var k = 0
+    while k < r:
+        perm.append(k)
+        k += 1
+
+    var tmp = perm[ii]
+    perm[ii] = perm[jj]
+    perm[jj] = tmp
+
+    return permute(x, perm)
+ 
+@always_inline
+fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], perm: List[Int]) -> Tensor[T]: 
+    return x.permute(perm)
+
+@always_inline
+fn _norm_axis_safe_inclusive(ax: Int, rank: Int) -> Int:
+    # Normalize negatives; clamp into [0, rank-1]
+    var i = ax
+    if i < 0:
+        i = i + rank
+    if i < 0:
+        i = 0
+    if i >= rank:
+        i = rank - 1
+    return i
+
+@always_inline
+fn flatten[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T],
+    start_dim: Int = 0,
+    end_dim_opt: Optional[Int] = None
+) -> Tensor[T]:
+    var r = len(x._shape)
+    if r == 0:
+        # Scalar: nothing to flatten
+        return x.copy()
+
+    # Safe normalize start/end (no assert)
+    var sd = _norm_axis_safe_inclusive(start_dim, r)
+    var ed: Int
+    if end_dim_opt is None:
+        ed = r - 1
+    else:
+        ed = _norm_axis_safe_inclusive(end_dim_opt.value(), r)
+
+    # If range inverted, no-op
+    if sd > ed:
+        return x.copy()
+
+    # Build new shape: keep dims [0..sd-1], merge [sd..ed], keep [ed+1..]
+    var new_shape = List[Int]()
+    var k = 0
+    while k < sd:
+        new_shape.append(x._shape[k])
+        k += 1
+
+    var merged = 1
+    k = sd
+    while k <= ed:
+        merged = merged * x._shape[k]
+        k += 1
+    new_shape.append(merged)
+
+    k = ed + 1
+    while k < r:
+        new_shape.append(x._shape[k])
+        k += 1
+
+    return x.reshape(new_shape)
