@@ -728,27 +728,32 @@ fn bernoulli_f64(shape: List[Int], p: Float64, seed: Optional[Int] = None) -> Te
 fn bernoulli_f32(shape: List[Int], p: Float64, seed: Optional[Int] = None) -> Tensor[Float32]:
     return bernoulli_with[Float32](shape, p, to_f32_from_int, seed)
 
-# Fisher–Yates shuffle → indices (Int)
 fn randperm_int(n: Int, seed: Optional[Int] = None) -> Tensor[Int]:
-    var nn = n
-    if nn < 0:
-        nn = 0
+    var nn =n
+    if n < 0: nn=0
+
+    # build [0, 1, 2, ..., nn-1]
     var xs = List[Int]()
     xs.reserve(nn)
     var i = 0
     while i < nn:
         xs.append(i)
         i += 1
+
+    # shuffle in-place if length > 1
     if nn > 1:
-        var rng = init_rng(seed)
+        var rng = init_rng(seed)              
         var j = nn - 1
         while j > 0:
+            # next_i32(lo, hi) ⇒ [lo, hi)   
             var k = rng.next_i32(0, j + 1)
             var tmp = xs[j]; xs[j] = xs[k]; xs[k] = tmp
             j -= 1
-    var shp = List[Int]()
-    shp.append(nn)
-    return Tensor[Int](xs, shp)
+
+    # unambiguous 4-arg constructor
+    var shp = List[Int](); shp.append(nn)
+    var strides = compute_row_major_strides(shp)
+    return Tensor[Int](xs, shp, strides, 0)
 
 # Same as above, but cast indices to T via converter Int -> T
 fn randperm_with[T: ImplicitlyCopyable & Copyable & Movable](
@@ -1134,13 +1139,23 @@ fn empty_like(x: Tensor[Int]) -> Tensor[Int]:
     return empty_tensor_with[Int](to_int_from_f64, x.shape())
 
 
+ 
 @always_inline
 fn from_list_float64(data: List[Float64]) -> Tensor[Float64]:
-    var n = len(data)
+    # 1D tensor from a flat list (row-major)
     var shape = List[Int]()
-    shape.append(n)
-    var buf = data.copy()
-    return Tensor[Float64](buf, shape)
+    shape.append(len(data))
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Float64](data.copy(), shape, strides, 0)
+ 
+ 
+@always_inline
+fn from_list_float32(data: List[Float32]) -> Tensor[Float32]:
+    # 1D tensor from a flat list (row-major)
+    var shape = List[Int]()
+    shape.append(len(data))
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Float32](data.copy(), shape, strides, 0)
 
 @always_inline
 fn from_list_int(data: List[Int]) -> Tensor[Int]:
@@ -1152,12 +1167,30 @@ fn from_list_int(data: List[Int]) -> Tensor[Int]:
 
 
 @always_inline
-fn from_list_float32(data: List[Float32]) -> Tensor[Float32]:
-    # 1D tensor from a flat list (row-major)
+fn from_list_int32(data: List[Int32]) -> Tensor[Int32]:
+    var n = len(data)
     var shape = List[Int]()
-    shape.append(len(data))
+    shape.append(n)
     var strides = compute_row_major_strides(shape)
-    return Tensor[Float32](data.copy(), shape, strides, 0)
+    return Tensor[Int32](data.copy(), shape, strides, 0)
+
+@always_inline
+fn from_list_int16(data: List[Int16]) -> Tensor[Int16]:
+    var n = len(data)
+    var shape = List[Int]()
+    shape.append(n)
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Int16](data.copy(), shape, strides, 0)
+
+
+@always_inline
+fn from_list_bool(data: List[Bool]) -> Tensor[Bool]:
+    var n = len(data)
+    var shape = List[Int]()
+    shape.append(n)
+    var strides = compute_row_major_strides(shape)
+    return Tensor[Bool](data.copy(), shape, strides, 0)
+
 
 @always_inline
 fn scalar_zero_tensor[T: ImplicitlyCopyable & Copyable & Movable](
@@ -1179,24 +1212,24 @@ fn scalar_zero_tensor[T: ImplicitlyCopyable & Copyable & Movable](
 
 
 @always_inline
-fn scalar64(x: Float64) -> Tensor[Float64]:
+fn scalar_f64(x: Float64) -> Tensor[Float64]:
     return full[Float64](List[Int](), Float64(x))
 @always_inline
-fn scalar64(x: Float32) -> Tensor[Float64]:
+fn scalar_f64(x: Float32) -> Tensor[Float64]:
     return full[Float64](List[Int](), Float64(x))
 @always_inline
-fn scalar64(x: Int) -> Tensor[Float64]:
+fn scalar_f64(x: Int) -> Tensor[Float64]:
     return full[Float64](List[Int](), Float64(x)) 
 
 
 @always_inline
-fn scalar32(x: Float64) -> Tensor[Float32]:
+fn scalar_f32(x: Float64) -> Tensor[Float32]:
     return full[Float32](List[Int](), Float32(x))
 @always_inline
-fn scalar32(x: Float32) -> Tensor[Float32]:
+fn scalar_f32(x: Float32) -> Tensor[Float32]:
     return full[Float32](List[Int](), Float32(x))
 @always_inline
-fn scalar32(x: Int) -> Tensor[Float32]:
+fn scalar_f32(x: Int) -> Tensor[Float32]:
     return full[Float32](List[Int](), Float32(x)) 
 
 @always_inline
@@ -1209,3 +1242,26 @@ fn scalar_int(x: Float32) -> Tensor[Int]:
 fn scalar_int(x: Int) -> Tensor[Int]:
     return full[Int](List[Int](), Int(x)) 
 
+# -----------------------------------------------------------------------------
+# Normal distribution samplers
+# -----------------------------------------------------------------------------
+
+@always_inline
+fn _randn_shape_f64(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]: 
+    var like = empty_tensor_with[Float64](to_f64_from_f64, Optional[List[Int]](shape.copy())) 
+    return randn_like_with[Float64](like, to_f64_from_f64, seed)
+
+# Main API (Float64 default) — matches: tensor.normal(3.0, 0.5, [2])
+@always_inline
+fn normal(mean: Float64, std: Float64, shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
+    var z = _randn_shape_f64(shape, seed)     # ~ N(0,1)
+    z = z.mul_scalar(std)                     # scale by std
+    z = z.add_scalar(mean)                    # shift by mean
+    return z.copy()
+
+# Optional: Float32 variant if you need it elsewhere
+@always_inline
+fn normal_f32(mean: Float32, std: Float32, shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float32]:
+    var z64 = _randn_shape_f64(shape, seed)        # sample in f64 for stability
+    var y64 = z64.mul_scalar(Float64(std)).add_scalar(Float64(mean))
+    return y64.to_float32()
