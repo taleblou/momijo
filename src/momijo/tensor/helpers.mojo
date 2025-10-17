@@ -1361,10 +1361,436 @@ fn sort_int(x: Tensor[Int]) -> Tensor[Int]:
     var strides_flat = compute_row_major_strides(shape_flat)
     return Tensor[Int](flat, shape_flat, strides_flat, 0)
 
-
-                
+# ---------------- helpers (Float64 / Float32) ----------------
 @always_inline
-fn unique_int(x: Tensor[Int], return_counts: Bool) -> UniqueResult:
+fn _insertion_sort_inplace_f64(mut a: List[Float64]) -> None:
+    var n = len(a)
+    var i = 1
+    while i < n:
+        var key = a[i]
+        var j = i - 1 
+        while j >= 0 and a[j] > key:
+            a[j + 1] = a[j]
+            j = j - 1
+        a[j + 1] = key
+        i = i + 1
+
+@always_inline
+fn _insertion_sort_inplace_f32(mut a: List[Float32]) -> None:
+    var n = len(a)
+    var i = 1
+    while i < n:
+        var key = a[i]
+        var j = i - 1
+        while j >= 0 and a[j] > key:
+            a[j + 1] = a[j]
+            j = j - 1
+        a[j + 1] = key
+        i = i + 1
+
+
+# ---------------- public free functions (Float64) -------------
+# Ascending sort for Tensor[Float64]
+# - Fast 1D path (stride-aware)
+# - General N-D path via flatten with strides/offset
+@always_inline
+fn sort_f64(x: Tensor[Float64]) -> Tensor[Float64]:
+    # 1D fast path
+    if len(x._shape) == 1:
+        var n = x._shape[0]
+
+        var data = List[Float64]()
+        data.reserve(n)
+
+        var base = x._offset
+        var step = x._strides[0]
+
+        var i = 0
+        while i < n:
+            data.append(x._data[base + i * step])
+            i = i + 1
+
+        _insertion_sort_inplace_f64(data)
+
+        var shape = List[Int]()
+        shape.append(n)
+
+        var strides = compute_row_major_strides(shape)
+        return Tensor[Float64](data, shape, strides, 0)
+
+    # General N-D: flatten respecting strides/offset, then sort
+    var total = numel(x._shape)
+
+    var flat = List[Float64]()
+    flat.reserve(total)
+
+    var ndim = len(x._shape)
+    var idxs = List[Int]()
+    idxs.reserve(ndim)
+
+    var ax = 0
+    while ax < ndim:
+        idxs.append(0)
+        ax = ax + 1
+
+    var base = x._offset
+    var done: Bool = False
+
+    while not done:
+        var pos = base
+        var k = 0
+        while k < ndim:
+            pos = pos + idxs[k] * x._strides[k]
+            k = k + 1
+        flat.append(x._data[pos])
+
+        # odometer-style increment
+        var d = ndim - 1
+        while True:
+            if d < 0:
+                done = True
+                break
+            idxs[d] = idxs[d] + 1
+            if idxs[d] < x._shape[d]:
+                break
+            idxs[d] = 0
+            d = d - 1
+
+    _insertion_sort_inplace_f64(flat)
+
+    var shape_flat = List[Int]()
+    shape_flat.append(total)
+    var strides_flat = compute_row_major_strides(shape_flat)
+    return Tensor[Float64](flat, shape_flat, strides_flat, 0)
+
+
+# ---------------- public free functions (Float32) -------------
+# Ascending sort for Tensor[Float32]
+# - Fast 1D path (stride-aware)
+# - General N-D path via flatten with strides/offset
+@always_inline
+fn sort_f32(x: Tensor[Float32]) -> Tensor[Float32]:
+    # 1D fast path
+    if len(x._shape) == 1:
+        var n = x._shape[0]
+
+        var data = List[Float32]()
+        data.reserve(n)
+
+        var base = x._offset
+        var step = x._strides[0]
+
+        var i = 0
+        while i < n:
+            data.append(x._data[base + i * step])
+            i = i + 1
+
+        _insertion_sort_inplace_f32(data)
+
+        var shape = List[Int]()
+        shape.append(n)
+
+        var strides = compute_row_major_strides(shape)
+        return Tensor[Float32](data, shape, strides, 0)
+
+    # General N-D: flatten respecting strides/offset, then sort
+    var total = numel(x._shape)
+
+    var flat = List[Float32]()
+    flat.reserve(total)
+
+    var ndim = len(x._shape)
+    var idxs = List[Int]()
+    idxs.reserve(ndim)
+
+    var ax = 0
+    while ax < ndim:
+        idxs.append(0)
+        ax = ax + 1
+
+    var base = x._offset
+    var done: Bool = False
+
+    while not done:
+        var pos = base
+        var k = 0
+        while k < ndim:
+            pos = pos + idxs[k] * x._strides[k]
+            k = k + 1
+        flat.append(x._data[pos])
+
+        # odometer-style increment
+        var d = ndim - 1
+        while True:
+            if d < 0:
+                done = True
+                break
+            idxs[d] = idxs[d] + 1
+            if idxs[d] < x._shape[d]:
+                break
+            idxs[d] = 0
+            d = d - 1
+
+    _insertion_sort_inplace_f32(flat)
+
+    var shape_flat = List[Int]()
+    shape_flat.append(total)
+    var strides_flat = compute_row_major_strides(shape_flat)
+    return Tensor[Float32](flat, shape_flat, strides_flat, 0)
+
+# ======================= ARGSORT HELPERS =======================
+# Stable insertion-argsort for parallel (vals, idxs).
+@always_inline
+fn _insertion_argsort_inplace_i64(mut vals: List[Int], mut idxs: List[Int]) -> None:
+    var n = len(vals)
+    var i = 1
+    while i < n:
+        var kv = vals[i]
+        var ki = idxs[i]
+        var j = i - 1
+        while j >= 0 and vals[j] > kv:
+            vals[j + 1] = vals[j]
+            idxs[j + 1] = idxs[j]
+            j = j - 1
+        vals[j + 1] = kv
+        idxs[j + 1] = ki
+        i = i + 1
+
+@always_inline
+fn _insertion_argsort_inplace_f64(mut vals: List[Float64],mut  idxs: List[Int]) -> None:
+    var n = len(vals)
+    var i = 1
+    while i < n:
+        var kv = vals[i]
+        var ki = idxs[i]
+        var j = i - 1
+        # Note: NaN comparisons are False; NaNs keep relative order (simple policy).
+        while j >= 0 and vals[j] > kv:
+            vals[j + 1] = vals[j]
+            idxs[j + 1] = idxs[j]
+            j = j - 1
+        vals[j + 1] = kv
+        idxs[j + 1] = ki
+        i = i + 1
+
+@always_inline
+fn _insertion_argsort_inplace_f32(mut vals: List[Float32],mut  idxs: List[Int]) -> None:
+    var n = len(vals)
+    var i = 1
+    while i < n:
+        var kv = vals[i]
+        var ki = idxs[i]
+        var j = i - 1
+        while j >= 0 and vals[j] > kv:
+            vals[j + 1] = vals[j]
+            idxs[j + 1] = idxs[j]
+            j = j - 1
+        vals[j + 1] = kv
+        idxs[j + 1] = ki
+        i = i + 1
+
+
+# ======================= ARGSORT: INT ==========================
+# Ascending argsort for Tensor[Int]
+# - 1D fast path: respects strides/offset without materializing full tensor
+# - N-D path: flattens by walking with strides/offset, then sorts indices
+@always_inline
+fn argsort_int(x: Tensor[Int]) -> Tensor[Int]:
+    # 1D fast path
+    if len(x._shape) == 1:
+        var n = x._shape[0]
+        var vals = List[Int]();    vals.reserve(n)
+        var idxs = List[Int]();    idxs.reserve(n)
+        var base = x._offset
+        var step = x._strides[0]
+
+        var i = 0
+        while i < n:
+            vals.append(x._data[base + i * step])
+            idxs.append(i)                 # index in the flattened 1D view
+            i = i + 1
+
+        _insertion_argsort_inplace_i64(vals, idxs)
+
+        var shape = List[Int](); shape.append(n)
+        var strides = compute_row_major_strides(shape)
+        return Tensor[Int](idxs, shape, strides, 0)
+
+    # General N-D
+    var total = numel(x._shape)
+    var vals = List[Int]();  vals.reserve(total)
+    var idxs = List[Int]();  idxs.reserve(total)
+
+    # Odometer over N-D respecting strides/offset
+    var ndim = len(x._shape)
+    var coord = List[Int](); coord.reserve(ndim)
+    var ax = 0
+    while ax < ndim:
+        coord.append(0)
+        ax = ax + 1
+
+    var base = x._offset
+    var done: Bool = False
+    var flat_i = 0
+    while not done:
+        var pos = base
+        var k = 0
+        while k < ndim:
+            pos = pos + coord[k] * x._strides[k]
+            k = k + 1
+        vals.append(x._data[pos])
+        idxs.append(flat_i)
+
+        # increment
+        var d = ndim - 1
+        while True:
+            if d < 0:
+                done = True
+                break
+            coord[d] = coord[d] + 1
+            if coord[d] < x._shape[d]:
+                break
+            coord[d] = 0
+            d = d - 1
+        flat_i = flat_i + 1
+
+    _insertion_argsort_inplace_i64(vals, idxs)
+
+    var shape_flat = List[Int](); shape_flat.append(total)
+    var strides_flat = compute_row_major_strides(shape_flat)
+    return Tensor[Int](idxs, shape_flat, strides_flat, 0)
+
+
+# ======================= ARGSORT: FLOAT64 ======================
+@always_inline
+fn argsort_f64(x: Tensor[Float64]) -> Tensor[Int]:
+    if len(x._shape) == 1:
+        var n = x._shape[0]
+        var vals = List[Float64](); vals.reserve(n)
+        var idxs = List[Int]();     idxs.reserve(n)
+
+        var base = x._offset
+        var step = x._strides[0]
+        var i = 0
+        while i < n:
+            vals.append(x._data[base + i * step])
+            idxs.append(i)
+            i = i + 1
+
+        _insertion_argsort_inplace_f64(vals, idxs)
+
+        var shape = List[Int](); shape.append(n)
+        var strides = compute_row_major_strides(shape)
+        return Tensor[Int](idxs, shape, strides, 0)
+
+    var total = numel(x._shape)
+    var vals = List[Float64](); vals.reserve(total)
+    var idxs = List[Int]();     idxs.reserve(total)
+
+    var ndim = len(x._shape)
+    var coord = List[Int](); coord.reserve(ndim)
+    var ax = 0
+    while ax < ndim:
+        coord.append(0)
+        ax = ax + 1
+
+    var base = x._offset
+    var done: Bool = False
+    var flat_i = 0
+    while not done:
+        var pos = base
+        var k = 0
+        while k < ndim:
+            pos = pos + coord[k] * x._strides[k]
+            k = k + 1
+        vals.append(x._data[pos])
+        idxs.append(flat_i)
+
+        var d = ndim - 1
+        while True:
+            if d < 0:
+                done = True
+                break
+            coord[d] = coord[d] + 1
+            if coord[d] < x._shape[d]:
+                break
+            coord[d] = 0
+            d = d - 1
+        flat_i = flat_i + 1
+
+    _insertion_argsort_inplace_f64(vals, idxs)
+
+    var shape_flat = List[Int](); shape_flat.append(total)
+    var strides_flat = compute_row_major_strides(shape_flat)
+    return Tensor[Int](idxs, shape_flat, strides_flat, 0)
+
+
+# ======================= ARGSORT: FLOAT32 ======================
+@always_inline
+fn argsort_f32(x: Tensor[Float32]) -> Tensor[Int]:
+    if len(x._shape) == 1:
+        var n = x._shape[0]
+        var vals = List[Float32](); vals.reserve(n)
+        var idxs = List[Int]();     idxs.reserve(n)
+
+        var base = x._offset
+        var step = x._strides[0]
+        var i = 0
+        while i < n:
+            vals.append(x._data[base + i * step])
+            idxs.append(i)
+            i = i + 1
+
+        _insertion_argsort_inplace_f32(vals, idxs)
+
+        var shape = List[Int](); shape.append(n)
+        var strides = compute_row_major_strides(shape)
+        return Tensor[Int](idxs, shape, strides, 0)
+
+    var total = numel(x._shape)
+    var vals = List[Float32](); vals.reserve(total)
+    var idxs = List[Int]();     idxs.reserve(total)
+
+    var ndim = len(x._shape)
+    var coord = List[Int](); coord.reserve(ndim)
+    var ax = 0
+    while ax < ndim:
+        coord.append(0)
+        ax = ax + 1
+
+    var base = x._offset
+    var done: Bool = False
+    var flat_i = 0
+    while not done:
+        var pos = base
+        var k = 0
+        while k < ndim:
+            pos = pos + coord[k] * x._strides[k]
+            k = k + 1
+        vals.append(x._data[pos])
+        idxs.append(flat_i)
+
+        var d = ndim - 1
+        while True:
+            if d < 0:
+                done = True
+                break
+            coord[d] = 0 if coord[d] + 1 == x._shape[d] else coord[d] + 1
+            if coord[d] != 0:
+                break
+            d = d - 1
+        flat_i = flat_i + 1
+
+    _insertion_argsort_inplace_f32(vals, idxs)
+
+    var shape_flat = List[Int](); shape_flat.append(total)
+    var strides_flat = compute_row_major_strides(shape_flat)
+    return Tensor[Int](idxs, shape_flat, strides_flat, 0)
+
+
+
+@always_inline
+fn unique_int(x: Tensor[Int], return_counts: Bool) -> UniqueResult[Int]:
     # Flatten (stride/offset aware) and sort
     var ys = setops_copy_flat_list[Int](x)
     var n = len(ys)
@@ -1378,9 +1804,9 @@ fn unique_int(x: Tensor[Int], return_counts: Bool) -> UniqueResult:
         var c0 = Tensor[Int](List[Int](), shp0, st0, 0)
 
         if return_counts:
-            return UniqueResult(u0, c0)
+            return UniqueResult[Int](u0, c0)
         else:
-            return UniqueResult(u0, c0)   # counts empty (shape=[0])
+            return UniqueResult[Int](u0, c0)   # counts empty (shape=[0])
 
     insertion_sort_inplace(ys)
 
@@ -1414,17 +1840,17 @@ fn unique_int(x: Tensor[Int], return_counts: Bool) -> UniqueResult:
     var c     = Tensor[Int](cnts, shp_c, st_c, 0)
 
     if return_counts:
-        return UniqueResult(u, c)
+        return UniqueResult[Int](u, c)
     else:
         # Return empty counts (shape=[0])
         var shp0 = List[Int](); shp0.append(0)
         var st0  = compute_row_major_strides(shp0)
         var empty_counts = Tensor[Int](List[Int](), shp0, st0, 0)
-        return UniqueResult(u, empty_counts)
+        return UniqueResult[Int](u, empty_counts)
 
 
 @always_inline
-fn unique(x: Tensor[Int]) -> UniqueResult:
+fn unique(x: Tensor[Int]) -> UniqueResult[Int]:
     var ys = setops_copy_flat_list[Int](x)
     var n = len(ys)
     if n == 0:
@@ -1432,7 +1858,7 @@ fn unique(x: Tensor[Int]) -> UniqueResult:
         var shp2 = List[Int](); shp2.append(0)
         var u0 = Tensor[Int](List[Int](), shp1)
         var c0 = Tensor[Int](List[Int](), shp2)
-        return UniqueResult(u0, c0)
+        return UniqueResult[Int](u0, c0)
 
     insertion_sort_inplace(ys)
 
@@ -1457,7 +1883,213 @@ fn unique(x: Tensor[Int]) -> UniqueResult:
     var shp_c = List[Int](); shp_c.append(len(cnts))
     var u = Tensor[Int](vals, shp_u)
     var c = Tensor[Int](cnts, shp_c)
-    return UniqueResult(u, c)
+    return UniqueResult[Int](u, c)
+
+
+# ========= helpers for Float64 / Float32 =========
+@always_inline
+fn _isnan64(x: Float64) -> Bool:
+    return x != x
+
+@always_inline
+fn _isnan32(x: Float32) -> Bool:
+    return x != x
+
+# a < b with NaN sorted last
+@always_inline
+fn _lt_f64(a: Float64, b: Float64) -> Bool:
+    if _isnan64(a):
+        return False               # a is NaN -> not less than b (NaN goes last)
+    if _isnan64(b):
+        return True                # b is NaN, a is number -> a < b
+    return a < b
+
+@always_inline
+fn _lt_f32(a: Float32, b: Float32) -> Bool:
+    if _isnan32(a):
+        return False
+    if _isnan32(b):
+        return True
+    return a < b
+
+# equality that treats NaNs as equal
+@always_inline
+fn _eq_f64(a: Float64, b: Float64) -> Bool:
+    return (a == b) or (_isnan64(a) and _isnan64(b))
+
+@always_inline
+fn _eq_f32(a: Float32, b: Float32) -> Bool:
+    return (a == b) or (_isnan32(a) and _isnan32(b))
+
+ 
+ 
+
+# ================= Float64 =================
+
+@always_inline
+fn unique_float64(x: Tensor[Float64], return_counts: Bool) -> UniqueResult[Float64]:
+    var ys = setops_copy_flat_list[Float64](x)
+    var n = len(ys)
+
+    if n == 0:
+        var shp0 = List[Int](); shp0.append(0)
+        var st0  = compute_row_major_strides(shp0)
+        var u0 = Tensor[Float64](List[Float64](), shp0, st0, 0)
+        var c0 = Tensor[Int](List[Int](), shp0, st0, 0)
+        return UniqueResult[Float64](u0, c0)
+
+    _insertion_sort_inplace_f64(ys)
+
+    # Run-length encode (treat NaNs equal)
+    var vals = List[Float64](); vals.reserve(n)
+    var cnts = List[Int]();     cnts.reserve(n)
+
+    var cur = ys[0]
+    var cnt = 1
+    var i = 1
+    while i < n:
+        var v = ys[i]
+        if _eq_f64(v, cur):
+            cnt = cnt + 1
+        else:
+            vals.append(cur); cnts.append(cnt)
+            cur = v; cnt = 1
+        i = i + 1
+    vals.append(cur); cnts.append(cnt)
+
+    var shp_u = List[Int](); shp_u.append(len(vals))
+    var st_u  = compute_row_major_strides(shp_u)
+    var u     = Tensor[Float64](vals, shp_u, st_u, 0)
+
+    var shp_c = List[Int](); shp_c.append(len(cnts))
+    var st_c  = compute_row_major_strides(shp_c)
+    var c     = Tensor[Int](cnts, shp_c, st_c, 0)
+
+    if return_counts:
+        return UniqueResult[Float64](u, c)
+    else:
+        var shp0 = List[Int](); shp0.append(0)
+        var st0  = compute_row_major_strides(shp0)
+        var empty_counts = Tensor[Int](List[Int](), shp0, st0, 0)
+        return UniqueResult[Float64](u, empty_counts)
+
+@always_inline
+fn unique(x: Tensor[Float64]) -> UniqueResult[Float64]:
+    var ys = setops_copy_flat_list[Float64](x)
+    var n = len(ys)
+    if n == 0:
+        var shp0 = List[Int](); shp0.append(0)
+        var u0 = Tensor[Float64](List[Float64](), shp0)
+        var c0 = Tensor[Int](List[Int](), shp0)
+        return UniqueResult[Float64](u0, c0)
+
+    _insertion_sort_inplace_f64(ys)
+
+    var vals = List[Float64](); vals.reserve(n)
+    var cnts = List[Int]();     cnts.reserve(n)
+
+    var cur = ys[0]
+    var cnt = 1
+    var i = 1
+    while i < n:
+        var v = ys[i]
+        if _eq_f64(v, cur):
+            cnt = cnt + 1
+        else:
+            vals.append(cur); cnts.append(cnt)
+            cur = v; cnt = 1
+        i = i + 1
+    vals.append(cur); cnts.append(cnt)
+
+    var shp_u = List[Int](); shp_u.append(len(vals))
+    var shp_c = List[Int](); shp_c.append(len(cnts))
+    var u = Tensor[Float64](vals, shp_u)
+    var c = Tensor[Int](cnts, shp_c)
+    return UniqueResult[Float64](u, c)
+
+
+# ================= Float32 =================
+
+@always_inline
+fn unique_float32(x: Tensor[Float32], return_counts: Bool) -> UniqueResult[Float32]:
+    var ys = setops_copy_flat_list[Float32](x)
+    var n = len(ys)
+
+    if n == 0:
+        var shp0 = List[Int](); shp0.append(0)
+        var st0  = compute_row_major_strides(shp0)
+        var u0 = Tensor[Float32](List[Float32](), shp0, st0, 0)
+        var c0 = Tensor[Int](List[Int](), shp0, st0, 0)
+        return UniqueResult[Float32](u0, c0)
+
+    _insertion_sort_inplace_f32(ys)
+
+    # Run-length encode (treat NaNs equal)
+    var vals = List[Float32](); vals.reserve(n)
+    var cnts = List[Int]();     cnts.reserve(n)
+
+    var cur = ys[0]
+    var cnt = 1
+    var i = 1
+    while i < n:
+        var v = ys[i]
+        if _eq_f32(v, cur):
+            cnt = cnt + 1
+        else:
+            vals.append(cur); cnts.append(cnt)
+            cur = v; cnt = 1
+        i = i + 1
+    vals.append(cur); cnts.append(cnt)
+
+    var shp_u = List[Int](); shp_u.append(len(vals))
+    var st_u  = compute_row_major_strides(shp_u)
+    var u     = Tensor[Float32](vals, shp_u, st_u, 0)
+
+    var shp_c = List[Int](); shp_c.append(len(cnts))
+    var st_c  = compute_row_major_strides(shp_c)
+    var c     = Tensor[Int](cnts, shp_c, st_c, 0)
+
+    if return_counts:
+        return UniqueResult[Float32](u, c)
+    else:
+        var shp0 = List[Int](); shp0.append(0)
+        var st0  = compute_row_major_strides(shp0)
+        var empty_counts = Tensor[Int](List[Int](), shp0, st0, 0)
+        return UniqueResult[Float32](u, empty_counts)
+
+@always_inline
+fn unique(x: Tensor[Float32]) -> UniqueResult[Float32]:
+    var ys = setops_copy_flat_list[Float32](x)
+    var n = len(ys)
+    if n == 0:
+        var shp0 = List[Int](); shp0.append(0)
+        var u0 = Tensor[Float32](List[Float32](), shp0)
+        var c0 = Tensor[Int](List[Int](), shp0)
+        return UniqueResult[Float32](u0, c0)
+
+    _insertion_sort_inplace_f32(ys)
+
+    var vals = List[Float32](); vals.reserve(n)
+    var cnts = List[Int]();     cnts.reserve(n)
+
+    var cur = ys[0]
+    var cnt = 1
+    var i = 1
+    while i < n:
+        var v = ys[i]
+        if _eq_f32(v, cur):
+            cnt = cnt + 1
+        else:
+            vals.append(cur); cnts.append(cnt)
+            cur = v; cnt = 1
+        i = i + 1
+    vals.append(cur); cnts.append(cnt)
+
+    var shp_u = List[Int](); shp_u.append(len(vals))
+    var shp_c = List[Int](); shp_c.append(len(cnts))
+    var u = Tensor[Float32](vals, shp_u)
+    var c = Tensor[Int](cnts, shp_c)
+    return UniqueResult[Float32](u, c)
 
 # Count non-negative integers in x; output shape is [max(x)+1].
 fn bincount_int(x: Tensor[Int]) -> Tensor[Int]:
@@ -1511,7 +2143,7 @@ fn bincount_int(x: Tensor[Int]) -> Tensor[Int]:
 
 # Histogram with explicit bin edges for Int tensors.
 # bins = [e0, e1, ..., eN], semi-open intervals: [e_k, e_{k+1})
-fn histogram_int(x: Tensor[Int], bins: List[Int]) -> UniqueResult:
+fn histogram_int(x: Tensor[Int], bins: List[Int]) -> UniqueResult[Int]:
     var nb = len(bins)
     if nb < 2:
         # Return two distinct empty tensors (shape [0]) with explicit strides/offset
@@ -1523,7 +2155,7 @@ fn histogram_int(x: Tensor[Int], bins: List[Int]) -> UniqueResult:
         var str_h0 = compute_row_major_strides(shp_h0)
         var hist0  = Tensor[Int](List[Int](), shp_h0, str_h0, 0)
 
-        return UniqueResult(edges0, hist0)
+        return UniqueResult[Int](edges0, hist0)
 
     # Build counts with nb-1 zeros
     var counts = List[Int]()
@@ -1560,7 +2192,7 @@ fn histogram_int(x: Tensor[Int], bins: List[Int]) -> UniqueResult:
     var edges = Tensor[Int](bins, shp_e, str_e, 0)
 
     # Return both (values = edges, counts = hist)
-    return UniqueResult(edges, hist)
+    return UniqueResult[Int](edges, hist)
 
 
 # Digitize with right-closed bins:
@@ -1632,19 +2264,31 @@ fn digitize_int(x: Tensor[Int], edges: List[Int]) -> Tensor[Int]:
 # ---------------- thin object-style wrappers ----------------
 
 # x.sort()
+fn tensor_sort_f64(x: Tensor[Float64]) -> Tensor[Float64]:
+    return sort_f64(x)
+
+fn tensor_sort_f32(x: Tensor[Float32]) -> Tensor[Float32]:
+    return sort_f32(x)
+
 fn tensor_sort_int(x: Tensor[Int]) -> Tensor[Int]:
     return sort_int(x)
 
 # x.unique(return_counts=True/False)
-fn tensor_unique_int(x: Tensor[Int], return_counts: Bool = False) -> UniqueResult:
+fn tensor_unique_int(x: Tensor[Int], return_counts: Bool = False) -> UniqueResult[Int]:
     return unique_int(x, return_counts)
+
+fn tensor_unique_f64(x: Tensor[Float64], return_counts: Bool = False) -> UniqueResult[Float64]:
+    return unique_float64(x, return_counts)
+
+fn tensor_unique_f32(x: Tensor[Float32], return_counts: Bool = False) -> UniqueResult[Float32]:
+    return unique_float32(x, return_counts)
 
 # x.bincount()
 fn tensor_bincount_int(x: Tensor[Int]) -> Tensor[Int]:
     return bincount_int(x)
 
 # x.histogram(bins=[...])
-fn tensor_histogram_int(x: Tensor[Int], bins: List[Int]) -> UniqueResult:
+fn tensor_histogram_int(x: Tensor[Int], bins: List[Int]) -> UniqueResult[Int]:
     return histogram_int(x, bins)
 
 # x.digitize([edges...])
@@ -1705,13 +2349,13 @@ fn tensor_sum_int(x: Tensor[Int]) -> Int:
         i += 1
     return s
                 
-struct UniqueResult:
-    var p1: Tensor[Int]
-    var p2: Tensor[Int]
+struct UniqueResult[T: ImplicitlyCopyable & Copyable & Movable]:
+    var values: Tensor[T]
+    var counts: Tensor[Int]
 
-    fn __init__(out self, p1: Tensor[Int], p2: Tensor[Int]):
-        self.p1 = p1.copy()
-        self.p2 = p2.copy()
+    fn __init__(out self, values: Tensor[T], counts: Tensor[Int]):
+        self.values = values.copy()
+        self.counts = counts.copy()
 
 @always_inline
 fn wrap_axis_index(i0: Int, dim: Int) -> Int:
@@ -2637,10 +3281,10 @@ fn apply_bin_f64(a: Tensor[Float64], b: Tensor[Float64], code: Int) -> Tensor[Fl
 
     var k = 0
     while k < n:
-        let ai = flat_index_bcast(idx, ash, ast)
-        let bi = flat_index_bcast(idx, bsh, bst)
-        let x = a._data[ai]
-        let y = b._data[bi]
+        var ai = flat_index_bcast(idx, ash, ast)
+        var bi = flat_index_bcast(idx, bsh, bst)
+        var x = a._data[ai]
+        var y = b._data[bi]
 
         if code == 0:
             out.append(x + y)
@@ -2656,7 +3300,7 @@ fn apply_bin_f64(a: Tensor[Float64], b: Tensor[Float64], code: Int) -> Tensor[Fl
             if y == 0.0:
                 out.append(0.0)
             else:
-                let q = Int64(x / y)
+                var q = Int64(x / y)
                 out.append(x - Float64(q) * y)
         elif code == 5:
             # logical AND -> 1.0 if both non-zero else 0.0
@@ -2666,8 +3310,8 @@ fn apply_bin_f64(a: Tensor[Float64], b: Tensor[Float64], code: Int) -> Tensor[Fl
             out.append(1.0 if (x != 0.0 or  y != 0.0) else 0.0)
         else:
             # code == 7, logical XOR
-            let ax = (x != 0.0)
-            let by = (y != 0.0)
+            var ax = (x != 0.0)
+            var by = (y != 0.0)
             out.append(1.0 if (ax != by) else 0.0)
 
         index_advance(idx, out_shape)
@@ -2708,10 +3352,10 @@ fn apply_cmp_f64(a: Tensor[Float64], b: Tensor[Float64], code: Int) -> Tensor[Fl
 
     var k = 0
     while k < n:
-        let ai = flat_index_bcast(idx, ash, ast)
-        let bi = flat_index_bcast(idx, bsh, bst)
-        let x = a._data[ai]
-        let y = b._data[bi]
+        var ai = flat_index_bcast(idx, ash, ast)
+        var bi = flat_index_bcast(idx, bsh, bst)
+        var x = a._data[ai]
+        var y = b._data[bi]
 
         if code == 0:
             out.append(1.0 if x == y else 0.0)
@@ -3044,3 +3688,64 @@ fn tensor1d_from_list[T: ImplicitlyCopyable & Copyable & Movable](data: List[T])
     shp.append(len(data))
     var strides = compute_row_major_strides(shp)
     return Tensor[T](data, shp, strides, 0)
+
+
+
+# ------------------------------
+# Small local RNG (XorShift64*)
+# ------------------------------
+struct XorShift64:
+    var state: UInt64
+
+    @always_inline
+    fn __init__(out self, seed: UInt64):
+        # Zero-seed guard to avoid degenerate sequence
+        var s = seed
+        if s == UInt64(0):
+            s = UInt64(0x9E3779B97F4A7C15)   # non-zero default
+        self.state = s 
+
+    @always_inline
+    fn next_u64(mut self) -> UInt64:
+        var x = self.state
+        x ^= x >> UInt64(12)
+        x ^= x << UInt64(25)
+        x ^= x >> UInt64(27)
+        self.state = x
+        # xorshift* final mix (no '&*' in Mojo): wrap to 64 bits
+        var MIX: UInt64 = 0x2545F4914F6CDD1D
+        x = x * MIX
+        x = x & UInt64(0xFFFFFFFFFFFFFFFF)
+        return x
+
+    @always_inline
+    fn next_unit_f64(mut self) -> Float64:
+        # Map top 53 bits to [0,1)
+        var v = self.next_u64() >> UInt64(11)  # keep 53 bits
+        return Float64(v) / 9007199254740992.0 # 2^53
+
+# -----------------------------------------------
+# Uniform helpers (out-of-place & in-place, f64)
+# -----------------------------------------------
+
+@always_inline
+fn uniform(low: Float64, high: Float64, shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
+    var out = empty(shape)  # Float64 by default
+    var s = UInt64(seed.value()) 
+    if seed is None: s =UInt64(0xD1B54A32D192ED03)  
+    var rng = XorShift64(s)
+
+    var n = len(out._data)
+    var i = 0
+    var span = high - low
+    while i < n:
+        var u = rng.next_unit_f64()           # in [0,1)
+        out._data[i] = low + span * u
+        i += 1
+    return out
+
+
+@always_inline
+fn uniform_f32(low: Float32, high: Float32, shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float32]:
+    var tmp = uniform(Float64(low), Float64(high), shape, seed)  # sample in f64
+    return tmp.to_float32()
