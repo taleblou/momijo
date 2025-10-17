@@ -35,22 +35,23 @@ from collections.list import List
 
 # Explicit helpers (adjust paths if your project uses different names)
 from momijo.tensor.helpers import *
+from momijo.tensor.nanops import nanmean,nansum,nanmin
  
  
-from momijo.tensor.transform import reshape,transpose
+from momijo.tensor.transform import reshape,transpose,unsqueeze,squeeze_all,repeat
 from momijo.tensor.broadcast import broadcast_shapes,can_broadcast_shapes
  
 from momijo.tensor.broadcast import matmul as _matmul_free
 from momijo.tensor.broadcast import tensordot as _tensordot_free
 from momijo.tensor.math import mean as _mean_free
-
-from momijo.tensor.math import sum as _sum_free 
+ 
 from momijo.tensor.math import *
 from momijo.tensor.cast import *
-from momijo.tensor.creation import scalar64,scalar32,scalar_int
+from momijo.tensor.creation import scalar_f64,scalar_f32,scalar_int
 from momijo.tensor.indexing import *
-from momijo.tensor.transform import flatten,view ,clamp_int
+from momijo.tensor.transform import flatten,view ,clamp_int,permute
 
+from momijo.tensor.creation import empty_tensor_with
 
  
 # ---------- helpers: digit & int parsing (no-throw) ----------
@@ -99,7 +100,7 @@ fn _parse_int_no_throw(s_in: String) -> (Bool, Int):
         acc = -acc
     return (True, acc)
 
-# Optional[Int] برمی‌گرداند و هرگز استثناء پرتاب نمی‌کند
+ 
 @always_inline
 fn _parse_opt_int(s: String) -> Optional[Int]:
     var ss = String(s.strip())
@@ -120,7 +121,7 @@ fn _str_string_list(xs: List[String]) -> String:
         out += String("\"") + xs[i] + String("\"")
         i += 1
     out += String("]")
-    return out
+    return out.copy()
 
  
 
@@ -203,7 +204,7 @@ fn _ls_list_str(v: List[IndexSel]) -> String:
         out += _ls_str(v[k])
         k += 1
     out += String("]")
-    return out
+    return out.copy()
 
 @always_inline
 fn _index_sel_str(sel: IndexSel) -> String:
@@ -234,7 +235,7 @@ fn _sels_str(sels: List[IndexSel]) -> String:
         if i + 1 < m: out += ", "
         i += 1
     out += "]"
-    return out
+    return out.copy()
 
 
 # ----------------------------
@@ -761,7 +762,19 @@ fn _apply_slice_axis0_1d[T: ImplicitlyCopyable & Copyable & Movable](
     var out_strides = mk_strides(out_shape)
     return Tensor[T](out, out_shape, out_strides, 0)
 
-
+fn share[T: ImplicitlyCopyable & Copyable & Movable](
+        data: List[T],
+        shape: List[Int],
+        strides: List[Int],
+        offset: Int
+    ) -> Tensor[T]:
+        var t: Tensor[T]
+        # Direct field assignment (no copies!)
+        t._data = data                # **share the same storage**
+        t._shape = shape.copy()       # metadata can be copied (cheap)
+        t._strides = strides.copy()
+        t._offset = offset
+        return t
 # =============================== Tensor ===============================
 struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     var _data: List[T]
@@ -889,6 +902,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         self._shape   = other._shape.copy()
         self._strides = other._strides.copy()
         self._offset  = other._offset
+
 
 
     # ---------------- introspection ----------------
@@ -2642,30 +2656,35 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn reange(self, a: Int, b: Int) -> IndexSel:
         return make_slice_sel((a, b, 1))    
+    
+    @always_inline
+    fn clone(self) -> Tensor[T]:
+        return self.copy()
 
     # --------------------------- slice builders ------------------------
     fn full(self, axis: Int) -> SliceSpec:
         var dim = self._shape[normalize_axis(axis, len(self._shape))]
         return SliceSpec(start=0, stop=dim, step=1)
 
-    fn range(self, axis: Int, start: Int, stop: Int, step: Int = 1) -> SliceSpec:
-        var d = len(self._shape)
-        var ax = normalize_axis(axis, d)
-        var dim = self._shape[ax]
-        var s = wrap_index(start, dim)
-        var e = stop
-        if e < 0:
-            e = dim + e
-        if e > dim:
-            e = dim
-        if s < 0:
-            s = 0
-        if s > dim:
-            s = dim
-        if e < 0:
-            e = 0
-        return SliceSpec(start=s, stop=e, step=step)
+    fn unsqueeze(self,axis_in: Int) -> Tensor[T]:
+        return unsqueeze(self, axis_in) 
 
+    fn squeeze_all(self) -> Tensor[T]:
+        return squeeze_all(self)
+
+
+    fn permute(self, axes: List[Int]) -> Tensor[T]:
+        return permute(self, axes) 
+
+    fn repeat(self, reps: List[Int]) -> Tensor[T]:
+        return repeat(self, reps)
+         
+    fn transpose(self, i: Int, j: Int) -> Tensor[T]: return transpose(self, i, j)
+    fn transpose(self, perm: List[Int]) -> Tensor[T]:  return transpose(self, perm)
+
+    fn flatten(self, start_dim: Int = 0,    end_dim_opt: Optional[Int] = None) -> Tensor[T]:
+        return flatten(self,start_dim,    end_dim_opt)
+ 
     fn narrow(self, axis: Int, start: Int, length: Int) -> SliceSpec:
         var d = len(self._shape)
         var ax = normalize_axis(axis, d)
@@ -2738,6 +2757,127 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
         return Tensor[T](out_shape, out_flat)
 
+    @always_inline
+    fn slice(
+        self,
+        ax: Int,
+        start: Int,
+        stop: Int,
+        step: Int = 1,
+        debug: Bool = True
+    ) -> Tensor[T]:
+        
+
+        var r = len(self._shape)
+        if r == 0:
+            print("[slice] rank-0 tensor → return self")
+            return self.copy()
+        if ax < 0 or ax >= r:
+            print("[slice] axis out of range → return self")
+            return self.copy()
+        if step == 0:
+            print("[slice] step == 0 → return self")
+            return self.copy()
+
+        var n_ax = self._shape[ax]
+
+        # Normalize like Python        
+        var s = start 
+        if start < 0: s =start + n_ax  
+        var e =stop 
+        if stop  < 0: e =stop  + n_ax 
+
+        # Clamp
+        if s < 0: s = 0
+        if e < 0: e = 0
+        if s > n_ax: s = n_ax
+        if e > n_ax: e = n_ax
+
+        # Length on this axis
+        var len_ax = range_len(s, e, step)
+
+        var out_shape = self._shape.copy()
+        var out_strides = self._strides.copy()
+        out_shape[ax]   = len_ax
+        out_strides[ax] = self._strides[ax] * step
+        var out_offset  = self._offset + s * self._strides[ax]
+
+     
+
+        # Constructor order MUST be (data, shape, strides, offset)
+        
+        return Tensor[T](self._data, out_shape, out_strides, out_offset)
+
+    fn slice_inplace(
+        mut self,
+        ax: Int,
+        start: Int,
+        stop: Int,
+        step: Int = 1, 
+    ) -> Tensor[T]: 
+
+        # Basic validation
+        var r = len(self._shape)
+        if r == 0:
+            print("[slice_inplace] rank-0 tensor → no-op")
+            return self.copy()
+        if ax < 0 or ax >= r:
+            print("[slice_inplace] ERROR: axis out of range → no-op")
+            return self.copy()
+        if step == 0:
+            print("[slice_inplace] ERROR: step == 0 → no-op")
+            return self.copy()
+
+        var n_ax = self._shape[ax]
+
+        # Normalize indices like Python (relative to axis length)
+        var s = start
+        if s < 0: s = s + n_ax
+        var e = stop
+        if e < 0: e = e + n_ax
+
+        # Clamp depending on step sign (Python-ish)
+        if step > 0:
+            if s < 0: s = 0
+            if s > n_ax: s = n_ax
+            if e < 0: e = 0
+            if e > n_ax: e = n_ax
+        else:
+            # step < 0
+            # For negative step, valid index range is [-1 .. n_ax-1] conceptually,
+            # but we'll clamp to actual storage-safe values.
+            if s < -1: s = -1
+            if s >= n_ax: s = n_ax - 1
+            if e < -1: e = -1
+            if e >= n_ax: e = n_ax - 1
+
+        # Compute logical length along this axis
+        var len_ax = range_len(s, e, step)
+
+        # Compute new stride/offset for this axis
+        var new_stride_ax = self._strides[ax] * step
+
+        # Base index for offset shift:
+        # When length == 0, we don't want an out-of-bounds base; pick 0 safely.
+        var base_idx = s
+        if len_ax == 0:
+            base_idx = 0
+        else:
+            # Ensure base index is within [0 .. n_ax-1] to keep offset sane
+            if base_idx < 0: base_idx = 0
+            if base_idx >= n_ax and n_ax > 0: base_idx = n_ax - 1
+
+        var new_offset = self._offset + base_idx * self._strides[ax]
+
+         
+        # Apply in-place: update only the selected axis
+        self._shape[ax]   = len_ax
+        self._strides[ax] = new_stride_ax
+        self._offset      = new_offset
+
+        
+        return self.copy()
+
     fn index_axis(self, axis: Int, index: Int) -> Tensor[T]:
         var d = len(self._shape)
         var ax = normalize_axis(axis, d)
@@ -2769,8 +2909,121 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             i = i + 1
         return Tensor[T](out_shape, self._data)
  
+    @always_inline
+    fn as_strided(
+        self,
+        new_shape: List[Int],
+        new_strides: List[Int],
+        offset: Int = 0
+    ) -> Tensor[T]:
+        # Validate ranks
+        var ok = True
+        if len(new_shape) != len(new_strides):
+            print("as_strided_safe: shape/strides rank mismatch")
+            ok = False
+
+        # Validate offset
+        if offset < 0:
+            print("as_strided_safe: negative offset")
+            ok = False
+
+        # Validate dims and compute out_n
+        var out_n = 1
+        var i = 0
+        while i < len(new_shape):
+            var d = new_shape[i]
+            if d < 0:
+                print("as_strided_safe: negative dimension at axis " + i.__str__())
+                ok = False
+            out_n = out_n * d
+            i += 1
+
+        # Early fallback if anything is wrong so far
+        if not ok:
+            return self.copy()
+
+        # Zero-size fast path (no bounds walk needed)
+        if out_n == 0:
+            return Tensor[T](self._data, new_shape, new_strides, offset)
+
+        # Bounds check for reachable indices
+        var min_idx = offset
+        var max_idx = offset
+        i = 0
+        while i < len(new_shape):
+            var d = new_shape[i]
+            var st = new_strides[i]
+            if d > 1:
+                var last = (d - 1) * st
+                if last < 0:
+                    min_idx = min_idx + last
+                else:
+                    max_idx = max_idx + last
+            i += 1
+
+        if min_idx < 0 or max_idx >= len(self._data):
+            print("as_strided_safe: out-of-bounds view (min=" + min_idx.__str__() +
+                ", max=" + max_idx.__str__() + ", data_len=" + len(self._data).__str__() + ")")
+            return self.copy()
+
+        # Pure view (shared storage)
+        return Tensor[T](self._data, new_shape, new_strides, offset)  
+
+
+    fn get2(self, i: Int, j: Int ) -> T:
+        var r = len(self._shape)
+        if r != 2: 
+
+        var n0 = self._shape[0]; var n1 = self._shape[1]
+        var ii =i 
+        if i < 0: ii =i + n0  
+        var jj =j 
+        if j < 0: jj =j + n1 
+        if ii < 0 or ii >= n0 or jj < 0 or jj >= n1:
+            
+            return self._data[self._offset]   # fallback
+
+        var lin = self._offset + ii * self._strides[0] + jj * self._strides[1]
+        
+        return self._data[lin]
+
+    fn set2(
+        mut self,
+        i: Int,
+        j: Int,
+        value: T, 
+    ) -> None:
+        var r = len(self._shape) 
+
+        if r != 2: 
+            return
+
+        var n0 = self._shape[0]
+        var n1 = self._shape[1]
+
+        # Normalize negative indices
+        var ii =i 
+        if i < 0: ii =i + n0  
+        var jj =j 
+        if j < 0: jj =j + n1 
  
-  
+
+        # Bounds check
+        if ii < 0 or ii >= n0 or jj < 0 or jj >= n1: 
+            return
+
+        # Linear position using strides + offset (supports views)
+        var lin = self._offset + ii * self._strides[0] + jj * self._strides[1]
+ 
+        # Guard read (lin checked by OOB above for logical indices; still sanity-print)
+        if lin < 0 or lin >= len(self._data):
+            print("[set2] ERROR: storage index OOB: lin=" + lin.__str__() +
+                    " data_len=" + len(self._data).__str__())
+            return 
+
+        self._data[lin] = value 
+
+    
     # ---------------- string-based multi-axis selector ----------------
     @always_inline
     fn _trim(self, s: String) -> String:
@@ -2794,7 +3047,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         while p <= j:
             out = out + String(s[p])
             p = p + 1
-        return out
+        return out.copy()
 
     @always_inline
     fn _to_int_safe(self, s: String, defv: Int) -> Int:
@@ -2915,9 +3168,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn resize_like_with_pad(self, new_tensor: Tensor[T]) -> Tensor[T]:
         return resize_like_with_pad(self, new_shape)
-
-    fn transpose(self, new_shape: List[Int]) -> Tensor[T]:
-        return transpose(self, new_shape)
+ 
  
 
     fn matmul(self: Tensor[Float64], x: Tensor[Float64]) -> Tensor[Float64]:
@@ -2940,15 +3191,73 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var Bf = astype_f64_from_int(B)
         return _tensordot_free(Af, Bf, axis)
 
-     # Inside: struct Tensor[T: ImplicitlyCopyable & Copyable & Movable]:
+  
     fn sum(self: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
-        return _sum_free(self, axis, keepdims)
-        # Inside: struct Tensor[T: ImplicitlyCopyable & Copyable & Movable]:
-    fn sum(self: Tensor[Int], axis: Optional[Int], keepdims: Bool = False) -> Tensor[Float64]:
+        return sum(self, axis, keepdims)
+    fn sum(self: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
+        return sum(self, axis, keepdims) 
+    fn sum(self: Tensor[Int], axis: Optional[Int], keepdims: Bool = False) -> Tensor[Int]:
         var f = astype_f64_from_int(self)
-        return _sum_free(f, axis, keepdims)
+        return sum(self, axis, keepdims)
+    @always_inline
+    fn sum_all(self: Tensor[Int]) -> Int:
+        return sum1d_unrolled(self)
+
+    @always_inline
+    fn sum_all(self: Tensor[Float64]) -> Float64:
+        return sum1d_unrolled(self) 
+
+    @always_inline
+    fn sum_all(self: Tensor[Float32]) -> Float32:
+        return sum1d_unrolled(self) 
+
+    fn std(self: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return std(self, axis, keepdims)
+    fn std(self: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return std(self, axis, keepdims) 
+    fn std(self: Tensor[Int], axis: Optional[Int], keepdims: Bool = False) -> Tensor[Float64]:
+        var f = astype_f64_from_int(self)
+        return std(f, axis, keepdims)
+    @always_inline
+    fn std_all(self: Tensor[Int]) -> Int:
+        return std1d_unrolled(self)
+
+    @always_inline
+    fn std_all(self: Tensor[Float64]) -> Float64:
+        return std1d_unrolled(self) 
+
+    @always_inline
+    fn std_all(self: Tensor[Float32]) -> Float32:
+        return std1d_unrolled(self) 
+ 
+    fn nanmean(self:Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nanmean(self, axis, keepdims)
+
+    fn nansum(self:Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nansum(self, axis, keepdims)
+
+    fn nanmin(self:Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nansum(self, axis, keepdims)
+ 
+    fn nanmean(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nanmean(self, axis, keepdims)
+
+    fn nansum(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nansum(self, axis, keepdims)
+
+    fn nanmin(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nansum(self, axis, keepdims)
 
  
+    fn nanmean(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nanmean(self, axis, keepdims)
+
+    fn nansum(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nansum(self, axis, keepdims)
+
+    fn nanmin(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+        return nansum(self, axis, keepdims)
+
 
     
     # ---------- Float64 overloads ----------
@@ -3329,15 +3638,51 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             n = n * self._shape[i]
             i = i + 1
         return n 
-         
-    @always_inline
-    fn unique(self: Tensor[Int]) -> UniqueResult:
+          
+    fn unique(self: Tensor[Int]) -> UniqueResult[Int]:
         return tensor_unique_int(self)
 
+    fn unique(self: Tensor[Float64]) -> UniqueResult[Float64]:
+        return tensor_unique_f64(self)
+
+    fn unique(self: Tensor[Float32]) -> UniqueResult[Float32]:
+        return tensor_unique_f32(self)
+
+    fn topk(self:Tensor[Float64], k: Int, largest: Bool = True, axis: Optional[Int] = None) -> (Tensor[Float64], Tensor[Int32]):
+        return topk(self, k, largest , axis)
+
+    fn topk(self:Tensor[Float32], k: Int, largest: Bool = True, axis: Optional[Int] = None) -> (Tensor[Float32], Tensor[Int32]):
+        return topk(self, k, largest , axis)
+
+    fn topk(self:Tensor[Int], k: Int, largest: Bool = True, axis: Optional[Int] = None) -> (Tensor[Int], Tensor[Int32]):
+        return topk(self, k, largest , axis)
+
+
+    @always_inline
+    fn sort(self: Tensor[Float64]) -> Tensor[Float64]:
+        return tensor_sort_f64(self)
+
+    @always_inline
+    fn sort(self: Tensor[Float32]) -> Tensor[Float32]:
+        return tensor_sort_f32(self)
 
     @always_inline
     fn sort(self: Tensor[Int]) -> Tensor[Int]:
         return tensor_sort_int(self)
+
+    
+
+    @always_inline
+    fn argsort(self: Tensor[Float64]) -> Tensor[Int]:
+        return argsort_f64(self)
+
+    @always_inline
+    fn argsort(self: Tensor[Float32]) -> Tensor[Int]:
+        return argsort_f32(self)
+
+    @always_inline
+    fn argsort(self: Tensor[Int]) -> Tensor[Int]:
+        return argsort_int(self)
  
 
     @always_inline
@@ -3353,18 +3698,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return tensor_digitize_int(self, edges)
  
 
-    @always_inline
-    fn sum(self: Tensor[Int]) -> Int:
-        return sum1d_unrolled(self)
 
-    @always_inline
-    fn sum(self: Tensor[Float64]) -> Float64:
-        return sum1d_unrolled(self) 
-
-    @always_inline
-    fn sum(self: Tensor[Float32]) -> Float32:
-        return sum1d_unrolled(self) 
- 
 
 
     # =========================
@@ -3542,22 +3876,22 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # ----------------------
     # self: Tensor[Float64]
     # ----------------------
-    fn clip(self: Tensor[Float64], lo: Float64, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, scalar64(hi)), self, scalar64(hi)), scalar64(lo)), where_f64(le_t(self, scalar64(hi)), self, scalar64(hi)), scalar64(lo))     # clip f64,f64
-    fn clip(self: Tensor[Float64], lo: Float64, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar32(hi))), self, to_float64(scalar32(hi))), scalar64(lo)), where_f64(le_t(self, to_float64(scalar32(hi))), self, to_float64(scalar32(hi))), scalar64(lo)) # clip f64,f32→f64
-    fn clip(self: Tensor[Float64], lo: Float64, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), scalar64(lo)), where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), scalar64(lo)) # clip f64,int→f64
-    fn clip(self: Tensor[Float64], lo: Float32, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, scalar64(hi)), self, scalar64(hi)), to_float64(scalar32(lo))), where_f64(le_t(self, scalar64(hi)), self, scalar64(hi)), to_float64(scalar32(lo)))                                 # clip f32→f64,f64
-    fn clip(self: Tensor[Float64], lo: Float32, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar32(hi))), self, to_float64(scalar32(hi))), to_float64(scalar32(lo))), where_f64(le_t(self, to_float64(scalar32(hi))), self, to_float64(scalar32(hi))), to_float64(scalar32(lo))) # clip f32→f64,f32→f64
-    fn clip(self: Tensor[Float64], lo: Float32, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), to_float64(scalar32(lo))), where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), to_float64(scalar32(lo)))     # clip f32→f64,int→f64
-    fn clip(self: Tensor[Float64], lo: Int,     hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, scalar64(hi)), self, scalar64(hi)), to_float64(scalar_int(lo))), where_f64(le_t(self, scalar64(hi)), self, scalar64(hi)), to_float64(scalar_int(lo)))                                 # clip int→f64,f64
-    fn clip(self: Tensor[Float64], lo: Int,     hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar32(hi))), self, to_float64(scalar32(hi))), to_float64(scalar_int(lo))), where_f64(le_t(self, to_float64(scalar32(hi))), self, to_float64(scalar32(hi))), to_float64(scalar_int(lo)))         # clip int→f64,f32→f64
+    fn clip(self: Tensor[Float64], lo: Float64, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, scalar_f64(hi)), self, scalar_f64(hi)), scalar_f64(lo)), where_f64(le_t(self, scalar_f64(hi)), self, scalar_f64(hi)), scalar_f64(lo))     # clip f64,f64
+    fn clip(self: Tensor[Float64], lo: Float64, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_f32(hi))), self, to_float64(scalar_f32(hi))), scalar_f64(lo)), where_f64(le_t(self, to_float64(scalar_f32(hi))), self, to_float64(scalar_f32(hi))), scalar_f64(lo)) # clip f64,f32→f64
+    fn clip(self: Tensor[Float64], lo: Float64, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), scalar_f64(lo)), where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), scalar_f64(lo)) # clip f64,int→f64
+    fn clip(self: Tensor[Float64], lo: Float32, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, scalar_f64(hi)), self, scalar_f64(hi)), to_float64(scalar_f32(lo))), where_f64(le_t(self, scalar_f64(hi)), self, scalar_f64(hi)), to_float64(scalar_f32(lo)))                                 # clip f32→f64,f64
+    fn clip(self: Tensor[Float64], lo: Float32, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_f32(hi))), self, to_float64(scalar_f32(hi))), to_float64(scalar_f32(lo))), where_f64(le_t(self, to_float64(scalar_f32(hi))), self, to_float64(scalar_f32(hi))), to_float64(scalar_f32(lo))) # clip f32→f64,f32→f64
+    fn clip(self: Tensor[Float64], lo: Float32, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), to_float64(scalar_f32(lo))), where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), to_float64(scalar_f32(lo)))     # clip f32→f64,int→f64
+    fn clip(self: Tensor[Float64], lo: Int,     hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, scalar_f64(hi)), self, scalar_f64(hi)), to_float64(scalar_int(lo))), where_f64(le_t(self, scalar_f64(hi)), self, scalar_f64(hi)), to_float64(scalar_int(lo)))                                 # clip int→f64,f64
+    fn clip(self: Tensor[Float64], lo: Int,     hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_f32(hi))), self, to_float64(scalar_f32(hi))), to_float64(scalar_int(lo))), where_f64(le_t(self, to_float64(scalar_f32(hi))), self, to_float64(scalar_f32(hi))), to_float64(scalar_int(lo)))         # clip int→f64,f32→f64
     fn clip(self: Tensor[Float64], lo: Int,     hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), to_float64(scalar_int(lo))), where_f64(le_t(self, to_float64(scalar_int(hi))), self, to_float64(scalar_int(hi))), to_float64(scalar_int(lo)))         # clip int→f64,int→f64
 
-    fn minimum_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return where_f64(le_t(self, scalar64(s)), self, scalar64(s))                                   # min f64
-    fn minimum_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return where_f64(le_t(self, to_float64(scalar32(s))), self, to_float64(scalar32(s)))           # min f32→f64
+    fn minimum_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return where_f64(le_t(self, scalar_f64(s)), self, scalar_f64(s))                                   # min f64
+    fn minimum_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return where_f64(le_t(self, to_float64(scalar_f32(s))), self, to_float64(scalar_f32(s)))           # min f32→f64
     fn minimum_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return where_f64(le_t(self, to_float64(scalar_int(s))), self, to_float64(scalar_int(s)))       # min int→f64
 
-    fn maximum_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return where_f64(ge_t(self, scalar64(s)), self, scalar64(s))                                   # max f64
-    fn maximum_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return where_f64(ge_t(self, to_float64(scalar32(s))), self, to_float64(scalar32(s)))           # max f32→f64
+    fn maximum_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return where_f64(ge_t(self, scalar_f64(s)), self, scalar_f64(s))                                   # max f64
+    fn maximum_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return where_f64(ge_t(self, to_float64(scalar_f32(s))), self, to_float64(scalar_f32(s)))           # max f32→f64
     fn maximum_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return where_f64(ge_t(self, to_float64(scalar_int(s))), self, to_float64(scalar_int(s)))       # max int→f64
 
     fn min(self: Tensor[Float64]) -> Float64: return min_t(self)                                   # min f64
@@ -3596,22 +3930,22 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # self: Tensor[Float32]
     # ----------------------
     # clip → if any Float64 is present, output Float64; else output Float32
-    fn clip(self: Tensor[Float32], lo: Float64, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), scalar64(lo)), where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), scalar64(lo))                         # f64,f64 ⇒ f64
-    fn clip(self: Tensor[Float32], lo: Float64, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar32(hi))), to_float64(self), to_float64(scalar32(hi))), scalar64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar32(hi))), to_float64(self), to_float64(scalar32(hi))), scalar64(lo)) # f64,f32 ⇒ f64
-    fn clip(self: Tensor[Float32], lo: Float64, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar64(lo))     # f64,int ⇒ f64
-    fn clip(self: Tensor[Float32], lo: Float32, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar32(lo))), where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar32(lo)))                 # f32,f64 ⇒ f64
-    fn clip(self: Tensor[Float32], lo: Int,     hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar_int(lo))), where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar_int(lo)))                 # int,f64 ⇒ f64
+    fn clip(self: Tensor[Float32], lo: Float64, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), scalar_f64(lo)), where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), scalar_f64(lo))                         # f64,f64 ⇒ f64
+    fn clip(self: Tensor[Float32], lo: Float64, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar_f32(hi))), to_float64(self), to_float64(scalar_f32(hi))), scalar_f64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar_f32(hi))), to_float64(self), to_float64(scalar_f32(hi))), scalar_f64(lo)) # f64,f32 ⇒ f64
+    fn clip(self: Tensor[Float32], lo: Float64, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar_f64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar_f64(lo))     # f64,int ⇒ f64
+    fn clip(self: Tensor[Float32], lo: Float32, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_f32(lo))), where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_f32(lo)))                 # f32,f64 ⇒ f64
+    fn clip(self: Tensor[Float32], lo: Int,     hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_int(lo))), where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_int(lo)))                 # int,f64 ⇒ f64
 
-    fn clip(self: Tensor[Float32], lo: Float32, hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(self, scalar32(hi)), self, scalar32(hi)), scalar32(lo)), where_f32(le_t(self, scalar32(hi)), self, scalar32(hi)), scalar32(lo))     # f32,f32 ⇒ f32
-    fn clip(self: Tensor[Float32], lo: Float32, hi: Int)     -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(self, to_float32(scalar_int(hi))), self, to_float32(scalar_int(hi))), scalar32(lo)), where_f32(le_t(self, to_float32(scalar_int(hi))), self, to_float32(scalar_int(hi))), scalar32(lo))                         # f32,int ⇒ f32
-    fn clip(self: Tensor[Float32], lo: Int,     hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(self, scalar32(hi)), self, scalar32(hi)), to_float32(scalar_int(lo))), where_f32(le_t(self, scalar32(hi)), self, scalar32(hi)), to_float32(scalar_int(lo)))                                             # int,f32 ⇒ f32
+    fn clip(self: Tensor[Float32], lo: Float32, hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(self, scalar_f32(hi)), self, scalar_f32(hi)), scalar_f32(lo)), where_f32(le_t(self, scalar_f32(hi)), self, scalar_f32(hi)), scalar_f32(lo))     # f32,f32 ⇒ f32
+    fn clip(self: Tensor[Float32], lo: Float32, hi: Int)     -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(self, to_float32(scalar_int(hi))), self, to_float32(scalar_int(hi))), scalar_f32(lo)), where_f32(le_t(self, to_float32(scalar_int(hi))), self, to_float32(scalar_int(hi))), scalar_f32(lo))                         # f32,int ⇒ f32
+    fn clip(self: Tensor[Float32], lo: Int,     hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(self, scalar_f32(hi)), self, scalar_f32(hi)), to_float32(scalar_int(lo))), where_f32(le_t(self, scalar_f32(hi)), self, scalar_f32(hi)), to_float32(scalar_int(lo)))                                             # int,f32 ⇒ f32
     fn clip(self: Tensor[Float32], lo: Int,     hi: Int)     -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(self, to_float32(scalar_int(hi))), self, to_float32(scalar_int(hi))), to_float32(scalar_int(lo))), where_f32(le_t(self, to_float32(scalar_int(hi))), self, to_float32(scalar_int(hi))), to_float32(scalar_int(lo)))         # int,int ⇒ f32? (promotion says Float32 since self is Float32)
 
     # min/max → if s is Float64 ⇒ Float64; else ⇒ Float32
-    fn minimum_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return where_f64(le_t(to_float64(self), scalar64(s)), to_float64(self), scalar64(s))                           # min s=f64 ⇒ f64
-    fn maximum_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return where_f64(ge_t(to_float64(self), scalar64(s)), to_float64(self), scalar64(s))                           # max s=f64 ⇒ f64
-    fn minimum_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return where_f32(le_t(self, scalar32(s)), self, scalar32(s))                                                  # min s=f32 ⇒ f32
-    fn maximum_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return where_f32(ge_t(self, scalar32(s)), self, scalar32(s))                                                  # max s=f32 ⇒ f32
+    fn minimum_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return where_f64(le_t(to_float64(self), scalar_f64(s)), to_float64(self), scalar_f64(s))                           # min s=f64 ⇒ f64
+    fn maximum_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return where_f64(ge_t(to_float64(self), scalar_f64(s)), to_float64(self), scalar_f64(s))                           # max s=f64 ⇒ f64
+    fn minimum_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return where_f32(le_t(self, scalar_f32(s)), self, scalar_f32(s))                                                  # min s=f32 ⇒ f32
+    fn maximum_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return where_f32(ge_t(self, scalar_f32(s)), self, scalar_f32(s))                                                  # max s=f32 ⇒ f32
     fn minimum_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return where_f32(le_t(self, to_float32(scalar_int(s))), self, to_float32(scalar_int(s)))                      # min s=int ⇒ f32
     fn maximum_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return where_f32(ge_t(self, to_float32(scalar_int(s))), self, to_float32(scalar_int(s)))                      # max s=int ⇒ f32
 
@@ -3625,25 +3959,25 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # ⇒ 9 overloads grouped by target
 
     # target Float64 (any Float64 present)
-    fn clip(self: Tensor[Int], lo: Float64, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), scalar64(lo)), where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), scalar64(lo))                                 # f64,f64 ⇒ f64
-    fn clip(self: Tensor[Int], lo: Float64, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar32(hi))), to_float64(self), to_float64(scalar32(hi))), scalar64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar32(hi))), to_float64(self), to_float64(scalar32(hi))), scalar64(lo)) # f64,f32 ⇒ f64
-    fn clip(self: Tensor[Int], lo: Float64, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar64(lo))     # f64,int ⇒ f64
-    fn clip(self: Tensor[Int], lo: Float32, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar32(lo))), where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar32(lo)))                 # f32,f64 ⇒ f64
-    fn clip(self: Tensor[Int], lo: Int,     hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar_int(lo))), where_f64(le_t(to_float64(self), scalar64(hi)), to_float64(self), scalar64(hi)), to_float64(scalar_int(lo)))                 # int,f64 ⇒ f64
+    fn clip(self: Tensor[Int], lo: Float64, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), scalar_f64(lo)), where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), scalar_f64(lo))                                 # f64,f64 ⇒ f64
+    fn clip(self: Tensor[Int], lo: Float64, hi: Float32) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar_f32(hi))), to_float64(self), to_float64(scalar_f32(hi))), scalar_f64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar_f32(hi))), to_float64(self), to_float64(scalar_f32(hi))), scalar_f64(lo)) # f64,f32 ⇒ f64
+    fn clip(self: Tensor[Int], lo: Float64, hi: Int)     -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar_f64(lo)), where_f64(le_t(to_float64(self), to_float64(scalar_int(hi))), to_float64(self), to_float64(scalar_int(hi))), scalar_f64(lo))     # f64,int ⇒ f64
+    fn clip(self: Tensor[Int], lo: Float32, hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_f32(lo))), where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_f32(lo)))                 # f32,f64 ⇒ f64
+    fn clip(self: Tensor[Int], lo: Int,     hi: Float64) -> Tensor[Float64]: return where_f64(ge_t(where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_int(lo))), where_f64(le_t(to_float64(self), scalar_f64(hi)), to_float64(self), scalar_f64(hi)), to_float64(scalar_int(lo)))                 # int,f64 ⇒ f64
 
     # target Float32 (no Float64, but Float32 present)
-    fn clip(self: Tensor[Int], lo: Float32, hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(to_float32(self), scalar32(hi)), to_float32(self), scalar32(hi)), scalar32(lo)), where_f32(le_t(to_float32(self), scalar32(hi)), to_float32(self), scalar32(hi)), scalar32(lo))                                 # f32,f32 ⇒ f32
-    fn clip(self: Tensor[Int], lo: Float32, hi: Int)     -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(to_float32(self), to_float32(scalar_int(hi))), to_float32(self), to_float32(scalar_int(hi))), scalar32(lo)), where_f32(le_t(to_float32(self), to_float32(scalar_int(hi))), to_float32(self), to_float32(scalar_int(hi))), scalar32(lo)) # f32,int ⇒ f32
-    fn clip(self: Tensor[Int], lo: Int,     hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(to_float32(self), scalar32(hi)), to_float32(self), scalar32(hi)), to_float32(scalar_int(lo))), where_f32(le_t(to_float32(self), scalar32(hi)), to_float32(self), scalar32(hi)), to_float32(scalar_int(lo)))                 # int,f32 ⇒ f32
+    fn clip(self: Tensor[Int], lo: Float32, hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(to_float32(self), scalar_f32(hi)), to_float32(self), scalar_f32(hi)), scalar_f32(lo)), where_f32(le_t(to_float32(self), scalar_f32(hi)), to_float32(self), scalar_f32(hi)), scalar_f32(lo))                                 # f32,f32 ⇒ f32
+    fn clip(self: Tensor[Int], lo: Float32, hi: Int)     -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(to_float32(self), to_float32(scalar_int(hi))), to_float32(self), to_float32(scalar_int(hi))), scalar_f32(lo)), where_f32(le_t(to_float32(self), to_float32(scalar_int(hi))), to_float32(self), to_float32(scalar_int(hi))), scalar_f32(lo)) # f32,int ⇒ f32
+    fn clip(self: Tensor[Int], lo: Int,     hi: Float32) -> Tensor[Float32]: return where_f32(ge_t(where_f32(le_t(to_float32(self), scalar_f32(hi)), to_float32(self), scalar_f32(hi)), to_float32(scalar_int(lo))), where_f32(le_t(to_float32(self), scalar_f32(hi)), to_float32(self), scalar_f32(hi)), to_float32(scalar_int(lo)))                 # int,f32 ⇒ f32
 
     # target Int (all Int)
     fn clip(self: Tensor[Int], lo: Int,     hi: Int)     -> Tensor[Int]: return where_int(ge_t(where_int(le_t(self, scalar_int(hi)), self, scalar_int(hi)), scalar_int(lo)), where_int(le_t(self, scalar_int(hi)), self, scalar_int(hi)), scalar_int(lo)) # int,int ⇒ int
 
     # min/max → result dtype is max(self, s)
-    fn minimum_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return where_f64(le_t(to_float64(self), scalar64(s)), to_float64(self), scalar64(s))             # min s=f64 ⇒ f64
-    fn maximum_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return where_f64(ge_t(to_float64(self), scalar64(s)), to_float64(self), scalar64(s))             # max s=f64 ⇒ f64
-    fn minimum_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return where_f32(le_t(to_float32(self), scalar32(s)), to_float32(self), scalar32(s))             # min s=f32 ⇒ f32
-    fn maximum_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return where_f32(ge_t(to_float32(self), scalar32(s)), to_float32(self), scalar32(s))             # max s=f32 ⇒ f32
+    fn minimum_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return where_f64(le_t(to_float64(self), scalar_f64(s)), to_float64(self), scalar_f64(s))             # min s=f64 ⇒ f64
+    fn maximum_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return where_f64(ge_t(to_float64(self), scalar_f64(s)), to_float64(self), scalar_f64(s))             # max s=f64 ⇒ f64
+    fn minimum_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return where_f32(le_t(to_float32(self), scalar_f32(s)), to_float32(self), scalar_f32(s))             # min s=f32 ⇒ f32
+    fn maximum_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return where_f32(ge_t(to_float32(self), scalar_f32(s)), to_float32(self), scalar_f32(s))             # max s=f32 ⇒ f32
     fn minimum_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return where_int(le_t(self, scalar_int(s)), self, scalar_int(s))                               # min s=int ⇒ int
     fn maximum_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return where_int(ge_t(self, scalar_int(s)), self, scalar_int(s))                               # max s=int ⇒ int
 
@@ -3671,40 +4005,40 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __add__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: return add_t(self, rhs)                                # a(f64) + b(f64)
     fn __add__(self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Float64]: return add_t(self, to_float64(rhs))                   # a(f64) + b(f32→f64)
     fn __add__(self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Float64]: return add_t(self, to_float64(rhs))                   # a(f64) + b(int→f64)
-    fn __add__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return add_t(self, scalar64(rhs))                    # a + s(f64)
-    fn __add__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return add_t(self, to_float64(scalar32(rhs)))        # a + s(f32→f64)
+    fn __add__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return add_t(self, scalar_f64(rhs))                    # a + s(f64)
+    fn __add__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return add_t(self, to_float64(scalar_f32(rhs)))        # a + s(f32→f64)
     fn __add__(self: Tensor[Float64], rhs: Int)             -> Tensor[Float64]: return add_t(self, to_float64(scalar_int(rhs)))      # a + s(int→f64)
 
     # - (result: Float64)
     fn __sub__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: return sub_t(self, rhs)                                # a - b(f64)
     fn __sub__(self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Float64]: return sub_t(self, to_float64(rhs))                   # a - b(f32→f64)
     fn __sub__(self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Float64]: return sub_t(self, to_float64(rhs))                   # a - b(int→f64)
-    fn __sub__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return sub_t(self, scalar64(rhs))                    # a - s(f64)
-    fn __sub__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return sub_t(self, to_float64(scalar32(rhs)))        # a - s(f32→f64)
+    fn __sub__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return sub_t(self, scalar_f64(rhs))                    # a - s(f64)
+    fn __sub__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return sub_t(self, to_float64(scalar_f32(rhs)))        # a - s(f32→f64)
     fn __sub__(self: Tensor[Float64], rhs: Int)             -> Tensor[Float64]: return sub_t(self, to_float64(scalar_int(rhs)))      # a - s(int→f64)
 
     # * (result: Float64)
     fn __mul__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: return mul_t(self, rhs)                                # a * b(f64)
     fn __mul__(self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Float64]: return mul_t(self, to_float64(rhs))                   # a * b(f32→f64)
     fn __mul__(self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Float64]: return mul_t(self, to_float64(rhs))                   # a * b(int→f64)
-    fn __mul__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return mul_t(self, scalar64(rhs))                    # a * s(f64)
-    fn __mul__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return mul_t(self, to_float64(scalar32(rhs)))        # a * s(f32→f64)
+    fn __mul__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return mul_t(self, scalar_f64(rhs))                    # a * s(f64)
+    fn __mul__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return mul_t(self, to_float64(scalar_f32(rhs)))        # a * s(f32→f64)
     fn __mul__(self: Tensor[Float64], rhs: Int)             -> Tensor[Float64]: return mul_t(self, to_float64(scalar_int(rhs)))      # a * s(int→f64)
 
     # / (result: Float64)
     fn __truediv__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: return div_t(self, rhs)                           # a / b(f64)
     fn __truediv__(self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Float64]: return div_t(self, to_float64(rhs))              # a / b(f32→f64)
     fn __truediv__(self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Float64]: return div_t(self, to_float64(rhs))              # a / b(int→f64)
-    fn __truediv__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return div_t(self, scalar64(rhs))               # a / s(f64)
-    fn __truediv__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return div_t(self, to_float64(scalar32(rhs)))   # a / s(f32→f64)
+    fn __truediv__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return div_t(self, scalar_f64(rhs))               # a / s(f64)
+    fn __truediv__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return div_t(self, to_float64(scalar_f32(rhs)))   # a / s(f32→f64)
     fn __truediv__(self: Tensor[Float64], rhs: Int)             -> Tensor[Float64]: return div_t(self, to_float64(scalar_int(rhs))) # a / s(int→f64)
 
     # % (result: Float64)
     fn __mod__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: return mod_t(self, rhs)                               # a % b(f64)
     fn __mod__(self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Float64]: return mod_t(self, to_float64(rhs))                  # a % b(f32→f64)
     fn __mod__(self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Float64]: return mod_t(self, to_float64(rhs))                  # a % b(int→f64)
-    fn __mod__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return mod_t(self, scalar64(rhs))                   # a % s(f64)
-    fn __mod__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return mod_t(self, to_float64(scalar32(rhs)))       # a % s(f32→f64)
+    fn __mod__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Float64]: return mod_t(self, scalar_f64(rhs))                   # a % s(f64)
+    fn __mod__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Float64]: return mod_t(self, to_float64(scalar_f32(rhs)))       # a % s(f32→f64)
     fn __mod__(self: Tensor[Float64], rhs: Int)             -> Tensor[Float64]: return mod_t(self, to_float64(scalar_int(rhs)))     # a % s(int→f64)
     # =========================
     # Float32 overloads — all rhs combos (Tensor/Scalar: Int, Float32, Float64)
@@ -3716,40 +4050,40 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __add__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return add_t(to_float64(self), rhs)                  # a(f32→f64) + b(f64)
     fn __add__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: return add_t(self, rhs)                              # a + b(f32)
     fn __add__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float32]: return add_t(self, to_float32(rhs))                  # a + b(int→f32)
-    fn __add__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return add_t(to_float64(self), scalar64(rhs))       # a(f32→f64) + s(f64)
-    fn __add__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return add_t(self, scalar32(rhs))                   # a + s(f32)
+    fn __add__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return add_t(to_float64(self), scalar_f64(rhs))       # a(f32→f64) + s(f64)
+    fn __add__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return add_t(self, scalar_f32(rhs))                   # a + s(f32)
     fn __add__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float32]: return add_t(self, to_float32(scalar_int(rhs)))     # a + s(int→f32)
 
     # - (result: Float64 if rhs has Float64, else Float32)
     fn __sub__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return sub_t(to_float64(self), rhs)                  # a(f32→f64) - b(f64)
     fn __sub__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: return sub_t(self, rhs)                              # a - b(f32)
     fn __sub__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float32]: return sub_t(self, to_float32(rhs))                  # a - b(int→f32)
-    fn __sub__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return sub_t(to_float64(self), scalar64(rhs))       # a(f32→f64) - s(f64)
-    fn __sub__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return sub_t(self, scalar32(rhs))                   # a - s(f32)
+    fn __sub__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return sub_t(to_float64(self), scalar_f64(rhs))       # a(f32→f64) - s(f64)
+    fn __sub__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return sub_t(self, scalar_f32(rhs))                   # a - s(f32)
     fn __sub__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float32]: return sub_t(self, to_float32(scalar_int(rhs)))     # a - s(int→f32)
 
     # * (result: Float64 if rhs has Float64, else Float32)
     fn __mul__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return mul_t(to_float64(self), rhs)                  # a(f32→f64) * b(f64)
     fn __mul__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: return mul_t(self, rhs)                              # a * b(f32)
     fn __mul__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float32]: return mul_t(self, to_float32(rhs))                  # a * b(int→f32)
-    fn __mul__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return mul_t(to_float64(self), scalar64(rhs))       # a(f32→f64) * s(f64)
-    fn __mul__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return mul_t(self, scalar32(rhs))                   # a * s(f32)
+    fn __mul__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return mul_t(to_float64(self), scalar_f64(rhs))       # a(f32→f64) * s(f64)
+    fn __mul__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return mul_t(self, scalar_f32(rhs))                   # a * s(f32)
     fn __mul__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float32]: return mul_t(self, to_float32(scalar_int(rhs)))     # a * s(int→f32)
 
     # / (result: Float64 always)
     fn __truediv__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), rhs)              # a(f32→f64) / b(f64)
     fn __truediv__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float64]: return div_t(to_float64(self), to_float64(rhs))  # a(f32→f64) / b(f32→f64)
     fn __truediv__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float64]: return div_t(to_float64(self), to_float64(rhs))  # a(f32→f64) / b(int→f64)
-    fn __truediv__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return div_t(to_float64(self), scalar64(rhs))   # a(f32→f64) / s(f64)
-    fn __truediv__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar32(rhs))) # a(f32→f64) / s(f32→f64)
+    fn __truediv__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return div_t(to_float64(self), scalar_f64(rhs))   # a(f32→f64) / s(f64)
+    fn __truediv__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar_f32(rhs))) # a(f32→f64) / s(f32→f64)
     fn __truediv__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar_int(rhs))) # a(f32→f64) / s(int→f64)
 
     # % (result: Float64 always)
     fn __mod__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), rhs)                  # a(f32→f64) % b(f64)
     fn __mod__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(rhs))      # a(f32→f64) % b(f32→f64)
     fn __mod__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(rhs))      # a(f32→f64) % b(int→f64)
-    fn __mod__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return mod_t(to_float64(self), scalar64(rhs))       # a(f32→f64) % s(f64)
-    fn __mod__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar32(rhs))) # a(f32→f64) % s(f32→f64)
+    fn __mod__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return mod_t(to_float64(self), scalar_f64(rhs))       # a(f32→f64) % s(f64)
+    fn __mod__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar_f32(rhs))) # a(f32→f64) % s(f32→f64)
     fn __mod__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar_int(rhs))) # a(f32→f64) % s(int→f64)
     # =========================
     # Int overloads — all rhs combos (Tensor/Scalar: Int, Float32, Float64)
@@ -3761,62 +4095,62 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __add__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Float64]: return add_t(to_float64(self), rhs)                     # a(int→f64) + b(f64)
     fn __add__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Float32]: return add_t(to_float32(self), rhs)                    # a(int→f32) + b(f32)
     fn __add__(self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Int]:     return add_t(self, rhs)                                # a + b(int)
-    fn __add__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return add_t(to_float64(self), scalar64(rhs))         # a(int→f64) + s(f64)
-    fn __add__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float32]: return add_t(to_float32(self), scalar32(rhs))         # a(int→f32) + s(f32)
+    fn __add__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return add_t(to_float64(self), scalar_f64(rhs))         # a(int→f64) + s(f64)
+    fn __add__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float32]: return add_t(to_float32(self), scalar_f32(rhs))         # a(int→f32) + s(f32)
     fn __add__(self: Tensor[Int], rhs: Int)             -> Tensor[Int]:     return add_t(self, scalar_int(rhs))                   # a + s(int)
 
     # - (promotion)
     fn __sub__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Float64]: return sub_t(to_float64(self), rhs)                     # a(int→f64) - b(f64)
     fn __sub__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Float32]: return sub_t(to_float32(self), rhs)                    # a(int→f32) - b(f32)
     fn __sub__(self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Int]:     return sub_t(self, rhs)                                # a - b(int)
-    fn __sub__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return sub_t(to_float64(self), scalar64(rhs))         # a(int→f64) - s(f64)
-    fn __sub__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float32]: return sub_t(to_float32(self), scalar32(rhs))         # a(int→f32) - s(f32)
+    fn __sub__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return sub_t(to_float64(self), scalar_f64(rhs))         # a(int→f64) - s(f64)
+    fn __sub__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float32]: return sub_t(to_float32(self), scalar_f32(rhs))         # a(int→f32) - s(f32)
     fn __sub__(self: Tensor[Int], rhs: Int)             -> Tensor[Int]:     return sub_t(self, scalar_int(rhs))                   # a - s(int)
 
     # * (promotion)
     fn __mul__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Float64]: return mul_t(to_float64(self), rhs)                     # a(int→f64) * b(f64)
     fn __mul__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Float32]: return mul_t(to_float32(self), rhs)                    # a(int→f32) * b(f32)
     fn __mul__(self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Int]:     return mul_t(self, rhs)                                # a * b(int)
-    fn __mul__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return mul_t(to_float64(self), scalar64(rhs))         # a(int→f64) * s(f64)
-    fn __mul__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float32]: return mul_t(to_float32(self), scalar32(rhs))         # a(int→f32) * s(f32)
+    fn __mul__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return mul_t(to_float64(self), scalar_f64(rhs))         # a(int→f64) * s(f64)
+    fn __mul__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float32]: return mul_t(to_float32(self), scalar_f32(rhs))         # a(int→f32) * s(f32)
     fn __mul__(self: Tensor[Int], rhs: Int)             -> Tensor[Int]:     return mul_t(self, scalar_int(rhs))                   # a * s(int)
 
     # / (Float64 result)
     fn __truediv__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), rhs)                # a(int→f64) / b(f64)
     fn __truediv__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Float64]: return div_t(to_float64(self), to_float64(rhs))    # a(int→f64) / b(f32→f64)
     fn __truediv__(self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Float64]: return div_t(to_float64(self), to_float64(rhs))    # a(int→f64) / b(int→f64)
-    fn __truediv__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return div_t(to_float64(self), scalar64(rhs))     # a(int→f64) / s(f64)
-    fn __truediv__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar32(rhs))) # a(int→f64) / s(f32→f64)
+    fn __truediv__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return div_t(to_float64(self), scalar_f64(rhs))     # a(int→f64) / s(f64)
+    fn __truediv__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar_f32(rhs))) # a(int→f64) / s(f32→f64)
     fn __truediv__(self: Tensor[Int], rhs: Int)             -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar_int(rhs))) # a(int→f64) / s(int→f64)
 
     # % (Float64 result)
     fn __mod__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), rhs)                    # a(int→f64) % b(f64)
     fn __mod__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(rhs))        # a(int→f64) % b(f32→f64)
     fn __mod__(self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(rhs))        # a(int→f64) % b(int→f64)
-    fn __mod__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return mod_t(to_float64(self), scalar64(rhs))         # a(int→f64) % s(f64)
-    fn __mod__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar32(rhs))) # a(int→f64) % s(f32→f64)
+    fn __mod__(self: Tensor[Int], rhs: Float64)         -> Tensor[Float64]: return mod_t(to_float64(self), scalar_f64(rhs))         # a(int→f64) % s(f64)
+    fn __mod__(self: Tensor[Int], rhs: Float32)         -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar_f32(rhs))) # a(int→f64) % s(f32→f64)
     fn __mod__(self: Tensor[Int], rhs: Int)             -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar_int(rhs))) # a(int→f64) % s(int→f64)
     # =========================
     # Float64 — Reflected arithmetic (lhs ⊕ self)
     # =========================
-    fn __radd__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return add_t(scalar64(lhs), self)                         # s(f64) + a
-    fn __radd__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return add_t(to_float64(scalar32(lhs)), self)            # s(f32→f64) + a
+    fn __radd__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return add_t(scalar_f64(lhs), self)                         # s(f64) + a
+    fn __radd__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return add_t(to_float64(scalar_f32(lhs)), self)            # s(f32→f64) + a
     fn __radd__(self: Tensor[Float64], lhs: Int)     -> Tensor[Float64]: return add_t(to_float64(scalar_int(lhs)), self)          # s(int→f64) + a
 
-    fn __rsub__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return sub_t(scalar64(lhs), self)                         # s(f64) - a
-    fn __rsub__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return sub_t(to_float64(scalar32(lhs)), self)            # s(f32→f64) - a
+    fn __rsub__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return sub_t(scalar_f64(lhs), self)                         # s(f64) - a
+    fn __rsub__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return sub_t(to_float64(scalar_f32(lhs)), self)            # s(f32→f64) - a
     fn __rsub__(self: Tensor[Float64], lhs: Int)     -> Tensor[Float64]: return sub_t(to_float64(scalar_int(lhs)), self)          # s(int→f64) - a
 
-    fn __rmul__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return mul_t(scalar64(lhs), self)                         # s(f64) * a
-    fn __rmul__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return mul_t(to_float64(scalar32(lhs)), self)            # s(f32→f64) * a
+    fn __rmul__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return mul_t(scalar_f64(lhs), self)                         # s(f64) * a
+    fn __rmul__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return mul_t(to_float64(scalar_f32(lhs)), self)            # s(f32→f64) * a
     fn __rmul__(self: Tensor[Float64], lhs: Int)     -> Tensor[Float64]: return mul_t(to_float64(scalar_int(lhs)), self)          # s(int→f64) * a
 
-    fn __rtruediv__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return div_t(scalar64(lhs), self)                    # s(f64) / a
-    fn __rtruediv__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return div_t(to_float64(scalar32(lhs)), self)       # s(f32→f64) / a
+    fn __rtruediv__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return div_t(scalar_f64(lhs), self)                    # s(f64) / a
+    fn __rtruediv__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return div_t(to_float64(scalar_f32(lhs)), self)       # s(f32→f64) / a
     fn __rtruediv__(self: Tensor[Float64], lhs: Int)     -> Tensor[Float64]: return div_t(to_float64(scalar_int(lhs)), self)     # s(int→f64) / a
 
-    fn __rmod__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return mod_t(scalar64(lhs), self)                        # s(f64) % a
-    fn __rmod__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return mod_t(to_float64(scalar32(lhs)), self)           # s(f32→f64) % a
+    fn __rmod__(self: Tensor[Float64], lhs: Float64) -> Tensor[Float64]: return mod_t(scalar_f64(lhs), self)                        # s(f64) % a
+    fn __rmod__(self: Tensor[Float64], lhs: Float32) -> Tensor[Float64]: return mod_t(to_float64(scalar_f32(lhs)), self)           # s(f32→f64) % a
     fn __rmod__(self: Tensor[Float64], lhs: Int)     -> Tensor[Float64]: return mod_t(to_float64(scalar_int(lhs)), self)         # s(int→f64) % a
 
 
@@ -3824,24 +4158,24 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # Float32 — Reflected arithmetic (lhs ⊕ self)
     # Note: for / and % we return Float64 (project convention).
     # =========================
-    fn __radd__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return add_t(scalar64(lhs), to_float64(self))            # s(f64) + a(f32→f64)
-    fn __radd__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float32]: return add_t(scalar32(lhs), self)                        # s(f32) + a
+    fn __radd__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return add_t(scalar_f64(lhs), to_float64(self))            # s(f64) + a(f32→f64)
+    fn __radd__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float32]: return add_t(scalar_f32(lhs), self)                        # s(f32) + a
     fn __radd__(self: Tensor[Float32], lhs: Int)     -> Tensor[Float32]: return add_t(to_float32(scalar_int(lhs)), self)          # s(int→f32) + a
 
-    fn __rsub__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return sub_t(scalar64(lhs), to_float64(self))            # s(f64) - a(f32→f64)
-    fn __rsub__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float32]: return sub_t(scalar32(lhs), self)                        # s(f32) - a
+    fn __rsub__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return sub_t(scalar_f64(lhs), to_float64(self))            # s(f64) - a(f32→f64)
+    fn __rsub__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float32]: return sub_t(scalar_f32(lhs), self)                        # s(f32) - a
     fn __rsub__(self: Tensor[Float32], lhs: Int)     -> Tensor[Float32]: return sub_t(to_float32(scalar_int(lhs)), self)          # s(int→f32) - a
 
-    fn __rmul__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return mul_t(scalar64(lhs), to_float64(self))            # s(f64) * a(f32→f64)
-    fn __rmul__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float32]: return mul_t(scalar32(lhs), self)                        # s(f32) * a
+    fn __rmul__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return mul_t(scalar_f64(lhs), to_float64(self))            # s(f64) * a(f32→f64)
+    fn __rmul__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float32]: return mul_t(scalar_f32(lhs), self)                        # s(f32) * a
     fn __rmul__(self: Tensor[Float32], lhs: Int)     -> Tensor[Float32]: return mul_t(to_float32(scalar_int(lhs)), self)          # s(int→f32) * a
 
-    fn __rtruediv__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return div_t(scalar64(lhs), to_float64(self))        # s(f64) / a(f32→f64)
-    fn __rtruediv__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float64]: return div_t(to_float64(scalar32(lhs)), to_float64(self)) # s(f32→f64) / a(f32→f64)
+    fn __rtruediv__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return div_t(scalar_f64(lhs), to_float64(self))        # s(f64) / a(f32→f64)
+    fn __rtruediv__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float64]: return div_t(to_float64(scalar_f32(lhs)), to_float64(self)) # s(f32→f64) / a(f32→f64)
     fn __rtruediv__(self: Tensor[Float32], lhs: Int)     -> Tensor[Float64]: return div_t(to_float64(scalar_int(lhs)), to_float64(self)) # s(int→f64) / a(f32→f64)
 
-    fn __rmod__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return mod_t(scalar64(lhs), to_float64(self))            # s(f64) % a(f32→f64)
-    fn __rmod__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float64]: return mod_t(to_float64(scalar32(lhs)), to_float64(self))# s(f32→f64) % a(f32→f64)
+    fn __rmod__(self: Tensor[Float32], lhs: Float64) -> Tensor[Float64]: return mod_t(scalar_f64(lhs), to_float64(self))            # s(f64) % a(f32→f64)
+    fn __rmod__(self: Tensor[Float32], lhs: Float32) -> Tensor[Float64]: return mod_t(to_float64(scalar_f32(lhs)), to_float64(self))# s(f32→f64) % a(f32→f64)
     fn __rmod__(self: Tensor[Float32], lhs: Int)     -> Tensor[Float64]: return mod_t(to_float64(scalar_int(lhs)), to_float64(self)) # s(int→f64) % a(f32→f64)
 
 
@@ -3849,52 +4183,52 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # Int — Reflected arithmetic (lhs ⊕ self)
     # Note: for / and % we return Float64 (project convention).
     # =========================
-    fn __radd__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return add_t(scalar64(lhs), to_float64(self))                # s(f64) + a(int→f64)
-    fn __radd__(self: Tensor[Int], lhs: Float32) -> Tensor[Float32]: return add_t(scalar32(lhs), to_float32(self))                # s(f32) + a(int→f32)
+    fn __radd__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return add_t(scalar_f64(lhs), to_float64(self))                # s(f64) + a(int→f64)
+    fn __radd__(self: Tensor[Int], lhs: Float32) -> Tensor[Float32]: return add_t(scalar_f32(lhs), to_float32(self))                # s(f32) + a(int→f32)
     fn __radd__(self: Tensor[Int], lhs: Int)     -> Tensor[Int]:     return add_t(scalar_int(lhs), self)                          # s(int) + a
 
-    fn __rsub__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return sub_t(scalar64(lhs), to_float64(self))                # s(f64) - a(int→f64)
-    fn __rsub__(self: Tensor[Int], lhs: Float32) -> Tensor[Float32]: return sub_t(scalar32(lhs), to_float32(self))                # s(f32) - a(int→f32)
+    fn __rsub__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return sub_t(scalar_f64(lhs), to_float64(self))                # s(f64) - a(int→f64)
+    fn __rsub__(self: Tensor[Int], lhs: Float32) -> Tensor[Float32]: return sub_t(scalar_f32(lhs), to_float32(self))                # s(f32) - a(int→f32)
     fn __rsub__(self: Tensor[Int], lhs: Int)     -> Tensor[Int]:     return sub_t(scalar_int(lhs), self)                          # s(int) - a
 
-    fn __rmul__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return mul_t(scalar64(lhs), to_float64(self))                # s(f64) * a(int→f64)
-    fn __rmul__(self: Tensor[Int], lhs: Float32) -> Tensor[Float32]: return mul_t(scalar32(lhs), to_float32(self))                # s(f32) * a(int→f32)
+    fn __rmul__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return mul_t(scalar_f64(lhs), to_float64(self))                # s(f64) * a(int→f64)
+    fn __rmul__(self: Tensor[Int], lhs: Float32) -> Tensor[Float32]: return mul_t(scalar_f32(lhs), to_float32(self))                # s(f32) * a(int→f32)
     fn __rmul__(self: Tensor[Int], lhs: Int)     -> Tensor[Int]:     return mul_t(scalar_int(lhs), self)                          # s(int) * a
 
-    fn __rtruediv__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return div_t(scalar64(lhs), to_float64(self))            # s(f64) / a(int→f64)
-    fn __rtruediv__(self: Tensor[Int], lhs: Float32) -> Tensor[Float64]: return div_t(to_float64(scalar32(lhs)), to_float64(self))# s(f32→f64) / a(int→f64)
+    fn __rtruediv__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return div_t(scalar_f64(lhs), to_float64(self))            # s(f64) / a(int→f64)
+    fn __rtruediv__(self: Tensor[Int], lhs: Float32) -> Tensor[Float64]: return div_t(to_float64(scalar_f32(lhs)), to_float64(self))# s(f32→f64) / a(int→f64)
     fn __rtruediv__(self: Tensor[Int], lhs: Int)     -> Tensor[Float64]: return div_t(to_float64(scalar_int(lhs)), to_float64(self)) # s(int→f64) / a(int→f64)
 
-    fn __rmod__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return mod_t(scalar64(lhs), to_float64(self))                # s(f64) % a(int→f64)
-    fn __rmod__(self: Tensor[Int], lhs: Float32) -> Tensor[Float64]: return mod_t(to_float64(scalar32(lhs)), to_float64(self))    # s(f32→f64) % a(int→f64)
+    fn __rmod__(self: Tensor[Int], lhs: Float64) -> Tensor[Float64]: return mod_t(scalar_f64(lhs), to_float64(self))                # s(f64) % a(int→f64)
+    fn __rmod__(self: Tensor[Int], lhs: Float32) -> Tensor[Float64]: return mod_t(to_float64(scalar_f32(lhs)), to_float64(self))    # s(f32→f64) % a(int→f64)
     fn __rmod__(self: Tensor[Int], lhs: Int)     -> Tensor[Float64]: return mod_t(to_float64(scalar_int(lhs)), to_float64(self))  # s(int→f64) % a(int→f64)
     # =========================
     # In-place arithmetic — Float64 (full scalar combos)
     # Promotion policy for in-place: keep self dtype (convert rhs up to Float64)
     # =========================
     fn __iadd__(mut self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: self = add_t(self, rhs); return self                           # a += b
-    fn __iadd__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = add_t(self, scalar64(rhs)); return self                  # a += s(f64)
-    fn __iadd__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = add_t(self, to_float64(scalar32(rhs))); return self      # a += s(f32→f64)
+    fn __iadd__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = add_t(self, scalar_f64(rhs)); return self                  # a += s(f64)
+    fn __iadd__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = add_t(self, to_float64(scalar_f32(rhs))); return self      # a += s(f32→f64)
     fn __iadd__(mut self: Tensor[Float64], rhs: Int)            -> Tensor[Float64]: self = add_t(self, to_float64(scalar_int(rhs))); return self    # a += s(int→f64)
 
     fn __isub__(mut self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: self = sub_t(self, rhs); return self                           # a -= b
-    fn __isub__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = sub_t(self, scalar64(rhs)); return self                  # a -= s(f64)
-    fn __isub__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = sub_t(self, to_float64(scalar32(rhs))); return self      # a -= s(f32→f64)
+    fn __isub__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = sub_t(self, scalar_f64(rhs)); return self                  # a -= s(f64)
+    fn __isub__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = sub_t(self, to_float64(scalar_f32(rhs))); return self      # a -= s(f32→f64)
     fn __isub__(mut self: Tensor[Float64], rhs: Int)            -> Tensor[Float64]: self = sub_t(self, to_float64(scalar_int(rhs))); return self    # a -= s(int→f64)
 
     fn __imul__(mut self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: self = mul_t(self, rhs); return self                           # a *= b
-    fn __imul__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = mul_t(self, scalar64(rhs)); return self                  # a *= s(f64)
-    fn __imul__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = mul_t(self, to_float64(scalar32(rhs))); return self      # a *= s(f32→f64)
+    fn __imul__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = mul_t(self, scalar_f64(rhs)); return self                  # a *= s(f64)
+    fn __imul__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = mul_t(self, to_float64(scalar_f32(rhs))); return self      # a *= s(f32→f64)
     fn __imul__(mut self: Tensor[Float64], rhs: Int)            -> Tensor[Float64]: self = mul_t(self, to_float64(scalar_int(rhs))); return self    # a *= s(int→f64)
 
     fn __itruediv__(mut self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: self = div_t(self, rhs); return self                       # a /= b
-    fn __itruediv__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = div_t(self, scalar64(rhs)); return self              # a /= s(f64)
-    fn __itruediv__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = div_t(self, to_float64(scalar32(rhs))); return self  # a /= s(f32→f64)
+    fn __itruediv__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = div_t(self, scalar_f64(rhs)); return self              # a /= s(f64)
+    fn __itruediv__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = div_t(self, to_float64(scalar_f32(rhs))); return self  # a /= s(f32→f64)
     fn __itruediv__(mut self: Tensor[Float64], rhs: Int)            -> Tensor[Float64]: self = div_t(self, to_float64(scalar_int(rhs))); return self# a /= s(int→f64)
 
     fn __imod__(mut self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: self = mod_t(self, rhs); return self                           # a %= b
-    fn __imod__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = mod_t(self, scalar64(rhs)); return self                  # a %= s(f64)
-    fn __imod__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = mod_t(self, to_float64(scalar32(rhs))); return self      # a %= s(f32→f64)
+    fn __imod__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = mod_t(self, scalar_f64(rhs)); return self                  # a %= s(f64)
+    fn __imod__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = mod_t(self, to_float64(scalar_f32(rhs))); return self      # a %= s(f32→f64)
     fn __imod__(mut self: Tensor[Float64], rhs: Int)            -> Tensor[Float64]: self = mod_t(self, to_float64(scalar_int(rhs))); return self    # a %= s(int→f64)
 
 
@@ -3903,28 +4237,28 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # Promotion policy for in-place: keep self dtype (convert rhs up to Float32)
     # =========================
     fn __iadd__(mut self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: self = add_t(self, rhs); return self                           # a += b
-    fn __iadd__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = add_t(self, scalar32(rhs)); return self                  # a += s(f32)
-    fn __iadd__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = add_t(self, to_float32(scalar64(rhs))); return self      # a += s(f64→f32)
+    fn __iadd__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = add_t(self, scalar_f32(rhs)); return self                  # a += s(f32)
+    fn __iadd__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = add_t(self, to_float32(scalar_f64(rhs))); return self      # a += s(f64→f32)
     fn __iadd__(mut self: Tensor[Float32], rhs: Int)            -> Tensor[Float32]: self = add_t(self, to_float32(scalar_int(rhs))); return self    # a += s(int→f32)
 
     fn __isub__(mut self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: self = sub_t(self, rhs); return self                           # a -= b
-    fn __isub__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = sub_t(self, scalar32(rhs)); return self                  # a -= s(f32)
-    fn __isub__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = sub_t(self, to_float32(scalar64(rhs))); return self      # a -= s(f64→f32)
+    fn __isub__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = sub_t(self, scalar_f32(rhs)); return self                  # a -= s(f32)
+    fn __isub__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = sub_t(self, to_float32(scalar_f64(rhs))); return self      # a -= s(f64→f32)
     fn __isub__(mut self: Tensor[Float32], rhs: Int)            -> Tensor[Float32]: self = sub_t(self, to_float32(scalar_int(rhs))); return self    # a -= s(int→f32)
 
     fn __imul__(mut self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: self = mul_t(self, rhs); return self                           # a *= b
-    fn __imul__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = mul_t(self, scalar32(rhs)); return self                  # a *= s(f32)
-    fn __imul__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = mul_t(self, to_float32(scalar64(rhs))); return self      # a *= s(f64→f32)
+    fn __imul__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = mul_t(self, scalar_f32(rhs)); return self                  # a *= s(f32)
+    fn __imul__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = mul_t(self, to_float32(scalar_f64(rhs))); return self      # a *= s(f64→f32)
     fn __imul__(mut self: Tensor[Float32], rhs: Int)            -> Tensor[Float32]: self = mul_t(self, to_float32(scalar_int(rhs))); return self    # a *= s(int→f32)
 
     fn __itruediv__(mut self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: self = div_t(self, rhs); return self                       # a /= b
-    fn __itruediv__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = div_t(self, scalar32(rhs)); return self              # a /= s(f32)
-    fn __itruediv__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = div_t(self, to_float32(scalar64(rhs))); return self  # a /= s(f64→f32)
+    fn __itruediv__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = div_t(self, scalar_f32(rhs)); return self              # a /= s(f32)
+    fn __itruediv__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = div_t(self, to_float32(scalar_f64(rhs))); return self  # a /= s(f64→f32)
     fn __itruediv__(mut self: Tensor[Float32], rhs: Int)            -> Tensor[Float32]: self = div_t(self, to_float32(scalar_int(rhs))); return self# a /= s(int→f32)
 
     fn __imod__(mut self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: self = mod_t(self, rhs); return self                           # a %= b
-    fn __imod__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = mod_t(self, scalar32(rhs)); return self                  # a %= s(f32)
-    fn __imod__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = mod_t(self, to_float32(scalar64(rhs))); return self      # a %= s(f64→f32)
+    fn __imod__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = mod_t(self, scalar_f32(rhs)); return self                  # a %= s(f32)
+    fn __imod__(mut self: Tensor[Float32], rhs: Float64)        -> Tensor[Float32]: self = mod_t(self, to_float32(scalar_f64(rhs))); return self      # a %= s(f64→f32)
     fn __imod__(mut self: Tensor[Float32], rhs: Int)            -> Tensor[Float32]: self = mod_t(self, to_float32(scalar_int(rhs))); return self    # a %= s(int→f32)
 
 
@@ -3935,48 +4269,48 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
     fn __iadd__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: self = add_t(self, rhs); return self                                 # a += b
     fn __iadd__(mut self: Tensor[Int], rhs: Int)        -> Tensor[Int]: self = add_t(self, scalar_int(rhs)); return self                     # a += s(int)
-    fn __iadd__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = add_t(self, to_int(scalar32(rhs))); return self               # a += s(f32→int)
-    fn __iadd__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = add_t(self, to_int(scalar64(rhs))); return self               # a += s(f64→int)
+    fn __iadd__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = add_t(self, to_int(scalar_f32(rhs))); return self               # a += s(f32→int)
+    fn __iadd__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = add_t(self, to_int(scalar_f64(rhs))); return self               # a += s(f64→int)
 
     fn __isub__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: self = sub_t(self, rhs); return self                                 # a -= b
     fn __isub__(mut self: Tensor[Int], rhs: Int)        -> Tensor[Int]: self = sub_t(self, scalar_int(rhs)); return self                     # a -= s(int)
-    fn __isub__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = sub_t(self, to_int(scalar32(rhs))); return self               # a -= s(f32→int)
-    fn __isub__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = sub_t(self, to_int(scalar64(rhs))); return self               # a -= s(f64→int)
+    fn __isub__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = sub_t(self, to_int(scalar_f32(rhs))); return self               # a -= s(f32→int)
+    fn __isub__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = sub_t(self, to_int(scalar_f64(rhs))); return self               # a -= s(f64→int)
 
     fn __imul__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: self = mul_t(self, rhs); return self                                 # a *= b
     fn __imul__(mut self: Tensor[Int], rhs: Int)        -> Tensor[Int]: self = mul_t(self, scalar_int(rhs)); return self                     # a *= s(int)
-    fn __imul__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = mul_t(self, to_int(scalar32(rhs))); return self               # a *= s(f32→int)
-    fn __imul__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = mul_t(self, to_int(scalar64(rhs))); return self               # a *= s(f64→int)
+    fn __imul__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = mul_t(self, to_int(scalar_f32(rhs))); return self               # a *= s(f32→int)
+    fn __imul__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = mul_t(self, to_int(scalar_f64(rhs))); return self               # a *= s(f64→int)
 
     fn __itruediv__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: self = div_t(self, rhs); return self                             # a /= b (int domain)
     fn __itruediv__(mut self: Tensor[Int], rhs: Int)        -> Tensor[Int]: self = div_t(self, scalar_int(rhs)); return self                 # a /= s(int)
-    fn __itruediv__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = div_t(self, to_int(scalar32(rhs))); return self           # a /= s(f32→int)
-    fn __itruediv__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = div_t(self, to_int(scalar64(rhs))); return self           # a /= s(f64→int)
+    fn __itruediv__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = div_t(self, to_int(scalar_f32(rhs))); return self           # a /= s(f32→int)
+    fn __itruediv__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = div_t(self, to_int(scalar_f64(rhs))); return self           # a /= s(f64→int)
 
     fn __imod__(mut self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: self = mod_t(self, rhs); return self                                 # a %= b (int domain)
     fn __imod__(mut self: Tensor[Int], rhs: Int)        -> Tensor[Int]: self = mod_t(self, scalar_int(rhs)); return self                     # a %= s(int)
-    fn __imod__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = mod_t(self, to_int(scalar32(rhs))); return self               # a %= s(f32→int)
-    fn __imod__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = mod_t(self, to_int(scalar64(rhs))); return self               # a %= s(f64→int)
+    fn __imod__(mut self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: self = mod_t(self, to_int(scalar_f32(rhs))); return self               # a %= s(f32→int)
+    fn __imod__(mut self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: self = mod_t(self, to_int(scalar_f64(rhs))); return self               # a %= s(f64→int)
     # =========================
     # Power overloads — full combos, promotion Int < Float32 < Float64
-    # Uses only: pow_t, to_int, to_float32, to_float64, scalar_int/scalar32/scalar64
+    # Uses only: pow_t, to_int, to_float32, to_float64, scalar_int/scalar_f32/scalar_f64
     # =========================
 
     # -------------------------
     # Tensor[Float64]
     # -------------------------
     fn __pow__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: return pow_t(self, rhs)                                         # a(f64) ** b(f64)
-    fn __pow__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: return pow_t(self, scalar64(rhs))                              # a(f64) ** s(f64)
-    fn __pow__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: return pow_t(self, to_float64(scalar32(rhs)))                  # a(f64) ** s(f32→f64)
+    fn __pow__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: return pow_t(self, scalar_f64(rhs))                              # a(f64) ** s(f64)
+    fn __pow__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: return pow_t(self, to_float64(scalar_f32(rhs)))                  # a(f64) ** s(f32→f64)
     fn __pow__(self: Tensor[Float64], rhs: Int)            -> Tensor[Float64]: return pow_t(self, to_float64(scalar_int(rhs)))                # a(f64) ** s(int→f64)
 
-    fn __rpow__(self: Tensor[Float64], lhs: Float64)       -> Tensor[Float64]: return pow_t(scalar64(lhs), self)                              # s(f64) ** a(f64)
-    fn __rpow__(self: Tensor[Float64], lhs: Float32)       -> Tensor[Float64]: return pow_t(to_float64(scalar32(lhs)), self)                  # s(f32→f64) ** a(f64)
+    fn __rpow__(self: Tensor[Float64], lhs: Float64)       -> Tensor[Float64]: return pow_t(scalar_f64(lhs), self)                              # s(f64) ** a(f64)
+    fn __rpow__(self: Tensor[Float64], lhs: Float32)       -> Tensor[Float64]: return pow_t(to_float64(scalar_f32(lhs)), self)                  # s(f32→f64) ** a(f64)
     fn __rpow__(self: Tensor[Float64], lhs: Int)           -> Tensor[Float64]: return pow_t(to_float64(scalar_int(lhs)), self)                # s(int→f64) ** a(f64)
 
     fn __ipow__(mut self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Float64]: self = pow_t(self, rhs); return self                      # a **= b(f64)
-    fn __ipow__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = pow_t(self, scalar64(rhs)); return self            # a **= s(f64)
-    fn __ipow__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = pow_t(self, to_float64(scalar32(rhs))); return self# a **= s(f32→f64)
+    fn __ipow__(mut self: Tensor[Float64], rhs: Float64)        -> Tensor[Float64]: self = pow_t(self, scalar_f64(rhs)); return self            # a **= s(f64)
+    fn __ipow__(mut self: Tensor[Float64], rhs: Float32)        -> Tensor[Float64]: self = pow_t(self, to_float64(scalar_f32(rhs))); return self# a **= s(f32→f64)
     fn __ipow__(mut self: Tensor[Float64], rhs: Int)            -> Tensor[Float64]: self = pow_t(self, to_float64(scalar_int(rhs))); return self# a **= s(int→f64)
 
     # -------------------------
@@ -3984,20 +4318,20 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # -------------------------
     # result Float64 if rhs/lhs is Float64 or Tensor[Float64]
     fn __pow__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), rhs)                            # a(f32→f64) ** b(f64)
-    fn __pow__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Float64]: return pow_t(to_float64(self), scalar64(rhs))                 # a(f32→f64) ** s(f64)
-    fn __rpow__(self: Tensor[Float32], lhs: Float64)       -> Tensor[Float64]: return pow_t(scalar64(lhs), to_float64(self))                 # s(f64) ** a(f32→f64)
+    fn __pow__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Float64]: return pow_t(to_float64(self), scalar_f64(rhs))                 # a(f32→f64) ** s(f64)
+    fn __rpow__(self: Tensor[Float32], lhs: Float64)       -> Tensor[Float64]: return pow_t(scalar_f64(lhs), to_float64(self))                 # s(f64) ** a(f32→f64)
 
     # result Float32 otherwise
     fn __pow__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: return pow_t(self, rhs)                                       # a(f32) ** b(f32)
-    fn __pow__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: return pow_t(self, scalar32(rhs))                             # a(f32) ** s(f32)
+    fn __pow__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: return pow_t(self, scalar_f32(rhs))                             # a(f32) ** s(f32)
     fn __pow__(self: Tensor[Float32], rhs: Int)            -> Tensor[Float32]: return pow_t(self, to_float32(scalar_int(rhs)))               # a(f32) ** s(int→f32)
 
-    fn __rpow__(self: Tensor[Float32], lhs: Float32)       -> Tensor[Float32]: return pow_t(scalar32(lhs), self)                             # s(f32) ** a(f32)
+    fn __rpow__(self: Tensor[Float32], lhs: Float32)       -> Tensor[Float32]: return pow_t(scalar_f32(lhs), self)                             # s(f32) ** a(f32)
     fn __rpow__(self: Tensor[Float32], lhs: Int)           -> Tensor[Float32]: return pow_t(to_float32(scalar_int(lhs)), self)               # s(int→f32) ** a(f32)
 
     # in-place only when result dtype remains Float32
     fn __ipow__(mut self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: self = pow_t(self, rhs); return self                     # a **= b(f32)
-    fn __ipow__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = pow_t(self, scalar32(rhs)); return self           # a **= s(f32)
+    fn __ipow__(mut self: Tensor[Float32], rhs: Float32)        -> Tensor[Float32]: self = pow_t(self, scalar_f32(rhs)); return self           # a **= s(f32)
     fn __ipow__(mut self: Tensor[Float32], rhs: Int)            -> Tensor[Float32]: self = pow_t(self, to_float32(scalar_int(rhs))); return self # a **= s(int→f32)
 
     # -------------------------
@@ -4005,13 +4339,13 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # -------------------------
     # result Float64 if rhs/lhs is Float64 or Tensor[Float64]
     fn __pow__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), rhs)                                # a(int→f64) ** b(f64)
-    fn __pow__(self: Tensor[Int], rhs: Float64)        -> Tensor[Float64]: return pow_t(to_float64(self), scalar64(rhs))                     # a(int→f64) ** s(f64)
-    fn __rpow__(self: Tensor[Int], lhs: Float64)       -> Tensor[Float64]: return pow_t(scalar64(lhs), to_float64(self))                     # s(f64) ** a(int→f64)
+    fn __pow__(self: Tensor[Int], rhs: Float64)        -> Tensor[Float64]: return pow_t(to_float64(self), scalar_f64(rhs))                     # a(int→f64) ** s(f64)
+    fn __rpow__(self: Tensor[Int], lhs: Float64)       -> Tensor[Float64]: return pow_t(scalar_f64(lhs), to_float64(self))                     # s(f64) ** a(int→f64)
 
     # result Float32 if no Float64 present but Float32/ Tensor[Float32] present
     fn __pow__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Float32]: return pow_t(to_float32(self), rhs)                               # a(int→f32) ** b(f32)
-    fn __pow__(self: Tensor[Int], rhs: Float32)        -> Tensor[Float32]: return pow_t(to_float32(self), scalar32(rhs))                    # a(int→f32) ** s(f32)
-    fn __rpow__(self: Tensor[Int], lhs: Float32)       -> Tensor[Float32]: return pow_t(scalar32(lhs), to_float32(self))                    # s(f32) ** a(int→f32)
+    fn __pow__(self: Tensor[Int], rhs: Float32)        -> Tensor[Float32]: return pow_t(to_float32(self), scalar_f32(rhs))                    # a(int→f32) ** s(f32)
+    fn __rpow__(self: Tensor[Int], lhs: Float32)       -> Tensor[Float32]: return pow_t(scalar_f32(lhs), to_float32(self))                    # s(f32) ** a(int→f32)
 
     # result Int when both are Int
     fn __pow__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: return pow_t(self, rhs)                                                   # a(int) ** b(int)
@@ -4051,22 +4385,22 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __and__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return and_t(self, rhs)                                 # a & b (f64,f64)
     fn __and__(self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Int]: return and_t(self, to_float64(rhs))                    # a & b (f64,f32→f64)
     fn __and__(self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Int]: return and_t(self, to_float64(rhs))                    # a & b (f64,int→f64)
-    fn __and__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Int]: return and_t(self, scalar64(rhs))                     # a & s (f64)
-    fn __and__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Int]: return and_t(self, to_float64(scalar32(rhs)))         # a & s (f32→f64)
+    fn __and__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Int]: return and_t(self, scalar_f64(rhs))                     # a & s (f64)
+    fn __and__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Int]: return and_t(self, to_float64(scalar_f32(rhs)))         # a & s (f32→f64)
     fn __and__(self: Tensor[Float64], rhs: Int)             -> Tensor[Int]: return and_t(self, to_float64(scalar_int(rhs)))       # a & s (int→f64)
 
     fn __or__( self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return or_t (self, rhs)                                # a | b (f64,f64)
     fn __or__( self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Int]: return or_t (self, to_float64(rhs))                    # a | b (f64,f32→f64)
     fn __or__( self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Int]: return or_t (self, to_float64(rhs))                    # a | b (f64,int→f64)
-    fn __or__( self: Tensor[Float64], rhs: Float64)         -> Tensor[Int]: return or_t (self, scalar64(rhs))                     # a | s (f64)
-    fn __or__( self: Tensor[Float64], rhs: Float32)         -> Tensor[Int]: return or_t (self, to_float64(scalar32(rhs)))         # a | s (f32→f64)
+    fn __or__( self: Tensor[Float64], rhs: Float64)         -> Tensor[Int]: return or_t (self, scalar_f64(rhs))                     # a | s (f64)
+    fn __or__( self: Tensor[Float64], rhs: Float32)         -> Tensor[Int]: return or_t (self, to_float64(scalar_f32(rhs)))         # a | s (f32→f64)
     fn __or__( self: Tensor[Float64], rhs: Int)             -> Tensor[Int]: return or_t (self, to_float64(scalar_int(rhs)))       # a | s (int→f64)
 
     fn __xor__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return xor_t(self, rhs)                                # a ^ b (f64,f64)
     fn __xor__(self: Tensor[Float64], rhs: Tensor[Float32]) -> Tensor[Int]: return xor_t(self, to_float64(rhs))                    # a ^ b (f64,f32→f64)
     fn __xor__(self: Tensor[Float64], rhs: Tensor[Int])     -> Tensor[Int]: return xor_t(self, to_float64(rhs))                    # a ^ b (f64,int→f64)
-    fn __xor__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Int]: return xor_t(self, scalar64(rhs))                     # a ^ s (f64)
-    fn __xor__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Int]: return xor_t(self, to_float64(scalar32(rhs)))         # a ^ s (f32→f64)
+    fn __xor__(self: Tensor[Float64], rhs: Float64)         -> Tensor[Int]: return xor_t(self, scalar_f64(rhs))                     # a ^ s (f64)
+    fn __xor__(self: Tensor[Float64], rhs: Float32)         -> Tensor[Int]: return xor_t(self, to_float64(scalar_f32(rhs)))         # a ^ s (f32→f64)
     fn __xor__(self: Tensor[Float64], rhs: Int)             -> Tensor[Int]: return xor_t(self, to_float64(scalar_int(rhs)))       # a ^ s (int→f64)
                                                  # ~a
 
@@ -4077,22 +4411,22 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __and__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Int]: return and_t(to_float64(self), rhs)                    # a(f32→f64) & b(f64)
     fn __and__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return and_t(self, rhs)                                # a & b (f32,f32)
     fn __and__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Int]: return and_t(self, to_float32(rhs))                    # a & b (f32,int→f32)
-    fn __and__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Int]: return and_t(to_float64(self), scalar64(rhs))         # a(f32→f64) & s(f64)
-    fn __and__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Int]: return and_t(self, scalar32(rhs))                     # a & s(f32)
+    fn __and__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Int]: return and_t(to_float64(self), scalar_f64(rhs))         # a(f32→f64) & s(f64)
+    fn __and__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Int]: return and_t(self, scalar_f32(rhs))                     # a & s(f32)
     fn __and__(self: Tensor[Float32], rhs: Int)             -> Tensor[Int]: return and_t(self, to_float32(scalar_int(rhs)))       # a & s(int→f32)
 
     fn __or__( self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Int]: return or_t (to_float64(self), rhs)                    # a(f32→f64) | b(f64)
     fn __or__( self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return or_t (self, rhs)                                # a | b (f32,f32)
     fn __or__( self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Int]: return or_t (self, to_float32(rhs))                    # a | b (f32,int→f32)
-    fn __or__( self: Tensor[Float32], rhs: Float64)         -> Tensor[Int]: return or_t (to_float64(self), scalar64(rhs))         # a(f32→f64) | s(f64)
-    fn __or__( self: Tensor[Float32], rhs: Float32)         -> Tensor[Int]: return or_t (self, scalar32(rhs))                     # a | s(f32)
+    fn __or__( self: Tensor[Float32], rhs: Float64)         -> Tensor[Int]: return or_t (to_float64(self), scalar_f64(rhs))         # a(f32→f64) | s(f64)
+    fn __or__( self: Tensor[Float32], rhs: Float32)         -> Tensor[Int]: return or_t (self, scalar_f32(rhs))                     # a | s(f32)
     fn __or__( self: Tensor[Float32], rhs: Int)             -> Tensor[Int]: return or_t (self, to_float32(scalar_int(rhs)))       # a | s(int→f32)
 
     fn __xor__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Int]: return xor_t(to_float64(self), rhs)                    # a(f32→f64) ^ b(f64)
     fn __xor__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return xor_t(self, rhs)                                # a ^ b (f32,f32)
     fn __xor__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Int]: return xor_t(self, to_float32(rhs))                    # a ^ b (f32,int→f32)
-    fn __xor__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Int]: return xor_t(to_float64(self), scalar64(rhs))         # a(f32→f64) ^ s(f64)
-    fn __xor__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Int]: return xor_t(self, scalar32(rhs))                     # a ^ s(f32)
+    fn __xor__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Int]: return xor_t(to_float64(self), scalar_f64(rhs))         # a(f32→f64) ^ s(f64)
+    fn __xor__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Int]: return xor_t(self, scalar_f32(rhs))                     # a ^ s(f32)
     fn __xor__(self: Tensor[Float32], rhs: Int)             -> Tensor[Int]: return xor_t(self, to_float32(scalar_int(rhs)))       # a ^ s(int→f32)
  
 
@@ -4102,69 +4436,69 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __and__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Int]: return and_t(to_float64(self), rhs)                        # a(int→f64) & b(f64)
     fn __and__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Int]: return and_t(to_float32(self), rhs)                        # a(int→f32) & b(f32)
     fn __and__(self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Int]: return and_t(self, rhs)                                    # a & b (int,int)
-    fn __and__(self: Tensor[Int], rhs: Float64)         -> Tensor[Int]: return and_t(to_float64(self), scalar64(rhs))             # a(int→f64) & s(f64)
-    fn __and__(self: Tensor[Int], rhs: Float32)         -> Tensor[Int]: return and_t(to_float32(self), scalar32(rhs))             # a(int→f32) & s(f32)
+    fn __and__(self: Tensor[Int], rhs: Float64)         -> Tensor[Int]: return and_t(to_float64(self), scalar_f64(rhs))             # a(int→f64) & s(f64)
+    fn __and__(self: Tensor[Int], rhs: Float32)         -> Tensor[Int]: return and_t(to_float32(self), scalar_f32(rhs))             # a(int→f32) & s(f32)
     fn __and__(self: Tensor[Int], rhs: Int)             -> Tensor[Int]: return and_t(self, scalar_int(rhs))                       # a & s(int)
 
     fn __or__( self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Int]: return or_t (to_float64(self), rhs)                        # a(int→f64) | b(f64)
     fn __or__( self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Int]: return or_t (to_float32(self), rhs)                        # a(int→f32) | b(f32)
     fn __or__( self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Int]: return or_t (self, rhs)                                    # a | b (int,int)
-    fn __or__( self: Tensor[Int], rhs: Float64)         -> Tensor[Int]: return or_t (to_float64(self), scalar64(rhs))             # a(int→f64) | s(f64)
-    fn __or__( self: Tensor[Int], rhs: Float32)         -> Tensor[Int]: return or_t (to_float32(self), scalar32(rhs))             # a(int→f32) | s(f32)
+    fn __or__( self: Tensor[Int], rhs: Float64)         -> Tensor[Int]: return or_t (to_float64(self), scalar_f64(rhs))             # a(int→f64) | s(f64)
+    fn __or__( self: Tensor[Int], rhs: Float32)         -> Tensor[Int]: return or_t (to_float32(self), scalar_f32(rhs))             # a(int→f32) | s(f32)
     fn __or__( self: Tensor[Int], rhs: Int)             -> Tensor[Int]: return or_t (self, scalar_int(rhs))                       # a | s(int)
 
     fn __xor__(self: Tensor[Int], rhs: Tensor[Float64]) -> Tensor[Int]: return xor_t(to_float64(self), rhs)                        # a(int→f64) ^ b(f64)
     fn __xor__(self: Tensor[Int], rhs: Tensor[Float32]) -> Tensor[Int]: return xor_t(to_float32(self), rhs)                        # a(int→f32) ^ b(f32)
     fn __xor__(self: Tensor[Int], rhs: Tensor[Int])     -> Tensor[Int]: return xor_t(self, rhs)                                    # a ^ b (int,int)
-    fn __xor__(self: Tensor[Int], rhs: Float64)         -> Tensor[Int]: return xor_t(to_float64(self), scalar64(rhs))             # a(int→f64) ^ s(f64)
-    fn __xor__(self: Tensor[Int], rhs: Float32)         -> Tensor[Int]: return xor_t(to_float32(self), scalar32(rhs))             # a(int→f32) ^ s(f32)
+    fn __xor__(self: Tensor[Int], rhs: Float64)         -> Tensor[Int]: return xor_t(to_float64(self), scalar_f64(rhs))             # a(int→f64) ^ s(f64)
+    fn __xor__(self: Tensor[Int], rhs: Float32)         -> Tensor[Int]: return xor_t(to_float32(self), scalar_f32(rhs))             # a(int→f32) ^ s(f32)
     fn __xor__(self: Tensor[Int], rhs: Int)             -> Tensor[Int]: return xor_t(self, scalar_int(rhs))                       # a ^ s(int)
  
     # =========================
     # Float64 reflected logical (result mask: Tensor[Int])
     # =========================
-    fn __rand__(self: Tensor[Float64], lhs: Float64) -> Tensor[Int]: return and_t(scalar64(lhs), self)                         # s(f64) & a(f64)
-    fn __rand__(self: Tensor[Float64], lhs: Float32) -> Tensor[Int]: return and_t(to_float64(scalar32(lhs)), self)            # s(f32→f64) & a(f64)
+    fn __rand__(self: Tensor[Float64], lhs: Float64) -> Tensor[Int]: return and_t(scalar_f64(lhs), self)                         # s(f64) & a(f64)
+    fn __rand__(self: Tensor[Float64], lhs: Float32) -> Tensor[Int]: return and_t(to_float64(scalar_f32(lhs)), self)            # s(f32→f64) & a(f64)
     fn __rand__(self: Tensor[Float64], lhs: Int)     -> Tensor[Int]: return and_t(to_float64(scalar_int(lhs)), self)          # s(int→f64) & a(f64)
 
-    fn __ror__( self: Tensor[Float64], lhs: Float64) -> Tensor[Int]: return or_t (scalar64(lhs), self)                        # s(f64) | a(f64)
-    fn __ror__( self: Tensor[Float64], lhs: Float32) -> Tensor[Int]: return or_t (to_float64(scalar32(lhs)), self)            # s(f32→f64) | a(f64)
+    fn __ror__( self: Tensor[Float64], lhs: Float64) -> Tensor[Int]: return or_t (scalar_f64(lhs), self)                        # s(f64) | a(f64)
+    fn __ror__( self: Tensor[Float64], lhs: Float32) -> Tensor[Int]: return or_t (to_float64(scalar_f32(lhs)), self)            # s(f32→f64) | a(f64)
     fn __ror__( self: Tensor[Float64], lhs: Int)     -> Tensor[Int]: return or_t (to_float64(scalar_int(lhs)), self)          # s(int→f64) | a(f64)
 
-    fn __rxor__(self: Tensor[Float64], lhs: Float64) -> Tensor[Int]: return xor_t(scalar64(lhs), self)                        # s(f64) ^ a(f64)
-    fn __rxor__(self: Tensor[Float64], lhs: Float32) -> Tensor[Int]: return xor_t(to_float64(scalar32(lhs)), self)            # s(f32→f64) ^ a(f64)
+    fn __rxor__(self: Tensor[Float64], lhs: Float64) -> Tensor[Int]: return xor_t(scalar_f64(lhs), self)                        # s(f64) ^ a(f64)
+    fn __rxor__(self: Tensor[Float64], lhs: Float32) -> Tensor[Int]: return xor_t(to_float64(scalar_f32(lhs)), self)            # s(f32→f64) ^ a(f64)
     fn __rxor__(self: Tensor[Float64], lhs: Int)     -> Tensor[Int]: return xor_t(to_float64(scalar_int(lhs)), self)          # s(int→f64) ^ a(f64)
 
 
     # =========================
     # Float32 reflected logical (promotion: if lhs is Float64 ⇒ promote self to Float64)
     # =========================
-    fn __rand__(self: Tensor[Float32], lhs: Float64) -> Tensor[Int]: return and_t(to_float64(scalar64(lhs)), to_float64(self))# s(f64) & a(f32→f64)
-    fn __rand__(self: Tensor[Float32], lhs: Float32) -> Tensor[Int]: return and_t(scalar32(lhs), self)                        # s(f32) & a(f32)
+    fn __rand__(self: Tensor[Float32], lhs: Float64) -> Tensor[Int]: return and_t(to_float64(scalar_f64(lhs)), to_float64(self))# s(f64) & a(f32→f64)
+    fn __rand__(self: Tensor[Float32], lhs: Float32) -> Tensor[Int]: return and_t(scalar_f32(lhs), self)                        # s(f32) & a(f32)
     fn __rand__(self: Tensor[Float32], lhs: Int)     -> Tensor[Int]: return and_t(to_float32(scalar_int(lhs)), self)          # s(int→f32) & a(f32)
 
-    fn __ror__( self: Tensor[Float32], lhs: Float64) -> Tensor[Int]: return or_t (to_float64(scalar64(lhs)), to_float64(self))# s(f64) | a(f32→f64)
-    fn __ror__( self: Tensor[Float32], lhs: Float32) -> Tensor[Int]: return or_t (scalar32(lhs), self)                        # s(f32) | a(f32)
+    fn __ror__( self: Tensor[Float32], lhs: Float64) -> Tensor[Int]: return or_t (to_float64(scalar_f64(lhs)), to_float64(self))# s(f64) | a(f32→f64)
+    fn __ror__( self: Tensor[Float32], lhs: Float32) -> Tensor[Int]: return or_t (scalar_f32(lhs), self)                        # s(f32) | a(f32)
     fn __ror__( self: Tensor[Float32], lhs: Int)     -> Tensor[Int]: return or_t (to_float32(scalar_int(lhs)), self)          # s(int→f32) | a(f32)
 
-    fn __rxor__(self: Tensor[Float32], lhs: Float64) -> Tensor[Int]: return xor_t(to_float64(scalar64(lhs)), to_float64(self))# s(f64) ^ a(f32→f64)
-    fn __rxor__(self: Tensor[Float32], lhs: Float32) -> Tensor[Int]: return xor_t(scalar32(lhs), self)                        # s(f32) ^ a(f32)
+    fn __rxor__(self: Tensor[Float32], lhs: Float64) -> Tensor[Int]: return xor_t(to_float64(scalar_f64(lhs)), to_float64(self))# s(f64) ^ a(f32→f64)
+    fn __rxor__(self: Tensor[Float32], lhs: Float32) -> Tensor[Int]: return xor_t(scalar_f32(lhs), self)                        # s(f32) ^ a(f32)
     fn __rxor__(self: Tensor[Float32], lhs: Int)     -> Tensor[Int]: return xor_t(to_float32(scalar_int(lhs)), self)          # s(int→f32) ^ a(f32)
 
 
     # =========================
     # Int reflected logical (promotion: lhs Float64 ⇒ f64; lhs Float32 ⇒ f32; else Int)
     # =========================
-    fn __rand__(self: Tensor[Int], lhs: Float64) -> Tensor[Int]: return and_t(to_float64(scalar64(lhs)), to_float64(self))    # s(f64) & a(int→f64)
-    fn __rand__(self: Tensor[Int], lhs: Float32) -> Tensor[Int]: return and_t(to_float32(scalar32(lhs)), to_float32(self))    # s(f32) & a(int→f32)
+    fn __rand__(self: Tensor[Int], lhs: Float64) -> Tensor[Int]: return and_t(to_float64(scalar_f64(lhs)), to_float64(self))    # s(f64) & a(int→f64)
+    fn __rand__(self: Tensor[Int], lhs: Float32) -> Tensor[Int]: return and_t(to_float32(scalar_f32(lhs)), to_float32(self))    # s(f32) & a(int→f32)
     fn __rand__(self: Tensor[Int], lhs: Int)     -> Tensor[Int]: return and_t(scalar_int(lhs), self)                          # s(int) & a(int)
 
-    fn __ror__( self: Tensor[Int], lhs: Float64) -> Tensor[Int]: return or_t (to_float64(scalar64(lhs)), to_float64(self))    # s(f64) | a(int→f64)
-    fn __ror__( self: Tensor[Int], lhs: Float32) -> Tensor[Int]: return or_t (to_float32(scalar32(lhs)), to_float32(self))    # s(f32) | a(int→f32)
+    fn __ror__( self: Tensor[Int], lhs: Float64) -> Tensor[Int]: return or_t (to_float64(scalar_f64(lhs)), to_float64(self))    # s(f64) | a(int→f64)
+    fn __ror__( self: Tensor[Int], lhs: Float32) -> Tensor[Int]: return or_t (to_float32(scalar_f32(lhs)), to_float32(self))    # s(f32) | a(int→f32)
     fn __ror__( self: Tensor[Int], lhs: Int)     -> Tensor[Int]: return or_t (scalar_int(lhs), self)                          # s(int) | a(int)
 
-    fn __rxor__(self: Tensor[Int], lhs: Float64) -> Tensor[Int]: return xor_t(to_float64(scalar64(lhs)), to_float64(self))    # s(f64) ^ a(int→f64)
-    fn __rxor__(self: Tensor[Int], lhs: Float32) -> Tensor[Int]: return xor_t(to_float32(scalar32(lhs)), to_float32(self))    # s(f32) ^ a(int→f32)
+    fn __rxor__(self: Tensor[Int], lhs: Float64) -> Tensor[Int]: return xor_t(to_float64(scalar_f64(lhs)), to_float64(self))    # s(f64) ^ a(int→f64)
+    fn __rxor__(self: Tensor[Int], lhs: Float32) -> Tensor[Int]: return xor_t(to_float32(scalar_f32(lhs)), to_float32(self))    # s(f32) ^ a(int→f32)
     fn __rxor__(self: Tensor[Int], lhs: Int)     -> Tensor[Int]: return xor_t(scalar_int(lhs), self)                          # s(int) ^ a(int)
 
     # =========================
@@ -4172,66 +4506,66 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # Promotion: Int < Float32 < Float64
     # =========================
     fn __lt__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return lt_t(self, rhs)                               # a < b
-    fn __lt__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return lt_t(self, scalar64(rhs))                    # a < s(f64)
-    fn __lt__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return lt_t(self, to_float64(scalar32(rhs)))        # a < s(f32→f64)
+    fn __lt__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return lt_t(self, scalar_f64(rhs))                    # a < s(f64)
+    fn __lt__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return lt_t(self, to_float64(scalar_f32(rhs)))        # a < s(f32→f64)
     fn __lt__(self: Tensor[Float64], rhs: Int)            -> Tensor[Int]: return lt_t(self, to_float64(scalar_int(rhs)))      # a < s(int→f64)
 
     fn __le__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return le_t(self, rhs)                               # a <= b
-    fn __le__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return le_t(self, scalar64(rhs))                    # a <= s(f64)
-    fn __le__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return le_t(self, to_float64(scalar32(rhs)))        # a <= s(f32→f64)
+    fn __le__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return le_t(self, scalar_f64(rhs))                    # a <= s(f64)
+    fn __le__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return le_t(self, to_float64(scalar_f32(rhs)))        # a <= s(f32→f64)
     fn __le__(self: Tensor[Float64], rhs: Int)            -> Tensor[Int]: return le_t(self, to_float64(scalar_int(rhs)))      # a <= s(int→f64)
 
     fn __gt__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return gt_t(self, rhs)                               # a > b
-    fn __gt__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return gt_t(self, scalar64(rhs))                    # a > s(f64)
-    fn __gt__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return gt_t(self, to_float64(scalar32(rhs)))        # a > s(f32→f64)
+    fn __gt__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return gt_t(self, scalar_f64(rhs))                    # a > s(f64)
+    fn __gt__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return gt_t(self, to_float64(scalar_f32(rhs)))        # a > s(f32→f64)
     fn __gt__(self: Tensor[Float64], rhs: Int)            -> Tensor[Int]: return gt_t(self, to_float64(scalar_int(rhs)))      # a > s(int→f64)
 
     fn __ge__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return ge_t(self, rhs)                               # a >= b
-    fn __ge__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return ge_t(self, scalar64(rhs))                    # a >= s(f64)
-    fn __ge__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return ge_t(self, to_float64(scalar32(rhs)))        # a >= s(f32→f64)
+    fn __ge__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return ge_t(self, scalar_f64(rhs))                    # a >= s(f64)
+    fn __ge__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return ge_t(self, to_float64(scalar_f32(rhs)))        # a >= s(f32→f64)
     fn __ge__(self: Tensor[Float64], rhs: Int)            -> Tensor[Int]: return ge_t(self, to_float64(scalar_int(rhs)))      # a >= s(int→f64)
 
     fn __eq__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return eq_t(self, rhs)                               # a == b
-    fn __eq__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return eq_t(self, scalar64(rhs))                    # a == s(f64)
-    fn __eq__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return eq_t(self, to_float64(scalar32(rhs)))        # a == s(f32→f64)
+    fn __eq__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return eq_t(self, scalar_f64(rhs))                    # a == s(f64)
+    fn __eq__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return eq_t(self, to_float64(scalar_f32(rhs)))        # a == s(f32→f64)
     fn __eq__(self: Tensor[Float64], rhs: Int)            -> Tensor[Int]: return eq_t(self, to_float64(scalar_int(rhs)))      # a == s(int→f64)
 
     fn __ne__(self: Tensor[Float64], rhs: Tensor[Float64]) -> Tensor[Int]: return ne_t(self, rhs)                               # a != b
-    fn __ne__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return ne_t(self, scalar64(rhs))                    # a != s(f64)
-    fn __ne__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return ne_t(self, to_float64(scalar32(rhs)))        # a != s(f32→f64)
+    fn __ne__(self: Tensor[Float64], rhs: Float64)        -> Tensor[Int]: return ne_t(self, scalar_f64(rhs))                    # a != s(f64)
+    fn __ne__(self: Tensor[Float64], rhs: Float32)        -> Tensor[Int]: return ne_t(self, to_float64(scalar_f32(rhs)))        # a != s(f32→f64)
     fn __ne__(self: Tensor[Float64], rhs: Int)            -> Tensor[Int]: return ne_t(self, to_float64(scalar_int(rhs)))      # a != s(int→f64)
     # =========================
     # Float32 comparisons → mask(Int)
     # Promotion: with Float64 ⇒ compare in Float64, with Int ⇒ compare in Float32
     # =========================
     fn __lt__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return lt_t(self, rhs)                               # a < b
-    fn __lt__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return lt_t(self, scalar32(rhs))                    # a < s(f32)
-    fn __lt__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return lt_t(to_float64(self), scalar64(rhs))        # a(f32→f64) < s(f64)
+    fn __lt__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return lt_t(self, scalar_f32(rhs))                    # a < s(f32)
+    fn __lt__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return lt_t(to_float64(self), scalar_f64(rhs))        # a(f32→f64) < s(f64)
     fn __lt__(self: Tensor[Float32], rhs: Int)            -> Tensor[Int]: return lt_t(self, to_float32(scalar_int(rhs)))      # a < s(int→f32)
 
     fn __le__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return le_t(self, rhs)                               # a <= b
-    fn __le__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return le_t(self, scalar32(rhs))                    # a <= s(f32)
-    fn __le__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return le_t(to_float64(self), scalar64(rhs))        # a(f32→f64) <= s(f64)
+    fn __le__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return le_t(self, scalar_f32(rhs))                    # a <= s(f32)
+    fn __le__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return le_t(to_float64(self), scalar_f64(rhs))        # a(f32→f64) <= s(f64)
     fn __le__(self: Tensor[Float32], rhs: Int)            -> Tensor[Int]: return le_t(self, to_float32(scalar_int(rhs)))      # a <= s(int→f32)
 
     fn __gt__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return gt_t(self, rhs)                               # a > b
-    fn __gt__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return gt_t(self, scalar32(rhs))                    # a > s(f32)
-    fn __gt__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return gt_t(to_float64(self), scalar64(rhs))        # a(f32→f64) > s(f64)
+    fn __gt__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return gt_t(self, scalar_f32(rhs))                    # a > s(f32)
+    fn __gt__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return gt_t(to_float64(self), scalar_f64(rhs))        # a(f32→f64) > s(f64)
     fn __gt__(self: Tensor[Float32], rhs: Int)            -> Tensor[Int]: return gt_t(self, to_float32(scalar_int(rhs)))      # a > s(int→f32)
 
     fn __ge__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return ge_t(self, rhs)                               # a >= b
-    fn __ge__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return ge_t(self, scalar32(rhs))                    # a >= s(f32)
-    fn __ge__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return ge_t(to_float64(self), scalar64(rhs))        # a(f32→f64) >= s(f64)
+    fn __ge__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return ge_t(self, scalar_f32(rhs))                    # a >= s(f32)
+    fn __ge__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return ge_t(to_float64(self), scalar_f64(rhs))        # a(f32→f64) >= s(f64)
     fn __ge__(self: Tensor[Float32], rhs: Int)            -> Tensor[Int]: return ge_t(self, to_float32(scalar_int(rhs)))      # a >= s(int→f32)
 
     fn __eq__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return eq_t(self, rhs)                               # a == b
-    fn __eq__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return eq_t(self, scalar32(rhs))                    # a == s(f32)
-    fn __eq__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return eq_t(to_float64(self), scalar64(rhs))        # a(f32→f64) == s(f64)
+    fn __eq__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return eq_t(self, scalar_f32(rhs))                    # a == s(f32)
+    fn __eq__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return eq_t(to_float64(self), scalar_f64(rhs))        # a(f32→f64) == s(f64)
     fn __eq__(self: Tensor[Float32], rhs: Int)            -> Tensor[Int]: return eq_t(self, to_float32(scalar_int(rhs)))      # a == s(int→f32)
 
     fn __ne__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Int]: return ne_t(self, rhs)                               # a != b
-    fn __ne__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return ne_t(self, scalar32(rhs))                    # a != s(f32)
-    fn __ne__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return ne_t(to_float64(self), scalar64(rhs))        # a(f32→f64) != s(f64)
+    fn __ne__(self: Tensor[Float32], rhs: Float32)        -> Tensor[Int]: return ne_t(self, scalar_f32(rhs))                    # a != s(f32)
+    fn __ne__(self: Tensor[Float32], rhs: Float64)        -> Tensor[Int]: return ne_t(to_float64(self), scalar_f64(rhs))        # a(f32→f64) != s(f64)
     fn __ne__(self: Tensor[Float32], rhs: Int)            -> Tensor[Int]: return ne_t(self, to_float32(scalar_int(rhs)))      # a != s(int→f32)
     # =========================
     # Int comparisons → mask(Int)
@@ -4239,118 +4573,118 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
     fn __lt__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: return lt_t(self, rhs)                                        # a < b
     fn __lt__(self: Tensor[Int], rhs: Int)        -> Tensor[Int]: return lt_t(self, scalar_int(rhs))                            # a < s(int)
-    fn __lt__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return lt_t(to_float32(self), scalar32(rhs))                  # a(int→f32) < s(f32)
-    fn __lt__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return lt_t(to_float64(self), scalar64(rhs))                  # a(int→f64) < s(f64)
+    fn __lt__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return lt_t(to_float32(self), scalar_f32(rhs))                  # a(int→f32) < s(f32)
+    fn __lt__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return lt_t(to_float64(self), scalar_f64(rhs))                  # a(int→f64) < s(f64)
 
     fn __le__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: return le_t(self, rhs)                                        # a <= b
     fn __le__(self: Tensor[Int], rhs: Int)        -> Tensor[Int]: return le_t(self, scalar_int(rhs))                            # a <= s(int)
-    fn __le__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return le_t(to_float32(self), scalar32(rhs))                  # a(int→f32) <= s(f32)
-    fn __le__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return le_t(to_float64(self), scalar64(rhs))                  # a(int→f64) <= s(f64)
+    fn __le__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return le_t(to_float32(self), scalar_f32(rhs))                  # a(int→f32) <= s(f32)
+    fn __le__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return le_t(to_float64(self), scalar_f64(rhs))                  # a(int→f64) <= s(f64)
 
     fn __gt__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: return gt_t(self, rhs)                                        # a > b
     fn __gt__(self: Tensor[Int], rhs: Int)        -> Tensor[Int]: return gt_t(self, scalar_int(rhs))                            # a > s(int)
-    fn __gt__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return gt_t(to_float32(self), scalar32(rhs))                  # a(int→f32) > s(f32)
-    fn __gt__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return gt_t(to_float64(self), scalar64(rhs))                  # a(int→f64) > s(f64)
+    fn __gt__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return gt_t(to_float32(self), scalar_f32(rhs))                  # a(int→f32) > s(f32)
+    fn __gt__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return gt_t(to_float64(self), scalar_f64(rhs))                  # a(int→f64) > s(f64)
 
     fn __ge__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: return ge_t(self, rhs)                                        # a >= b
     fn __ge__(self: Tensor[Int], rhs: Int)        -> Tensor[Int]: return ge_t(self, scalar_int(rhs))                            # a >= s(int)
-    fn __ge__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return ge_t(to_float32(self), scalar32(rhs))                  # a(int→f32) >= s(f32)
-    fn __ge__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return ge_t(to_float64(self), scalar64(rhs))                  # a(int→f64) >= s(f64)
+    fn __ge__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return ge_t(to_float32(self), scalar_f32(rhs))                  # a(int→f32) >= s(f32)
+    fn __ge__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return ge_t(to_float64(self), scalar_f64(rhs))                  # a(int→f64) >= s(f64)
 
     fn __eq__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: return eq_t(self, rhs)                                        # a == b
     fn __eq__(self: Tensor[Int], rhs: Int)        -> Tensor[Int]: return eq_t(self, scalar_int(rhs))                            # a == s(int)
-    fn __eq__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return eq_t(to_float32(self), scalar32(rhs))                  # a(int→f32) == s(f32)
-    fn __eq__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return eq_t(to_float64(self), scalar64(rhs))                  # a(int→f64) == s(f64)
+    fn __eq__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return eq_t(to_float32(self), scalar_f32(rhs))                  # a(int→f32) == s(f32)
+    fn __eq__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return eq_t(to_float64(self), scalar_f64(rhs))                  # a(int→f64) == s(f64)
 
     fn __ne__(self: Tensor[Int], rhs: Tensor[Int]) -> Tensor[Int]: return ne_t(self, rhs)                                        # a != b
     fn __ne__(self: Tensor[Int], rhs: Int)        -> Tensor[Int]: return ne_t(self, scalar_int(rhs))                            # a != s(int)
-    fn __ne__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return ne_t(to_float32(self), scalar32(rhs))                  # a(int→f32) != s(f32)
-    fn __ne__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return ne_t(to_float64(self), scalar64(rhs))                  # a(int→f64) != s(f64)
+    fn __ne__(self: Tensor[Int], rhs: Float32)    -> Tensor[Int]: return ne_t(to_float32(self), scalar_f32(rhs))                  # a(int→f32) != s(f32)
+    fn __ne__(self: Tensor[Int], rhs: Float64)    -> Tensor[Int]: return ne_t(to_float64(self), scalar_f64(rhs))                  # a(int→f64) != s(f64)
 
     # =========================
     # Scalar arithmetic with full promotion (Int < Float32 < Float64)
-    # Uses only: scalar_int/scalar32/scalar64, to_int/to_float32/to_float64, add_t/sub_t/mul_t/div_t/mod_t/pow_t
+    # Uses only: scalar_int/scalar_f32/scalar_f64, to_int/to_float32/to_float64, add_t/sub_t/mul_t/div_t/mod_t/pow_t
     # =========================
 
     # -------------------------
     # Tensor[Float64] overloads
     # -------------------------
-    fn add_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return add_t(self, scalar64(s))                    # a + s(f64)
-    fn add_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return add_t(self, to_float64(scalar32(s)))       # a + s(f32→f64)
+    fn add_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return add_t(self, scalar_f64(s))                    # a + s(f64)
+    fn add_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return add_t(self, to_float64(scalar_f32(s)))       # a + s(f32→f64)
     fn add_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return add_t(self, to_float64(scalar_int(s)))     # a + s(int→f64)
 
-    fn sub_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return sub_t(self, scalar64(s))                    # a - s(f64)
-    fn sub_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return sub_t(self, to_float64(scalar32(s)))       # a - s(f32→f64)
+    fn sub_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return sub_t(self, scalar_f64(s))                    # a - s(f64)
+    fn sub_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return sub_t(self, to_float64(scalar_f32(s)))       # a - s(f32→f64)
     fn sub_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return sub_t(self, to_float64(scalar_int(s)))     # a - s(int→f64)
 
-    fn mul_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return mul_t(self, scalar64(s))                    # a * s(f64)
-    fn mul_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return mul_t(self, to_float64(scalar32(s)))       # a * s(f32→f64)
+    fn mul_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return mul_t(self, scalar_f64(s))                    # a * s(f64)
+    fn mul_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return mul_t(self, to_float64(scalar_f32(s)))       # a * s(f32→f64)
     fn mul_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return mul_t(self, to_float64(scalar_int(s)))     # a * s(int→f64)
 
-    fn div_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return div_t(self, scalar64(s))                    # a / s(f64)
-    fn div_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return div_t(self, to_float64(scalar32(s)))       # a / s(f32→f64)
+    fn div_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return div_t(self, scalar_f64(s))                    # a / s(f64)
+    fn div_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return div_t(self, to_float64(scalar_f32(s)))       # a / s(f32→f64)
     fn div_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return div_t(self, to_float64(scalar_int(s)))     # a / s(int→f64)
 
-    fn mod_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return mod_t(self, scalar64(s))                    # a % s(f64)
-    fn mod_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return mod_t(self, to_float64(scalar32(s)))       # a % s(f32→f64)
+    fn mod_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return mod_t(self, scalar_f64(s))                    # a % s(f64)
+    fn mod_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return mod_t(self, to_float64(scalar_f32(s)))       # a % s(f32→f64)
     fn mod_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return mod_t(self, to_float64(scalar_int(s)))     # a % s(int→f64)
 
-    fn pow_scalar(self: Tensor[Float64], p: Float64) -> Tensor[Float64]: return pow_t(self, scalar64(p))                    # a ** p(f64)
-    fn pow_scalar(self: Tensor[Float64], p: Float32) -> Tensor[Float64]: return pow_t(self, to_float64(scalar32(p)))       # a ** p(f32→f64)
+    fn pow_scalar(self: Tensor[Float64], p: Float64) -> Tensor[Float64]: return pow_t(self, scalar_f64(p))                    # a ** p(f64)
+    fn pow_scalar(self: Tensor[Float64], p: Float32) -> Tensor[Float64]: return pow_t(self, to_float64(scalar_f32(p)))       # a ** p(f32→f64)
     fn pow_scalar(self: Tensor[Float64], p: Int)     -> Tensor[Float64]: return pow_t(self, to_float64(scalar_int(p)))     # a ** p(int→f64)
 
     # -------------------------
     # Tensor[Float32] overloads
     # -------------------------
-    fn add_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return add_t(to_float64(self), scalar64(s))        # (a→f64) + s(f64)
-    fn add_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return add_t(self, scalar32(s))                     # a + s(f32)
+    fn add_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return add_t(to_float64(self), scalar_f64(s))        # (a→f64) + s(f64)
+    fn add_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return add_t(self, scalar_f32(s))                     # a + s(f32)
     fn add_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return add_t(self, to_float32(scalar_int(s)))      # a + s(int→f32)
 
-    fn sub_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return sub_t(to_float64(self), scalar64(s))        # (a→f64) - s(f64)
-    fn sub_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return sub_t(self, scalar32(s))                     # a - s(f32)
+    fn sub_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return sub_t(to_float64(self), scalar_f64(s))        # (a→f64) - s(f64)
+    fn sub_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return sub_t(self, scalar_f32(s))                     # a - s(f32)
     fn sub_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return sub_t(self, to_float32(scalar_int(s)))      # a - s(int→f32)
 
-    fn mul_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return mul_t(to_float64(self), scalar64(s))        # (a→f64) * s(f64)
-    fn mul_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return mul_t(self, scalar32(s))                     # a * s(f32)
+    fn mul_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return mul_t(to_float64(self), scalar_f64(s))        # (a→f64) * s(f64)
+    fn mul_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return mul_t(self, scalar_f32(s))                     # a * s(f32)
     fn mul_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return mul_t(self, to_float32(scalar_int(s)))      # a * s(int→f32)
 
-    fn div_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return div_t(to_float64(self), scalar64(s))        # (a→f64) / s(f64)
-    fn div_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float64]: return div_t(self, scalar32(s))                     # a / s(f32)
+    fn div_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return div_t(to_float64(self), scalar_f64(s))        # (a→f64) / s(f64)
+    fn div_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float64]: return div_t(self, scalar_f32(s))                     # a / s(f32)
     fn div_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float64]: return div_t(self, to_float32(scalar_int(s)))      # a / s(int→f32)
 
-    fn mod_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return mod_t(to_float64(self), scalar64(s))        # (a→f64) % s(f64)
-    fn mod_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float64]: return mod_t(self, scalar32(s))                     # a % s(f32)
+    fn mod_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return mod_t(to_float64(self), scalar_f64(s))        # (a→f64) % s(f64)
+    fn mod_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float64]: return mod_t(self, scalar_f32(s))                     # a % s(f32)
     fn mod_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float64]: return mod_t(self, to_float32(scalar_int(s)))      # a % s(int→f32)
 
-    fn pow_scalar(self: Tensor[Float32], p: Float64) -> Tensor[Float64]: return pow_t(to_float64(self), scalar64(p))        # (a→f64) ** p(f64)
-    fn pow_scalar(self: Tensor[Float32], p: Float32) -> Tensor[Float32]: return pow_t(self, scalar32(p))                     # a ** p(f32)
+    fn pow_scalar(self: Tensor[Float32], p: Float64) -> Tensor[Float64]: return pow_t(to_float64(self), scalar_f64(p))        # (a→f64) ** p(f64)
+    fn pow_scalar(self: Tensor[Float32], p: Float32) -> Tensor[Float32]: return pow_t(self, scalar_f32(p))                     # a ** p(f32)
     fn pow_scalar(self: Tensor[Float32], p: Int)     -> Tensor[Float32]: return pow_t(self, to_float32(scalar_int(p)))      # a ** p(int→f32)
 
     # -------------------------
     # Tensor[Int] overloads
     # -------------------------
-    fn add_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return add_t(to_float64(self), scalar64(s))            # (a→f64) + s(f64)
-    fn add_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return add_t(to_float32(self), scalar32(s))            # (a→f32) + s(f32)
+    fn add_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return add_t(to_float64(self), scalar_f64(s))            # (a→f64) + s(f64)
+    fn add_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return add_t(to_float32(self), scalar_f32(s))            # (a→f32) + s(f32)
     fn add_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return add_t(self, scalar_int(s))                      # a + s(int)
 
-    fn sub_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return sub_t(to_float64(self), scalar64(s))            # (a→f64) - s(f64)
-    fn sub_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return sub_t(to_float32(self), scalar32(s))            # (a→f32) - s(f32)
+    fn sub_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return sub_t(to_float64(self), scalar_f64(s))            # (a→f64) - s(f64)
+    fn sub_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return sub_t(to_float32(self), scalar_f32(s))            # (a→f32) - s(f32)
     fn sub_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return sub_t(self, scalar_int(s))                      # a - s(int)
 
-    fn mul_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return mul_t(to_float64(self), scalar64(s))            # (a→f64) * s(f64)
-    fn mul_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return mul_t(to_float32(self), scalar32(s))            # (a→f32) * s(f32)
+    fn mul_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return mul_t(to_float64(self), scalar_f64(s))            # (a→f64) * s(f64)
+    fn mul_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return mul_t(to_float32(self), scalar_f32(s))            # (a→f32) * s(f32)
     fn mul_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return mul_t(self, scalar_int(s))                      # a * s(int)
 
-    fn div_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return div_t(to_float64(self), scalar64(s))            # (a→f64) / s(f64)
-    fn div_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float64]: return div_t(to_float32(self), scalar32(s))            # (a→f32) / s(f32)
+    fn div_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return div_t(to_float64(self), scalar_f64(s))            # (a→f64) / s(f64)
+    fn div_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float64]: return div_t(to_float32(self), scalar_f32(s))            # (a→f32) / s(f32)
     fn div_scalar(self: Tensor[Int], s: Int)     -> Tensor[Float64]:     return div_t(self, scalar_int(s))                      # a / s(int)
 
-    fn mod_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return mod_t(to_float64(self), scalar64(s))            # (a→f64) % s(f64)
-    fn mod_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float64]: return mod_t(to_float32(self), scalar32(s))            # (a→f32) % s(f32)
+    fn mod_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return mod_t(to_float64(self), scalar_f64(s))            # (a→f64) % s(f64)
+    fn mod_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float64]: return mod_t(to_float32(self), scalar_f32(s))            # (a→f32) % s(f32)
     fn mod_scalar(self: Tensor[Int], s: Int)     -> Tensor[Float64]:     return mod_t(self, scalar_int(s))                      # a % s(int)
 
-    fn pow_scalar(self: Tensor[Int], p: Float64) -> Tensor[Float64]: return pow_t(to_float64(self), scalar64(p))            # (a→f64) ** p(f64)
-    fn pow_scalar(self: Tensor[Int], p: Float32) -> Tensor[Float32]: return pow_t(to_float32(self), scalar32(p))            # (a→f32) ** p(f32)
+    fn pow_scalar(self: Tensor[Int], p: Float64) -> Tensor[Float64]: return pow_t(to_float64(self), scalar_f64(p))            # (a→f64) ** p(f64)
+    fn pow_scalar(self: Tensor[Int], p: Float32) -> Tensor[Float32]: return pow_t(to_float32(self), scalar_f32(p))            # (a→f32) ** p(f32)
     fn pow_scalar(self: Tensor[Int], p: Int)     -> Tensor[Int]:     return pow_t(self, scalar_int(p))                      # a ** p(int)
     # =========================
     # Float64 overloads (tensor-tensor; promotion Int < Float32 < Float64)
@@ -4388,28 +4722,28 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     # Arithmetic (tensor)
     fn add   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return add_t(to_float64(self), other)     # a + b (f32,f64→f64)
-    fn add   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return add_t(self, other)                 # a + b (f32,f32→f32)
-    fn add   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return add_t(self, to_float32(other))     # a + b (f32,int→f32)
+    fn add   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return add_t(self, other)                 # a + b (f32,f32→f32)
+    fn add   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return add_t(self, to_float32(other))     # a + b (f32,int→f32)
 
     fn sub   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return sub_t(to_float64(self), other)     # a - b (f32,f64→f64)
-    fn sub   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return sub_t(self, other)                 # a - b (f32,f32→f32)
-    fn sub   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return sub_t(self, to_float32(other))     # a - b (f32,int→f32)
+    fn sub   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return sub_t(self, other)                 # a - b (f32,f32→f32)
+    fn sub   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return sub_t(self, to_float32(other))     # a - b (f32,int→f32)
 
     fn mul   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return mul_t(to_float64(self), other)     # a * b (f32,f64→f64)
-    fn mul   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return mul_t(self, other)                 # a * b (f32,f32→f32)
-    fn mul   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return mul_t(self, to_float32(other))     # a * b (f32,int→f32)
+    fn mul   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return mul_t(self, other)                 # a * b (f32,f32→f32)
+    fn mul   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return mul_t(self, to_float32(other))     # a * b (f32,int→f32)
 
     fn divide(self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), other)     # a / b (f32,f64→f64)
-    fn divide(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return div_t(self, other)                 # a / b (f32,f32→f32)
-    fn divide(self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return div_t(self, to_float32(other))     # a / b (f32,int→f32)
+    fn divide(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return div_t(self, other)                 # a / b (f32,f32→f32)
+    fn divide(self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return div_t(self, to_float32(other))     # a / b (f32,int→f32)
 
     fn mod   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), other)     # a % b (f32,f64→f64)
-    fn mod   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return mod_t(self, other)                 # a % b (f32,f32→f32)
-    fn mod   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return mod_t(self, to_float32(other))     # a % b (f32,int→f32)
+    fn mod   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return mod_t(self, other)                 # a % b (f32,f32→f32)
+    fn mod   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return mod_t(self, to_float32(other))     # a % b (f32,int→f32)
 
     fn pow   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), other)     # a ** b (f32,f64→f64)
-    fn pow   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return pow_t(self, other)                 # a ** b (f32,f32→f32)
-    fn pow   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return pow_t(self, to_float32(other))     # a ** b (f32,int→f32)
+    fn pow   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return pow_t(self, other)                 # a ** b (f32,f32→f32)
+    fn pow   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return pow_t(self, to_float32(other))     # a ** b (f32,int→f32)
 
 
     # =========================
@@ -4418,48 +4752,47 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     # Arithmetic (tensor)
     fn add   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return add_t(to_float64(self), other)         # a + b (int,f64→f64)
-    fn add   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return add_t(to_float32(self), other)         # a + b (int,f32→f32)
-    fn add   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return add_t(self, other)                     # a + b (int,int→int)
+    fn add   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return add_t(to_float32(self), other)         # a + b (int,f32→f32)
+    fn add   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return add_t(self, other)                     # a + b (int,int→int)
 
     fn sub   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return sub_t(to_float64(self), other)         # a - b (int,f64→f64)
-    fn sub   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return sub_t(to_float32(self), other)         # a - b (int,f32→f32)
-    fn sub   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return sub_t(self, other)                     # a - b (int,int→int)
+    fn sub   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return sub_t(to_float32(self), other)         # a - b (int,f32→f32)
+    fn sub   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return sub_t(self, other)                     # a - b (int,int→int)
 
     fn mul   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return mul_t(to_float64(self), other)         # a * b (int,f64→f64)
-    fn mul   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return mul_t(to_float32(self), other)         # a * b (int,f32→f32)
-    fn mul   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return mul_t(self, other)                     # a * b (int,int→int)
+    fn mul   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return mul_t(to_float32(self), other)         # a * b (int,f32→f32)
+    fn mul   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return mul_t(self, other)                     # a * b (int,int→int)
 
     fn divide(self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), other)         # a / b (int,f64→f64)
-    fn divide(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return div_t(to_float32(self), other)         # a / b (int,f32→f32)
-    fn divide(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return div_t(self, other)                     # a / b (int,int→int)
+    fn divide(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return div_t(to_float32(self), other)         # a / b (int,f32→f32)
+    fn divide(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return div_t(self, other)                     # a / b (int,int→int)
 
     fn mod   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), other)         # a % b (int,f64→f64)
-    fn mod   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return mod_t(to_float32(self), other)         # a % b (int,f32→f32)
-    fn mod   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return mod_t(self, other)                     # a % b (int,int→int)
+    fn mod   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return mod_t(to_float32(self), other)         # a % b (int,f32→f32)
+    fn mod   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return mod_t(self, other)                     # a % b (int,int→int)
 
     fn pow   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), other)         # a ** b (int,f64→f64)
-    fn pow   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return pow_t(to_float32(self), other)         # a ** b (int,f32→f32)
-    fn pow   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return pow_t(self, other)                     # a ** b (int,int→int)
+    fn pow   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return pow_t(to_float32(self), other)         # a ** b (int,f32→f32)
+    fn pow   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return pow_t(self, other)                     # a ** b (int,int→int)
 
     # =========================
     # Float64 overloads (full combos)
     # =========================
 
     # Logical (bitwise-style over numeric domain; result promoted by rule)
-    fn and_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(and_t(self, scalar64(s)))                                         # a(f64) & s(f64) ⇒ f64
-    fn and_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(and_t(self, to_float64(scalar32(s))))                             # a(f64) & s(f32→f64) ⇒ f64
+    fn and_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(and_t(self, scalar_f64(s)))                                         # a(f64) & s(f64) ⇒ f64
+    fn and_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(and_t(self, to_float64(scalar_f32(s))))                             # a(f64) & s(f32→f64) ⇒ f64
     fn and_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return to_int(and_t(self, to_float64(scalar_int(s))))                           # a(f64) & s(int→f64) ⇒ f64
-
-    fn or_scalar (self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(or_t (self, scalar64(s)))                                         # a(f64) | s(f64) ⇒ f64
-    fn or_scalar (self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(or_t (self, to_float64(scalar32(s))))                             # a(f64) | s(f32→f64) ⇒ f64
+ 
+    fn or_scalar (self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(or_t (self, scalar_f64(s)))                                         # a(f64) | s(f64) ⇒ f64
+    fn or_scalar (self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(or_t (self, to_float64(scalar_f32(s))))                             # a(f64) | s(f32→f64) ⇒ f64
     fn or_scalar (self: Tensor[Float64], s: Int)     -> Tensor[Int]: return to_int(or_t (self, to_float64(scalar_int(s))))                           # a(f64) | s(int→f64) ⇒ f64
 
-    fn xor_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(xor_t(self, scalar64(s)))                                         # a(f64) ^ s(f64) ⇒ f64
-    fn xor_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(xor_t(self, to_float64(scalar32(s))))                             # a(f64) ^ s(f32→f64) ⇒ f64
+    fn xor_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(xor_t(self, scalar_f64(s)))                                         # a(f64) ^ s(f64) ⇒ f64
+    fn xor_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(xor_t(self, to_float64(scalar_f32(s))))                             # a(f64) ^ s(f32→f64) ⇒ f64
     fn xor_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return to_int(xor_t(self, to_float64(scalar_int(s))))                           # a(f64) ^ s(int→f64) ⇒ f64
 
-    # Logical boolean ops (mask-style; returns Bool)
-    fn logical_not(self: Tensor[Float64]) -> Tensor[Bool]: return lnot_t(self)                                                                    # ~a ⇒ bool mask
+    # Logical boolean ops (mask-style; returns Bool)                                                                    # ~a ⇒ bool mask
     fn logical_and(self: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Bool]: return land_t(self, other)                                     # a(f64) & b(f64) ⇒ bool
     fn logical_and(self: Tensor[Float64], other: Tensor[Float32]) -> Tensor[Bool]: return land_t(self, to_float64(other))                         # a(f64) & b(f32→f64) ⇒ bool
     fn logical_and(self: Tensor[Float64], other: Tensor[Int])     -> Tensor[Bool]: return land_t(self, to_float64(other))                         # a(f64) & b(int→f64) ⇒ bool
@@ -4491,20 +4824,19 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     # Numeric bitwise with scalar (result promoted by rule)
-    fn and_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return to_int(and_t(to_float64(self), scalar64(s)))                              # a(f32→f64) & s(f64) ⇒ f64
-    fn and_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return to_int(and_t(self, scalar32(s)))                                         # a(f32) & s(f32) ⇒ f32
+    fn and_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return to_int(and_t(to_float64(self), scalar_f64(s)))                              # a(f32→f64) & s(f64) ⇒ f64
+    fn and_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return to_int(and_t(self, scalar_f32(s)))                                         # a(f32) & s(f32) ⇒ f32
     fn and_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return to_int(and_t(self, to_float32(scalar_int(s))))                           # a(f32) & s(int→f32) ⇒ f32
 
-    fn or_scalar (self: Tensor[Float32], s: Float64) -> Tensor[Int]: return to_int(or_t (to_float64(self), scalar64(s)))                             # a(f32→f64) | s(f64) ⇒ f64
-    fn or_scalar (self: Tensor[Float32], s: Float32) -> Tensor[Int]: return to_int(or_t (self, scalar32(s)))                                         # a(f32) | s(f32) ⇒ f32
+    fn or_scalar (self: Tensor[Float32], s: Float64) -> Tensor[Int]: return to_int(or_t (to_float64(self), scalar_f64(s)))                             # a(f32→f64) | s(f64) ⇒ f64
+    fn or_scalar (self: Tensor[Float32], s: Float32) -> Tensor[Int]: return to_int(or_t (self, scalar_f32(s)))                                         # a(f32) | s(f32) ⇒ f32
     fn or_scalar (self: Tensor[Float32], s: Int)     -> Tensor[Int]: return to_int(or_t (self, to_float32(scalar_int(s))))                           # a(f32) | s(int→f32) ⇒ f32
 
-    fn xor_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return to_int(xor_t(to_float64(self), scalar64(s)))                             # a(f32→f64) ^ s(f64) ⇒ f64
-    fn xor_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return to_int(xor_t(self, scalar32(s)))                                         # a(f32) ^ s(f32) ⇒ f32
+    fn xor_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return to_int(xor_t(to_float64(self), scalar_f64(s)))                             # a(f32→f64) ^ s(f64) ⇒ f64
+    fn xor_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return to_int(xor_t(self, scalar_f32(s)))                                         # a(f32) ^ s(f32) ⇒ f32
     fn xor_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return to_int(xor_t(self, to_float32(scalar_int(s))))                           # a(f32) ^ s(int→f32) ⇒ f32
 
-    # Boolean logical with tensor (return Bool; promote both args)
-    fn logical_not(self: Tensor[Float32]) -> Tensor[Bool]: return lnot_t(self)                                                                     # ~a ⇒ bool mask
+    # Boolean logical with tensor (return Bool; promote both args)                                                                # ~a ⇒ bool mask
     fn logical_and(self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Bool]: return land_t(to_float64(self), other)                         # a(f32→f64) & b(f64) ⇒ bool
     fn logical_and(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Bool]: return land_t(self, other)                                     # a(f32) & b(f32) ⇒ bool
     fn logical_and(self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Bool]: return land_t(self, to_float32(other))                         # a(f32) & b(int→f32) ⇒ bool
@@ -4535,20 +4867,19 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     # Numeric bitwise with scalar (result promoted by rule)
-    fn and_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return to_int(and_t(to_float64(self), scalar64(s)))                                   # a(int→f64) & s(f64) ⇒ f64
-    fn and_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return to_int(and_t(to_float32(self), scalar32(s)))                                  # a(int→f32) & s(f32) ⇒ f32
+    fn and_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return to_int(and_t(to_float64(self), scalar_f64(s)))                                   # a(int→f64) & s(f64) ⇒ f64
+    fn and_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return to_int(and_t(to_float32(self), scalar_f32(s)))                                  # a(int→f32) & s(f32) ⇒ f32
     fn and_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return and_t(self, scalar_int(s))                                           # a(int) & s(int) ⇒ int
 
-    fn or_scalar (self: Tensor[Int], s: Float64) -> Tensor[Int]: return to_int(or_t (to_float64(self), scalar64(s)))                                  # a(int→f64) | s(f64) ⇒ f64
-    fn or_scalar (self: Tensor[Int], s: Float32) -> Tensor[Int]: return to_int(or_t (to_float32(self), scalar32(s)))                                  # a(int→f32) | s(f32) ⇒ f32
+    fn or_scalar (self: Tensor[Int], s: Float64) -> Tensor[Int]: return to_int(or_t (to_float64(self), scalar_f64(s)))                                  # a(int→f64) | s(f64) ⇒ f64
+    fn or_scalar (self: Tensor[Int], s: Float32) -> Tensor[Int]: return to_int(or_t (to_float32(self), scalar_f32(s)))                                  # a(int→f32) | s(f32) ⇒ f32
     fn or_scalar (self: Tensor[Int], s: Int)     -> Tensor[Int]:     return or_t (self, scalar_int(s))                                           # a(int) | s(int) ⇒ int
 
-    fn xor_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return to_int(xor_t(to_float64(self), scalar64(s)))                                   # a(int→f64) ^ s(f64) ⇒ f64
-    fn xor_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return to_int(xor_t(to_float32(self), scalar32(s)))                                   # a(int→f32) ^ s(f32) ⇒ f32
+    fn xor_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return to_int(xor_t(to_float64(self), scalar_f64(s)))                                   # a(int→f64) ^ s(f64) ⇒ f64
+    fn xor_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return to_int(xor_t(to_float32(self), scalar_f32(s)))                                   # a(int→f32) ^ s(f32) ⇒ f32
     fn xor_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return xor_t(self, scalar_int(s))                                           # a(int) ^ s(int) ⇒ int
 
-    # Boolean logical with tensor (return Bool; promote both args)
-    fn logical_not(self: Tensor[Int]) -> Tensor[Bool]: return lnot_t(self)                                                                         # ~a ⇒ bool mask
+    # Boolean logical with tensor (return Bool; promote both args)                                                                     # ~a ⇒ bool mask
     fn logical_and(self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Bool]: return land_t(to_float64(self), other)                              # a(int→f64) & b(f64) ⇒ bool
     fn logical_and(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Bool]: return land_t(to_float32(self), other)                              # a(int→f32) & b(f32) ⇒ bool
     fn logical_and(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Bool]: return land_t(self, other)                                          # a(int) & b(int) ⇒ bool
@@ -4581,11 +4912,11 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     # Scalar
-    fn lshift_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return shl_t(self, scalar64(s))                                # a<<s (f64)
-    fn lshift_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return shl_t(self, to_float64(scalar32(s)))                   # a<<s (f32→f64)
+    fn lshift_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return shl_t(self, scalar_f64(s))                                # a<<s (f64)
+    fn lshift_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return shl_t(self, to_float64(scalar_f32(s)))                   # a<<s (f32→f64)
     fn lshift_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return shl_t(self, to_float64(scalar_int(s)))                 # a<<s (int→f64)
-    fn rshift_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return shr_t(self, scalar64(s))                                # a>>s (f64)
-    fn rshift_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return shr_t(self, to_float64(scalar32(s)))                   # a>>s (f32→f64)
+    fn rshift_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Float64]: return shr_t(self, scalar_f64(s))                                # a>>s (f64)
+    fn rshift_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Float64]: return shr_t(self, to_float64(scalar_f32(s)))                   # a>>s (f32→f64)
     fn rshift_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Float64]: return shr_t(self, to_float64(scalar_int(s)))                 # a>>s (int→f64)
 
     # Tensor
@@ -4597,17 +4928,31 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn rshift(self: Tensor[Float64], other: Tensor[Int])     -> Tensor[Float64]: return shr_t(self, to_float64(other))                     # a>>b (f64,int→f64)
 
 
+
+
+    # Logical boolean ops (mask-style; returns Bool)
+    fn logical_not(self: Tensor[Float64]) -> Tensor[Bool]: return lnot_t(self) 
+    fn logical_not(self: Tensor[Float32]) -> Tensor[Bool]: return lnot_t(self)   
+    #fn logical_not(self: Tensor[Int]) -> Tensor[Bool]: return lnot_t(self)     
+    fn logical_not(self: Tensor[Bool]) -> Tensor[Bool]: return lnot_t(self)
+    #fn logical_not(self) -> Tensor[Bool]:    return lnot_t(self)
+    fn logical_and(self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return land_t(self, other)                                     # a(f64) & b(f64) ⇒ bool
+  
+    fn logical_or (self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return lor_t (self, other)                                     # a(f64) | b(f64) ⇒ bool
+   
+    fn logical_xor(self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return lxor_t(self, other)                                     # a(f64) ^ b(f64) ⇒ bool
+ 
     # =========================
     # Float32 overloads — Shifts (full combos, one-liners)
     # Promotion: Int < Float32 < Float64
     # =========================
 
     # Scalar (note: any f64 ⇒ promote to f64)
-    fn lshift_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return shl_t(to_float64(self), scalar64(s))                   # a<<s (self→f64, s f64)
-    fn lshift_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return shl_t(self, scalar32(s))                               # a<<s (f32)
+    fn lshift_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return shl_t(to_float64(self), scalar_f64(s))                   # a<<s (self→f64, s f64)
+    fn lshift_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return shl_t(self, scalar_f32(s))                               # a<<s (f32)
     fn lshift_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return shl_t(self, to_float32(scalar_int(s)))                # a<<s (int→f32)
-    fn rshift_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return shr_t(to_float64(self), scalar64(s))                   # a>>s (self→f64, s f64)
-    fn rshift_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return shr_t(self, scalar32(s))                               # a>>s (f32)
+    fn rshift_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Float64]: return shr_t(to_float64(self), scalar_f64(s))                   # a>>s (self→f64, s f64)
+    fn rshift_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Float32]: return shr_t(self, scalar_f32(s))                               # a>>s (f32)
     fn rshift_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return shr_t(self, to_float32(scalar_int(s)))                # a>>s (int→f32)
 
     # Tensor (any f64 ⇒ result f64; else if any f32 ⇒ f32)
@@ -4625,11 +4970,11 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     # Scalar (promote to largest of {self,s})
-    fn lshift_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return shl_t(to_float64(self), scalar64(s))                       # a<<s (→f64)
-    fn lshift_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return shl_t(to_float32(self), scalar32(s))                      # a<<s (→f32)
+    fn lshift_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return shl_t(to_float64(self), scalar_f64(s))                       # a<<s (→f64)
+    fn lshift_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return shl_t(to_float32(self), scalar_f32(s))                      # a<<s (→f32)
     fn lshift_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return shl_t(self, scalar_int(s))                                # a<<s (int)
-    fn rshift_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return shr_t(to_float64(self), scalar64(s))                       # a>>s (→f64)
-    fn rshift_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return shr_t(to_float32(self), scalar32(s))                      # a>>s (→f32)
+    fn rshift_scalar(self: Tensor[Int], s: Float64) -> Tensor[Float64]: return shr_t(to_float64(self), scalar_f64(s))                       # a>>s (→f64)
+    fn rshift_scalar(self: Tensor[Int], s: Float32) -> Tensor[Float32]: return shr_t(to_float32(self), scalar_f32(s))                      # a>>s (→f32)
     fn rshift_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return shr_t(self, scalar_int(s))                                # a>>s (int)
 
     # Tensor (promote to largest of {self,other})
@@ -4645,28 +4990,28 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     # Scalars
-    fn lt_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return lt_t(self, scalar64(s))                                # a < s(f64)
-    fn lt_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return lt_t(self, to_float64(scalar32(s)))                   # a < s(f32→f64)
+    fn lt_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return lt_t(self, scalar_f64(s))                                # a < s(f64)
+    fn lt_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return lt_t(self, to_float64(scalar_f32(s)))                   # a < s(f32→f64)
     fn lt_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return lt_t(self, to_float64(scalar_int(s)))                 # a < s(int→f64)
 
-    fn le_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return le_t(self, scalar64(s))                                # a <= s(f64)
-    fn le_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return le_t(self, to_float64(scalar32(s)))                   # a <= s(f32→f64)
+    fn le_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return le_t(self, scalar_f64(s))                                # a <= s(f64)
+    fn le_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return le_t(self, to_float64(scalar_f32(s)))                   # a <= s(f32→f64)
     fn le_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return le_t(self, to_float64(scalar_int(s)))                 # a <= s(int→f64)
 
-    fn gt_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return gt_t(self, scalar64(s))                                # a > s(f64)
-    fn gt_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return gt_t(self, to_float64(scalar32(s)))                   # a > s(f32→f64)
+    fn gt_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return gt_t(self, scalar_f64(s))                                # a > s(f64)
+    fn gt_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return gt_t(self, to_float64(scalar_f32(s)))                   # a > s(f32→f64)
     fn gt_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return gt_t(self, to_float64(scalar_int(s)))                 # a > s(int→f64)
 
-    fn ge_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return ge_t(self, scalar64(s))                                # a >= s(f64)
-    fn ge_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return ge_t(self, to_float64(scalar32(s)))                   # a >= s(f32→f64)
+    fn ge_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return ge_t(self, scalar_f64(s))                                # a >= s(f64)
+    fn ge_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return ge_t(self, to_float64(scalar_f32(s)))                   # a >= s(f32→f64)
     fn ge_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return ge_t(self, to_float64(scalar_int(s)))                 # a >= s(int→f64)
 
-    fn eq_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return eq_t(self, scalar64(s))                                # a == s(f64)
-    fn eq_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return eq_t(self, to_float64(scalar32(s)))                   # a == s(f32→f64)
+    fn eq_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return eq_t(self, scalar_f64(s))                                # a == s(f64)
+    fn eq_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return eq_t(self, to_float64(scalar_f32(s)))                   # a == s(f32→f64)
     fn eq_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return eq_t(self, to_float64(scalar_int(s)))                 # a == s(int→f64)
 
-    fn ne_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return ne_t(self, scalar64(s))                                # a != s(f64)
-    fn ne_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return ne_t(self, to_float64(scalar32(s)))                   # a != s(f32→f64)
+    fn ne_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return ne_t(self, scalar_f64(s))                                # a != s(f64)
+    fn ne_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return ne_t(self, to_float64(scalar_f32(s)))                   # a != s(f32→f64)
     fn ne_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return ne_t(self, to_float64(scalar_int(s)))                 # a != s(int→f64)
 
     # Tensors
@@ -4699,28 +5044,28 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     # Scalars
-    fn lt_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return lt_t(to_float64(self), scalar64(s))                   # a(f32→f64) < s(f64)
-    fn lt_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return lt_t(self, scalar32(s))                               # a(f32) < s(f32)
+    fn lt_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return lt_t(to_float64(self), scalar_f64(s))                   # a(f32→f64) < s(f64)
+    fn lt_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return lt_t(self, scalar_f32(s))                               # a(f32) < s(f32)
     fn lt_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return lt_t(self, to_float32(scalar_int(s)))                 # a(f32) < s(int→f32)
 
-    fn le_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return le_t(to_float64(self), scalar64(s))                   # a(f32→f64) <= s(f64)
-    fn le_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return le_t(self, scalar32(s))                               # a(f32) <= s(f32)
+    fn le_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return le_t(to_float64(self), scalar_f64(s))                   # a(f32→f64) <= s(f64)
+    fn le_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return le_t(self, scalar_f32(s))                               # a(f32) <= s(f32)
     fn le_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return le_t(self, to_float32(scalar_int(s)))                 # a(f32) <= s(int→f32)
 
-    fn gt_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return gt_t(to_float64(self), scalar64(s))                   # a(f32→f64) > s(f64)
-    fn gt_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return gt_t(self, scalar32(s))                               # a(f32) > s(f32)
+    fn gt_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return gt_t(to_float64(self), scalar_f64(s))                   # a(f32→f64) > s(f64)
+    fn gt_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return gt_t(self, scalar_f32(s))                               # a(f32) > s(f32)
     fn gt_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return gt_t(self, to_float32(scalar_int(s)))                 # a(f32) > s(int→f32)
 
-    fn ge_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return ge_t(to_float64(self), scalar64(s))                   # a(f32→f64) >= s(f64)
-    fn ge_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return ge_t(self, scalar32(s))                               # a(f32) >= s(f32)
+    fn ge_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return ge_t(to_float64(self), scalar_f64(s))                   # a(f32→f64) >= s(f64)
+    fn ge_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return ge_t(self, scalar_f32(s))                               # a(f32) >= s(f32)
     fn ge_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return ge_t(self, to_float32(scalar_int(s)))                 # a(f32) >= s(int→f32)
 
-    fn eq_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return eq_t(to_float64(self), scalar64(s))                   # a(f32→f64) == s(f64)
-    fn eq_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return eq_t(self, scalar32(s))                               # a(f32) == s(f32)
+    fn eq_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return eq_t(to_float64(self), scalar_f64(s))                   # a(f32→f64) == s(f64)
+    fn eq_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return eq_t(self, scalar_f32(s))                               # a(f32) == s(f32)
     fn eq_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return eq_t(self, to_float32(scalar_int(s)))                 # a(f32) == s(int→f32)
 
-    fn ne_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return ne_t(to_float64(self), scalar64(s))                   # a(f32→f64) != s(f64)
-    fn ne_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return ne_t(self, scalar32(s))                               # a(f32) != s(f32)
+    fn ne_scalar(self: Tensor[Float32], s: Float64) -> Tensor[Int]: return ne_t(to_float64(self), scalar_f64(s))                   # a(f32→f64) != s(f64)
+    fn ne_scalar(self: Tensor[Float32], s: Float32) -> Tensor[Int]: return ne_t(self, scalar_f32(s))                               # a(f32) != s(f32)
     fn ne_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Int]: return ne_t(self, to_float32(scalar_int(s)))                 # a(f32) != s(int→f32)
 
     # Tensors
@@ -4753,28 +5098,28 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     # Scalars
-    fn lt_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return lt_t(to_float64(self), scalar64(s))                        # a(int→f64) < s(f64)
-    fn lt_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return lt_t(to_float32(self), scalar32(s))                        # a(int→f32) < s(f32)
+    fn lt_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return lt_t(to_float64(self), scalar_f64(s))                        # a(int→f64) < s(f64)
+    fn lt_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return lt_t(to_float32(self), scalar_f32(s))                        # a(int→f32) < s(f32)
     fn lt_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]: return lt_t(self, scalar_int(s))                                  # a(int) < s(int)
 
-    fn le_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return le_t(to_float64(self), scalar64(s))                        # a(int→f64) <= s(f64)
-    fn le_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return le_t(to_float32(self), scalar32(s))                        # a(int→f32) <= s(f32)
+    fn le_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return le_t(to_float64(self), scalar_f64(s))                        # a(int→f64) <= s(f64)
+    fn le_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return le_t(to_float32(self), scalar_f32(s))                        # a(int→f32) <= s(f32)
     fn le_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]: return le_t(self, scalar_int(s))                                  # a(int) <= s(int)
 
-    fn gt_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return gt_t(to_float64(self), scalar64(s))                        # a(int→f64) > s(f64)
-    fn gt_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return gt_t(to_float32(self), scalar32(s))                        # a(int→f32) > s(f32)
+    fn gt_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return gt_t(to_float64(self), scalar_f64(s))                        # a(int→f64) > s(f64)
+    fn gt_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return gt_t(to_float32(self), scalar_f32(s))                        # a(int→f32) > s(f32)
     fn gt_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]: return gt_t(self, scalar_int(s))                                  # a(int) > s(int)
 
-    fn ge_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return ge_t(to_float64(self), scalar64(s))                        # a(int→f64) >= s(f64)
-    fn ge_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return ge_t(to_float32(self), scalar32(s))                        # a(int→f32) >= s(f32)
+    fn ge_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return ge_t(to_float64(self), scalar_f64(s))                        # a(int→f64) >= s(f64)
+    fn ge_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return ge_t(to_float32(self), scalar_f32(s))                        # a(int→f32) >= s(f32)
     fn ge_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]: return ge_t(self, scalar_int(s))                                  # a(int) >= s(int)
 
-    fn eq_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return eq_t(to_float64(self), scalar64(s))                        # a(int→f64) == s(f64)
-    fn eq_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return eq_t(to_float32(self), scalar32(s))                        # a(int→f32) == s(f32)
+    fn eq_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return eq_t(to_float64(self), scalar_f64(s))                        # a(int→f64) == s(f64)
+    fn eq_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return eq_t(to_float32(self), scalar_f32(s))                        # a(int→f32) == s(f32)
     fn eq_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]: return eq_t(self, scalar_int(s))                                  # a(int) == s(int)
 
-    fn ne_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return ne_t(to_float64(self), scalar64(s))                        # a(int→f64) != s(f64)
-    fn ne_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return ne_t(to_float32(self), scalar32(s))                        # a(int→f32) != s(f32)
+    fn ne_scalar(self: Tensor[Int], s: Float64) -> Tensor[Int]: return ne_t(to_float64(self), scalar_f64(s))                        # a(int→f64) != s(f64)
+    fn ne_scalar(self: Tensor[Int], s: Float32) -> Tensor[Int]: return ne_t(to_float32(self), scalar_f32(s))                        # a(int→f32) != s(f32)
     fn ne_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]: return ne_t(self, scalar_int(s))                                  # a(int) != s(int)
 
     # Tensors
@@ -4815,9 +5160,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn to_int(self: Tensor[Float32])     -> Tensor[Int]:     return to_int(self) 
     fn to_int(self: Tensor[Int])         -> Tensor[Int]:     return to_int(self)
 
-    fn flatten(self: Tensor[Float64]) -> Tensor[Float64]:        return flatten(self)
-    fn flatten(self: Tensor[Float32]) -> Tensor[Float32]:        return flatten(self)
-    fn flatten(self: Tensor[Int]) -> Tensor[Int]:        return flatten(self) 
+
 
     
     fn view(self ,shape: List[Int]) -> Tensor[T]:        return view(self,shape)
@@ -4845,6 +5188,23 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn sigmoid(self: Tensor[Float32]) -> Tensor[Float64]: return sigmoid_t(self) 
     fn sigmoid(self: Tensor[Int])     -> Tensor[Float64]: return sigmoid_t(self) 
 
+    @always_inline
+    fn scatter_add(self: Tensor[Int], dim: Int, index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
+        if dim == 0: return scatter_add_dim0_int(self, index, src)
+        if dim == 1: return scatter_add_dim1_int(self, index, src)
+        return self.copy()
+
+    @always_inline
+    fn scatter_add(self: Tensor[Float32], dim: Int, index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
+        if dim == 0: return scatter_add_dim0_f32(self, index, src)
+        if dim == 1: return scatter_add_dim1_f32(self, index, src)
+        return self.copy()
+
+    @always_inline
+    fn scatter_add(self: Tensor[Float64], dim: Int, index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
+        if dim == 0: return scatter_add_dim0_f64(self, index, src)
+        if dim == 1: return scatter_add_dim1_f64(self, index, src)
+        return self.copy()
 
     fn contiguous(self: Tensor[Float64]) -> Tensor[Float64]:
         if is_row_major_contiguous(self._shape, self._strides):
@@ -4953,9 +5313,781 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn gather(self, axis: Int, index: Tensor[Int]) -> Tensor[T]:
         return gather(self, axis, index)
 
+    @always_inline
+    fn uniform_(mut self: Tensor[Float64], low: Float64, high: Float64, seed: Optional[Int] = None) -> Tensor[Float64]:
+        var s: UInt64
+        if seed is None:
+            s = UInt64(0xC6BC279692B5C323)
+        else:
+            s = UInt64(seed.value())
+        var rng = XorShift64(s)
+
+        var n = len(self._data)
+        var i = 0
+        var span = high - low
+        while i < n:
+            var u = rng.next_unit_f64()
+            self._data[i] = low + span * u
+            i += 1
+        return self.copy()  
+
+
+    @always_inline
+    fn uniform_(mut self: Tensor[Float32], low: Float32, high: Float32, seed: Optional[Int] = None) -> Tensor[Float32]:
+        var s: UInt64
+        if seed is None:
+            s = UInt64(0x94D049BB133111EB)
+        else:
+            s = UInt64(seed.value())
+        var rng = XorShift64(s)
+
+        var n = len(self._data)
+        var i = 0
+        var span = low   
+        span = high - low
+        while i < n:
+            var u = rng.next_unit_f64()
+            self._data[i] = low + Float32(Float64(span) * u)
+            i += 1
+        return self.copy() 
+
+
+
+    # =========================
+    # Bernoulli — Float32
+    # =========================
+    @always_inline
+    fn bernoulli(self: Tensor[Float32], seed: Optional[Int] = None) -> Tensor[Float32]:
+        var out = self.copy()
+        var s: UInt64
+        if seed is None:
+            s = UInt64(0x94D049BB133111EB)
+        else:
+            s = UInt64(seed.value())
+        var rng = XorShift64(s)
+
+        var n = len(out._data)
+        var i = 0
+        while i < n:
+            var p = Float64(self._data[i])
+            if p < 0.0: p = 0.0
+            if p > 1.0: p = 1.0
+            var u = rng.next_unit_f64()
+            if u < p:
+                out._data[i] = Float32(1.0)
+            else:
+                out._data[i] = Float32(0.0)
+            i += 1
+        return out.copy()
+ 
  
 
-    
+    # =========================
+    # Bernoulli — Float64
+    # =========================
+    @always_inline
+    fn bernoulli(self: Tensor[Float64], seed: Optional[Int] = None) -> Tensor[Float64]:
+        var out = self.copy()  # same dtype/shape
+        var s: UInt64
+        if seed is None:
+            s = UInt64(0xC0FFEE0012345678)
+        else:
+            s = UInt64(seed.value())
+        var rng = XorShift64(s)
+
+        var n = len(out._data)
+        var i = 0
+        while i < n:
+            var p = self._data[i]
+            if p < 0.0: p = 0.0
+            if p > 1.0: p = 1.0
+            var u = rng.next_unit_f64()
+            if u < p:
+                out._data[i] = 1.0
+            else:
+                out._data[i] = 0.0
+            i += 1
+        return out.copy()
+
+
+    @always_inline
+    fn multinomial(
+        self: Tensor[Float64],
+        num_samples: Int,
+        replacement: Bool = True,
+        seed: Optional[Int] = None
+    ) -> Tensor[Int]:
+        var rank = len(self._shape)
+
+        # safe seed
+        var s: UInt64
+        if seed is None:
+            s = UInt64(0xC0FFEE0012345678)
+        else:
+            s = UInt64(seed.value())
+        var rng = XorShift64(s)
+
+        # rank==0 → []
+        if rank == 0:
+            var shp = List[Int]()               # shape []
+            return empty_tensor_with[Int](to_int_from_f64, Optional[List[Int]](shp.copy()))
+
+        # num_samples <= 0 → shape [0] یا [batch,0]
+        if num_samples <= 0:
+            var shp0 = List[Int]()
+            if rank == 1:
+                shp0.append(0)
+            else:
+                shp0.append(self._shape[0])
+                shp0.append(0)
+            return empty_tensor_with[Int](to_int_from_f64, Optional[List[Int]](shp0.copy()))
+
+        if rank == 1:
+            var k = 0
+            if len(self._shape) > 0:
+                k = self._shape[0]
+            if (replacement == False) and (num_samples > k):
+                var shp_err = List[Int](); shp_err.append(0)
+                return empty_tensor_with[Int](to_int_from_f64, Optional[List[Int]](shp_err.copy()))
+
+            var out_shape = List[Int](); out_shape.append(num_samples)
+            var out = empty_tensor_with[Int](to_int_from_f64, Optional[List[Int]](out_shape.copy()))
+
+            var cdf = List[Float64]()
+            _build_cdf_1d(self, 0, k, cdf) 
+
+            var i = 0
+            while i < num_samples:
+                var u = rng.next_unit_f64()
+                var idx = _search_cdf(cdf, u)
+                out._data[i] = idx
+                i += 1
+            return out.copy()
+        else:
+            # [batch, classes...] → classes = product(dims[1:])
+            var batch = self._shape[0]
+            var classes = 1
+            var d = 1
+            while d < len(self._shape):
+                classes = classes * self._shape[d]
+                d += 1
+
+            if (replacement == False) and (num_samples > classes):
+                var shp_err = List[Int](); shp_err.append(batch); shp_err.append(0)
+                return empty_tensor_with[Int](to_int_from_f64, Optional[List[Int]](shp_err.copy()))
+
+            var out_shape = List[Int](); out_shape.append(batch); out_shape.append(num_samples.copy())
+            var out = empty_tensor_with[Int](to_int_from_f64, Optional[List[Int]](out_shape.copy()))
+
+            var cdf = List[Float64]()
+            var b = 0
+            while b < batch:
+                var row_start = b * classes
+                _build_cdf_1d(self, row_start, classes, cdf)
+
+                var t = 0
+                while t < num_samples:
+                    var u = rng.next_unit_f64()
+                    var idx = _search_cdf(cdf, u)
+                    out._data[b * num_samples + t] = idx
+                    t += 1
+                b += 1
+            return out.copy()
+
+
+    @always_inline
+    fn one_hot(self: Tensor[Int], depth: Int) -> Tensor[Int]:
+        # Works for any rank; flattens logical positions row-major.
+        if depth <= 0:
+            # Return an empty last-dim when depth<=0 (defensive).
+            var shp = copy_ints(self._shape); shp.append(0)
+            var strd = compute_row_major_strides(shp)
+            return Tensor[Int](List[Int](), shp, strd, 0)
+
+        # Fast path for rank==0 (scalar) → shape [depth]
+        if len(self._shape) == 0:
+            var cls = 0
+            if len(self._data) != 0:
+                cls = self._data[0]
+            var buf = List[Int]()
+            buf.reserve(depth)
+            var d = 0
+            while d < depth:
+                buf.append(1 if (cls >= 0 and cls < depth and d == cls) else 0)
+                d += 1
+            var shp = List[Int]()
+            shp.append(depth)
+            var strd = compute_row_major_strides(shp)
+            return Tensor[Int](buf, shp, strd, 0)
+
+        # General path
+        return one_hot_core_indices(self._data, self._shape, depth)
+
+
+    # ------------------------------
+    # Method on Tensor[Float64]
+    # ------------------------------
+    @always_inline
+    fn one_hot(self: Tensor[Float64], depth: Int) -> Tensor[Int]: 
+        var shp = copy_ints(self._shape)
+        var n = 1
+        var i = 0
+        while i < len(shp):
+            n = n * shp[i]
+            i += 1
+
+        var ids = List[Int]()
+        ids.reserve(n)
+        i = 0
+        var lim = len(self._data)
+        if n < len(self._data):  lim = n  
+        while i < lim:
+            ids.append(Int(self._data[i]))
+            i += 1
+
+        return one_hot_core_indices(ids, shp, depth)
+    # ------------------------------
+    # Method on Tensor[Float32]
+    # ------------------------------
+    @always_inline
+    fn one_hot(self: Tensor[Float32], depth: Int) -> Tensor[Int]: 
+        var shp = copy_ints(self._shape)
+        var n = 1
+        var i = 0
+        while i < len(shp):
+            n = n * shp[i]
+            i += 1
+
+        var ids = List[Int]()
+        ids.reserve(n)
+        i = 0
+        var lim = len(self._data)
+        if n < len(self._data):  lim = n  
+        while i < lim:
+            ids.append(Int(self._data[i]))
+            i += 1
+
+        return one_hot_core_indices(ids, shp, depth)
+
+    # -------------------------------------------------------------------
+    # to_list(): flattened row-major list (respects strides and offset)
+    # -------------------------------------------------------------------
+    @always_inline
+    fn to_list(self: Tensor[Float64]) -> List[List[Float64]]:
+        # Return a Python-style nested list for rank<=2.
+        # For higher ranks, return a single-row flattened logical view.
+        var r = len(self._shape)
+
+        # Rank-0 (scalar) -> [[value]]
+        if r == 0:
+            var row = List[Float64]()
+            row.append(self._data[self._offset])
+            var outer0 = List[List[Float64]]()
+            outer0.append(row.copy())
+            return outer0.copy()
+
+        # Rank-1 -> [ [a0, a1, ...] ]
+        if r == 1:
+            var n0 = self._shape[0]
+            var s0 = self._strides[0]
+            var base = self._offset
+
+            var row1 = List[Float64]()
+            var i = 0
+            while i < n0:
+                row1.append(self._data[base + i * s0])
+                i += 1
+
+            var outer1 = List[List[Float64]]()
+            outer1.append(row1.copy())
+            return outer1.copy()
+
+        # Rank-2 -> [ [row0...], [row1...], ... ]
+        if r == 2:
+            var n0 = self._shape[0]
+            var n1 = self._shape[1]
+            var s0 = self._strides[0]
+            var s1 = self._strides[1]
+            var base = self._offset
+
+            var out2 = List[List[Float64]]()
+            var i = 0
+            while i < n0:
+                var row2 = List[Float64]()
+                var j = 0
+                while j < n1:
+                    var lin = base + i * s0 + j * s1
+                    row2.append(self._data[lin])
+                    j += 1
+                out2.append(row2.copy())
+                i += 1
+            return out2.copy()
+
+        # Fallback for rank >= 3: build a logical flat row using strides
+        var total = 1
+        var d = 0
+        while d < r:
+            total = total * self._shape[d]
+            d += 1
+
+        var idx = List[Int]()
+        idx.reserve(r)
+        d = 0
+        while d < r:
+            idx.append(0)
+            d += 1
+
+        var flat = List[Float64]()
+        flat.reserve(total)
+
+        var done = False
+        while True:
+            var lin = self._offset
+            d = 0
+            while d < r:
+                lin = lin + idx[d] * self._strides[d]
+                d += 1
+            flat.append(self._data[lin])
+
+            # increment multi-index
+            d = r - 1
+            while True:
+                if d < 0:
+                    done = True
+                    break
+                idx[d] = idx[d] + 1
+                if idx[d] < self._shape[d]:
+                    break
+                idx[d] = 0
+                d = d - 1
+            if done:
+                break
+
+        var outerN = List[List[Float64]]()
+        outerN.append(flat.copy())
+        return outerN.copy()
+
+
+    @always_inline
+    fn to_list(self: Tensor[Float32]) -> List[Float32]:
+        var shp = self._shape.copy()
+        var n = numel_shape(shp)
+        var out = List[Float32]()
+        out.reserve(n)
+
+        var idx = List[Int]()
+        var i = 0
+        while i < n:
+            unravel_index(i, shp, idx)
+            var li = self._offset + lin_index(idx, self._strides)
+            out.append(self._data[li])
+            i += 1
+        return out.copy()
+
+    @always_inline
+    fn to_list(self: Tensor[Int]) -> List[Int]:
+        var shp = self._shape.copy()
+        var n = numel_shape(shp)
+        var out = List[Int]()
+        out.reserve(n)
+
+        var idx = List[Int]()
+        var i = 0
+        while i < n:
+            unravel_index(i, shp, idx)
+            var li = self._offset + lin_index(idx, self._strides)
+            out.append(self._data[li])
+            i += 1
+        return out.copy()
+
+    @always_inline
+    fn to_list(self: Tensor[Bool]) -> List[Bool]:
+        var shp = self._shape.copy()
+        var n = numel_shape(shp)
+        var out = List[Bool]()
+        out.reserve(n)
+
+        var idx = List[Int]()
+        var i = 0
+        while i < n:
+            unravel_index(i, shp, idx)
+            var li = self._offset + lin_index(idx, self._strides)
+            out.append(self._data[li])
+            i += 1
+        return out.copy()
+
+    @always_inline
+    fn to_list(self: Tensor[String]) -> List[String]:
+        var shp = self._shape.copy()
+        var n = numel_shape(shp)
+        var out = List[String]()
+        out.reserve(n)
+
+        var idx = List[Int]()
+        var i = 0
+        while i < n:
+            unravel_index(i, shp, idx)
+            var li = self._offset + lin_index(idx, self._strides)
+            out.append(self._data[li])
+            i += 1
+        return out.copy()
+
+    # -------------------------------------------------------------------
+    # fill(): in-place set all elements in the current view
+    # -------------------------------------------------------------------
+
+    @always_inline
+    fn fill(mut self: Tensor[Int], v: Int) -> None:
+        fill[Int](self, v)
+
+    @always_inline
+    fn fill(mut self: Tensor[Float32], v: Float32) -> None:
+        fill[Float32](self, v)
+
+    @always_inline
+    fn fill(mut self: Tensor[Float64], v: Float64) -> None:
+        fill[Float64](self, v)
+
+    # -------------------------------------------------------------------
+    # clamp(): out-of-place, no assert (bounds are normalized if swapped)
+    # -------------------------------------------------------------------
+    # -----------------------------------------------------------------------------
+    # Int
+    # -----------------------------------------------------------------------------
+    @always_inline
+    fn clamp(mut self: Tensor[Int], min_opt: Optional[Int], max_opt: Optional[Int]) -> None:
+        var use_min = not (min_opt is None)
+        var use_max = not (max_opt is None)
+        if not use_min and not use_max:
+            return
+
+        var r = len(self._shape)
+
+        # Rank-0
+        if r == 0:
+            var a = self._data[self._offset]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            self._data[self._offset] = a
+            return
+
+        # Contiguous fast path
+        var expect = compute_row_major_strides(self._shape)
+        var is_contig = True
+        var i = 0
+        while i < r:
+            if self._strides[i] != expect[i]:
+                is_contig = False
+                break
+            i += 1
+
+        if is_contig:
+            var total = 1
+            i = 0
+            while i < r:
+                total = total * self._shape[i]
+                i += 1
+            var base = self._offset
+            var k = 0
+            while k < total:
+                var a = self._data[base + k]
+                if use_min and a < min_opt.value(): a = min_opt.value()
+                if use_max and a > max_opt.value(): a = max_opt.value()
+                self._data[base + k] = a
+                k += 1
+            return
+
+        # General ND path
+        var idx = List[Int]()
+        idx.reserve(r)
+        i = 0
+        while i < r:
+            idx.append(0)
+            i += 1
+
+        var done = False
+        while True:
+            var lin = self._offset
+            i = 0
+            while i < r:
+                lin = lin + idx[i] * self._strides[i]
+                i += 1
+
+            var a = self._data[lin]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            self._data[lin] = a
+
+            # increment multi-index
+            i = r - 1
+            while True:
+                if i < 0:
+                    done = True
+                    break
+                idx[i] = idx[i] + 1
+                if idx[i] < self._shape[i]:
+                    break
+                idx[i] = 0
+                i = i - 1
+            if done:
+                break
+
+
+    # -----------------------------------------------------------------------------
+    # Float32
+    # -----------------------------------------------------------------------------
+    @always_inline
+    fn clamp(mut self: Tensor[Float32], min_opt: Optional[Float32], max_opt: Optional[Float32]) -> None:
+        var use_min = not (min_opt is None)
+        var use_max = not (max_opt is None)
+        if not use_min and not use_max:
+            return
+
+        var r = len(self._shape)
+
+        if r == 0:
+            var a = self._data[self._offset]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            self._data[self._offset] = a
+            return
+
+        var expect = compute_row_major_strides(self._shape)
+        var is_contig = True
+        var i = 0
+        while i < r:
+            if self._strides[i] != expect[i]:
+                is_contig = False
+                break
+            i += 1
+
+        if is_contig:
+            var total = 1
+            i = 0
+            while i < r:
+                total = total * self._shape[i]
+                i += 1
+            var base = self._offset
+            var k = 0
+            while k < total:
+                var a = self._data[base + k]
+                if use_min and a < min_opt.value(): a = min_opt.value()
+                if use_max and a > max_opt.value(): a = max_opt.value()
+                self._data[base + k] = a
+                k += 1
+            return
+
+        var idx = List[Int]()
+        idx.reserve(r)
+        i = 0
+        while i < r:
+            idx.append(0)
+            i += 1
+
+        var done = False
+        while True:
+            var lin = self._offset
+            i = 0
+            while i < r:
+                lin = lin + idx[i] * self._strides[i]
+                i += 1
+
+            var a = self._data[lin]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            self._data[lin] = a
+
+            i = r - 1
+            while True:
+                if i < 0:
+                    done = True
+                    break
+                idx[i] = idx[i] + 1
+                if idx[i] < self._shape[i]:
+                    break
+                idx[i] = 0
+                i = i - 1
+            if done:
+                break
+
+
+    # -----------------------------------------------------------------------------
+    # Float64
+    # -----------------------------------------------------------------------------
+    @always_inline
+    fn clamp(mut self: Tensor[Float64], min_opt: Optional[Float64], max_opt: Optional[Float64]) -> None:
+        var use_min = not (min_opt is None)
+        var use_max = not (max_opt is None)
+        if not use_min and not use_max:
+            return
+
+        var r = len(self._shape)
+
+        if r == 0:
+            var a = self._data[self._offset]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            self._data[self._offset] = a
+            return
+
+        var expect = compute_row_major_strides(self._shape)
+        var is_contig = True
+        var i = 0
+        while i < r:
+            if self._strides[i] != expect[i]:
+                is_contig = False
+                break
+            i += 1
+
+        if is_contig:
+            var total = 1
+            i = 0
+            while i < r:
+                total = total * self._shape[i]
+                i += 1
+            var base = self._offset
+            var k = 0
+            while k < total:
+                var a = self._data[base + k]
+                if use_min and a < min_opt.value(): a = min_opt.value()
+                if use_max and a > max_opt.value(): a = max_opt.value()
+                self._data[base + k] = a
+                k += 1
+            return
+
+        var idx = List[Int]()
+        idx.reserve(r)
+        i = 0
+        while i < r:
+            idx.append(0)
+            i += 1
+
+        var done = False
+        while True:
+            var lin = self._offset
+            i = 0
+            while i < r:
+                lin = lin + idx[i] * self._strides[i]
+                i += 1
+
+            var a = self._data[lin]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            self._data[lin] = a
+
+            i = r - 1
+            while True:
+                if i < 0:
+                    done = True
+                    break
+                idx[i] = idx[i] + 1
+                if idx[i] < self._shape[i]:
+                    break
+                idx[i] = 0
+                i = i - 1
+            if done:
+                break
+
+    fn masked_select(self, mask: Tensor[Int]) -> Tensor[T]:
+        return masked_select(self, mask)
+
+
+
+
+
+
+@always_inline
+fn _normalize_bounds_f64(min_opt: Optional[Float64], max_opt: Optional[Float64]) -> (Optional[Float64], Optional[Float64]):
+    if (min_opt is not None) and (max_opt is not None):
+        var a = min_opt.value()
+        var b = max_opt.value()
+        if a > b:
+            var t = a
+            a = b
+            b = t
+        return (Optional[Float64](a), Optional[Float64](b))
+    return (min_opt, max_opt)
+
+@always_inline
+fn _normalize_bounds_f32(min_opt: Optional[Float32], max_opt: Optional[Float32]) -> (Optional[Float32], Optional[Float32]):
+    if (min_opt is not None) and (max_opt is not None):
+        var a = min_opt.value()
+        var b = max_opt.value()
+        if a > b:
+            var t = a
+            a = b
+            b = t
+        return (Optional[Float32](a), Optional[Float32](b))
+    return (min_opt, max_opt)
+
+@always_inline
+fn _normalize_bounds_i(min_opt: Optional[Int], max_opt: Optional[Int]) -> (Optional[Int], Optional[Int]):
+    if (min_opt is not None) and (max_opt is not None):
+        var a = min_opt.value()
+        var b = max_opt.value()
+        if a > b:
+            var t = a
+            a = b
+            b = t
+        return (Optional[Int](a), Optional[Int](b))
+    return (min_opt, max_opt)
+
+
+# Internal: build normalized CDF for a 1D slice [start, start+K)
+@always_inline
+fn _build_cdf_1d(
+    p: Tensor[Float64],
+    start: Int,
+    k: Int,
+    mut out_cdf: List[Float64]  
+) -> Float64:
+    out_cdf.clear()
+    out_cdf.reserve(k)
+
+    var sum_p = 0.0
+    var i = 0
+    while i < k:
+        var v = p._data[start + i]
+        if v < 0.0:
+            v = 0.0
+        sum_p += v
+        out_cdf.append(sum_p)
+        i += 1
+
+    if sum_p <= 0.0:
+        # Fallback: uniform probs if all zeros/negatives
+        out_cdf.clear()
+        var j = 0
+        while j < k:
+            out_cdf.append(Float64(j + 1))
+            j += 1
+        sum_p = Float64(k)
+    else:
+        # Normalize to 1.0 (prevent drift)
+        var t = 0
+        while t < k:
+            out_cdf[t] = out_cdf[t] / sum_p
+            t += 1
+
+    return sum_p
+
+
+
+
+# Internal: binary search over CDF in [0,1)
+@always_inline
+fn _search_cdf(cdf: List[Float64], u: Float64) -> Int:
+    var lo = 0
+    var hi = len(cdf) - 1
+    while lo < hi:
+        var mid = (lo + hi) >> 1
+        if u > cdf[mid]:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
 @always_inline
 fn _fmt_int(x: Int) -> String:
     return x.__str__()
