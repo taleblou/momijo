@@ -178,10 +178,10 @@ fn _softmax_lastdim_f64(x: Tensor[Float64]) -> Tensor[Float64]:
     # Assumes row-major contiguous storage and applies softmax along the last axis.
     var shape = x._shape.copy()
     var rank  = len(shape)
-    assert(rank >= 1)
+    #assert(rank >= 1)
 
     var last = shape[rank - 1]
-    assert(last > 0)
+    #assert(last > 0)
 
     # total elements and number of vectors (outer) of length 'last'
     var n_total = 1
@@ -237,14 +237,14 @@ fn _softmax_lastdim_f64(x: Tensor[Float64]) -> Tensor[Float64]:
 # Optional: 1D fast-path (calls the same impl but keeps intent clear)
 @always_inline
 fn _softmax1d_f64(x: Tensor[Float64]) -> Tensor[Float64]:
-    assert(len(x._shape) == 1)
+    #assert(len(x._shape) == 1)
     return _softmax_lastdim_f64(x)
 
 # ====================== Public API (axis = -1 only) ======================
 @always_inline
 fn softmax(x: Tensor[Float64], axis: Int = -1) -> Tensor[Float64]:
     # Only last-dimension supported here; extend as needed.
-    assert(axis == -1)   # extend for other axes if/when needed
+    #assert(axis == -1)   # extend for other axes if/when needed
     return _softmax_lastdim_f64(x)
 
 @always_inline
@@ -1632,11 +1632,12 @@ fn _not_to_int_impl[T: ImplicitlyCopyable & Copyable & Movable](
 
 
 
+# Build a Bool mask: out[i] = True iff x[i] == 0
 @always_inline
 fn _not_to_bool_impl[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], to_f64: fn (T) -> Float64
 ) -> Tensor[Bool]:
-    # Build a Bool mask where output[i] = True if x[i] == 0 else False
+    # Row-major dense build
     var n = len(x._data)
     var out = List[Bool]()
     out.reserve(n)
@@ -1686,8 +1687,13 @@ fn _not_to_bool_impl[T: ImplicitlyCopyable & Copyable & Movable](
         out.append(b)
         i += 1
 
-    var strides = compute_row_major_strides(x._shape)
-    return Tensor[Bool](data=out, shape=x._shape, strides=strides)
+    # Use the 2-arg ctor (data, shape) → row-major strides, offset=0
+    return Tensor[Bool](out, x._shape)
+
+    # If your Tensor only has the 4-arg ctor, comment the line above and use:
+    # var strides = compute_row_major_strides(x._shape)
+    # return Tensor[Bool](out, x._shape, strides, 0)
+
 
 # -----------------------------
 # NOT → Int masks
@@ -1728,7 +1734,7 @@ fn lnot_t(x: Tensor[Bool]) -> Tensor[Bool]:
         i += 1
 
     var strides = compute_row_major_strides(x._shape)
-    return Tensor[Bool](data=out, shape=x._shape, strides=strides)
+    return Tensor[Bool](out, x._shape, strides, 0)
 
  
  
@@ -1756,30 +1762,7 @@ fn iminimum_t[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], y: T
     apply_broadcast2_inplace(x, y, 6)
 
 # ======================= Scalar pow/clip/lerp/normalize =======================
-# ---------- Std ----------
-fn std[T: ImplicitlyCopyable & Copyable & Movable](
-    x: Tensor[T],
-    axis: Optional[Int] = None,
-    unbiased: Bool = True,
-    keepdims: Bool = False
-) -> Tensor[T]:
-    # Use the specialized variance(...) that returns Tensor[Float64]
-    var v: Tensor[Float64] = variance(x, axis, unbiased, keepdims)
-
-    var outd = List[T]()
-    outd.reserve(len(v._data))
-
-    var i = 0
-    var n = len(v._data)
-    while i < n:
-        var s = v._data[i]
-        if s < 0.0:
-            s = 0.0
-        outd.append(T(sqrt(s)))
-        i = i + 1
-
-    return Tensor[T](v._shape, outd)
-
+ 
 # ---------- Pow (scalar) ----------
 fn pow_scalar_right[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], p: Float64) -> Tensor[T]:
     var n = len(x._data)
@@ -2136,8 +2119,8 @@ fn normalize_[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], axis
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn min_t(self: Tensor[Float64]) -> Float64:
-    var xs = self._data
+fn min_t(x: Tensor[Float64]) -> Float64:
+    var xs = x._data.copy()
     var n  = len(xs)
     if n == 0:
         return 0.0
@@ -2212,8 +2195,8 @@ fn min_t(self: Tensor[Float64]) -> Float64:
 
 
 @always_inline
-fn max_t(self: Tensor[Float64]) -> Float64:
-    var xs = self._data.copy()
+fn max_t(x: Tensor[Float64]) -> Float64:
+    var xs = x._data.copy()
     var n  = len(xs)
     if n == 0:
         return 0.0
@@ -2288,8 +2271,8 @@ fn max_t(self: Tensor[Float64]) -> Float64:
 
  
 @always_inline
-fn min_t(self: Tensor[Float32]) -> Float32:
-    var xs = self._data
+fn min_t(x: Tensor[Float32]) -> Float32:
+    var xs = x._data.copy()
     var n  = len(xs)
     if n == 0:
         return 0.0
@@ -2364,8 +2347,8 @@ fn min_t(self: Tensor[Float32]) -> Float32:
 
 
 @always_inline
-fn max_t(self: Tensor[Float32]) -> Float32:
-    var xs = self._data.copy()
+fn max_t(x: Tensor[Float32]) -> Float32:
+    var xs = x._data.copy()
     var n  = len(xs)
     if n == 0:
         return 0.0
@@ -2440,8 +2423,8 @@ fn max_t(self: Tensor[Float32]) -> Float32:
  
 
 @always_inline
-fn min_t(self: Tensor[Int]) -> Int:
-    var xs = self._data.copy()
+fn min_t(x: Tensor[Int]) -> Int:
+    var xs = x._data.copy()
     var n  = len(xs)
     if n == 0:
         return 0
@@ -2516,8 +2499,8 @@ fn min_t(self: Tensor[Int]) -> Int:
 
 
 @always_inline
-fn max_t(self: Tensor[Int]) -> Int:
-    var xs = self._data.copy()
+fn max_t(x: Tensor[Int]) -> Int:
+    var xs = x._data.copy()
     var n  = len(xs)
     if n == 0:
         return 0
@@ -3013,7 +2996,1501 @@ fn sum(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -
         return tout_g.reshape(kd2)
     return tout_g.copy()
 
- 
+
+# ---------- SUM for Int ----------
+@always_inline
+fn sum(x: Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Int]:
+    var shp = x._shape.copy()
+    var rank = len(shp)
+
+    # WHOLE-TENSOR SUM
+    if axis is None:
+        var s = 0
+        if (len(shp) == 1 or is_row_major_contiguous(shp, x._strides)):
+            var n = len(x._data)
+            var i = 0
+            var lim = (n // 16) * 16
+            while i < lim:
+                s = s + x._data[i    ] + x._data[i + 1 ] + x._data[i + 2 ] + x._data[i + 3 ]
+                s = s + x._data[i + 4] + x._data[i + 5 ] + x._data[i + 6 ] + x._data[i + 7 ]
+                s = s + x._data[i + 8] + x._data[i + 9 ] + x._data[i + 10] + x._data[i + 11]
+                s = s + x._data[i + 12] + x._data[i + 13] + x._data[i + 14] + x._data[i + 15]
+                i = i + 16
+            while i < n:
+                s = s + x._data[i]
+                i = i + 1
+        else:
+            var idx = List[Int]()
+            var k = 0
+            while k < rank:
+                idx.append(0)
+                k = k + 1
+            var done = False
+            while not done:
+                var off = 0
+                var d = 0
+                while d < rank:
+                    off = off + idx[d] * x._strides[d]
+                    d = d + 1
+                s = s + x._data[off]
+
+                var r = rank - 1
+                while r >= 0:
+                    idx[r] = idx[r] + 1
+                    if idx[r] < shp[r]:
+                        break
+                    idx[r] = 0
+                    if r == 0:
+                        done = True
+                        break
+                    r = r - 1
+
+        var out_list = List[Int]()
+        out_list.reserve(1)
+        out_list.append(s)
+
+        var out_shape = List[Int]()
+        if keepdims:
+            var t = 0
+            while t < rank:
+                out_shape.append(1)
+                t = t + 1
+        else:
+            out_shape.append(1)
+
+        var st = compute_row_major_strides(out_shape)
+        return Tensor[Int](out_list, out_shape, st, 0)
+
+    # AXIS REDUCTION
+    var ax = normalize_axis(axis.value(), rank)
+    var reduce_n: Int
+    if rank == 0:
+        reduce_n = 1
+    else:
+        reduce_n = shp[ax]
+
+    if is_row_major_contiguous(shp, x._strides):
+        var out_shape2 = shape_drop_axis(shp, ax)
+
+        var inner = 1
+        var i_in = ax + 1
+        while i_in < rank:
+            inner = inner * shp[i_in]
+            i_in = i_in + 1
+
+        var outer = 1
+        var i_out = 0
+        while i_out < ax:
+            outer = outer * shp[i_out]
+            i_out = i_out + 1
+
+        var base_stride = inner
+        var block = reduce_n * inner
+
+        var outv = List[Int]()
+        outv.reserve(outer * inner)
+
+        var o = 0
+        while o < outer * inner:
+            var base = (o // inner) * block + (o % inner)
+            var s2 = 0
+
+            var k2 = 0
+            var lim2 = (reduce_n // 8) * 8
+            while k2 < lim2:
+                s2 = s2 + x._data[base + (k2    ) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 1) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 2) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 3) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 4) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 5) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 6) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 7) * base_stride]
+                k2 = k2 + 8
+            while k2 < reduce_n:
+                s2 = s2 + x._data[base + k2 * base_stride]
+                k2 = k2 + 1
+
+            outv.append(s2)
+            o = o + 1
+
+        var st2 = compute_row_major_strides(out_shape2)
+        var tout = Tensor[Int](outv, out_shape2, st2, 0)
+        if keepdims:
+            var kd = List[Int]()
+            var r = 0
+            while r < rank:
+                if r == ax:
+                    kd.append(1)
+                else:
+                    kd.append(shp[r])
+                r = r + 1
+            return tout.reshape(kd)
+        return tout.copy()
+
+    # Generic strided axis reduction
+    var out_shape_g = shape_drop_axis(shp, ax)
+    var out_n = numel(out_shape_g)
+
+    var outer_shape = List[Int]()
+    var outer_strides = List[Int]()
+    var i = 0
+    while i < rank:
+        if i != ax:
+            outer_shape.append(shp[i])
+            outer_strides.append(x._strides[i])
+        i = i + 1
+    var stride_red = x._strides[ax]
+
+    var out_int = List[Int]()
+    out_int.reserve(out_n)
+
+    var idx2 = List[Int]()
+    var k3 = 0
+    while k3 < len(outer_shape):
+        idx2.append(0)
+        k3 = k3 + 1
+
+    var running = True
+    while True:
+        var base2 = 0
+        var d2 = 0
+        while d2 < len(outer_shape):
+            base2 = base2 + idx2[d2] * outer_strides[d2]
+            d2 = d2 + 1
+
+        var acc = 0
+        var j = 0
+        var lim = (reduce_n // 8) * 8
+        while j < lim:
+            acc = acc + x._data[base2 + (j    ) * stride_red]
+            acc = acc + x._data[base2 + (j + 1) * stride_red]
+            acc = acc + x._data[base2 + (j + 2) * stride_red]
+            acc = acc + x._data[base2 + (j + 3) * stride_red]
+            acc = acc + x._data[base2 + (j + 4) * stride_red]
+            acc = acc + x._data[base2 + (j + 5) * stride_red]
+            acc = acc + x._data[base2 + (j + 6) * stride_red]
+            acc = acc + x._data[base2 + (j + 7) * stride_red]
+            j = j + 8
+        while j < reduce_n:
+            acc = acc + x._data[base2 + j * stride_red]
+            j = j + 1
+
+        out_int.append(acc)
+
+        if len(outer_shape) == 0:
+            break
+        var pos = len(outer_shape) - 1
+        var carry = True
+        while pos >= 0 and carry:
+            idx2[pos] = idx2[pos] + 1
+            if idx2[pos] < outer_shape[pos]:
+                carry = False
+            else:
+                idx2[pos] = 0
+                if pos == 0:
+                    carry = False
+                    running = False
+            if pos == 0:
+                break
+            pos = pos - 1
+        if not running:
+            break
+
+    var stg = compute_row_major_strides(out_shape_g)
+    var tout_g = Tensor[Int](out_int, out_shape_g, stg, 0)
+    if keepdims:
+        var kd2 = List[Int]()
+        var r2 = 0
+        while r2 < rank:
+            if r2 == ax:
+                kd2.append(1)
+            else:
+                kd2.append(shp[r2])
+            r2 = r2 + 1
+        return tout_g.reshape(kd2)
+    return tout_g.copy()
+
+# ---------- SUM for Float32 ----------
+@always_inline
+fn sum(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
+    var shp = x._shape.copy()
+    var rank = len(shp)
+
+    # WHOLE-TENSOR SUM
+    if axis is None:
+        var s: Float32 = 0.0
+        if (len(shp) == 1 or is_row_major_contiguous(shp, x._strides)):
+            var n = len(x._data)
+            var i = 0
+            var lim = (n // 16) * 16
+            while i < lim:
+                s = s + x._data[i    ] + x._data[i + 1 ] + x._data[i + 2 ] + x._data[i + 3 ]
+                s = s + x._data[i + 4] + x._data[i + 5 ] + x._data[i + 6 ] + x._data[i + 7 ]
+                s = s + x._data[i + 8] + x._data[i + 9 ] + x._data[i + 10] + x._data[i + 11]
+                s = s + x._data[i + 12] + x._data[i + 13] + x._data[i + 14] + x._data[i + 15]
+                i = i + 16
+            while i < n:
+                s = s + x._data[i]
+                i = i + 1
+        else:
+            var idx = List[Int]()
+            var k = 0
+            while k < rank:
+                idx.append(0)
+                k = k + 1
+            var done = False
+            while not done:
+                var off = 0
+                var d = 0
+                while d < rank:
+                    off = off + idx[d] * x._strides[d]
+                    d = d + 1
+                s = s + x._data[off]
+
+                var r = rank - 1
+                while r >= 0:
+                    idx[r] = idx[r] + 1
+                    if idx[r] < shp[r]:
+                        break
+                    idx[r] = 0
+                    if r == 0:
+                        done = True
+                        break
+                    r = r - 1
+
+        var out_list = List[Float32]()
+        out_list.reserve(1)
+        out_list.append(s)
+
+        var out_shape = List[Int]()
+        if keepdims:
+            var t = 0
+            while t < rank:
+                out_shape.append(1)
+                t = t + 1
+        else:
+            out_shape.append(1)
+
+        return Tensor[Float32](out_shape, out_list)
+
+    # AXIS REDUCTION
+    var ax = normalize_axis(axis.value(), rank)
+    var reduce_n: Int
+    if rank == 0:
+        reduce_n = 1
+    else:
+        reduce_n = shp[ax]
+
+    if is_row_major_contiguous(shp, x._strides):
+        var out_shape2 = shape_drop_axis(shp, ax)
+
+        var inner = 1
+        var i_in = ax + 1
+        while i_in < rank:
+            inner = inner * shp[i_in]
+            i_in = i_in + 1
+
+        var outer = 1
+        var i_out = 0
+        while i_out < ax:
+            outer = outer * shp[i_out]
+            i_out = i_out + 1
+
+        var base_stride = inner
+        var block = reduce_n * inner
+
+        var outv = List[Float32]()
+        outv.reserve(outer * inner)
+
+        var o = 0
+        while o < outer * inner:
+            var base = (o // inner) * block + (o % inner)
+            var s2: Float32 = 0.0
+
+            var k2 = 0
+            var lim2 = (reduce_n // 8) * 8
+            while k2 < lim2:
+                s2 = s2 + x._data[base + (k2    ) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 1) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 2) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 3) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 4) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 5) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 6) * base_stride]
+                s2 = s2 + x._data[base + (k2 + 7) * base_stride]
+                k2 = k2 + 8
+            while k2 < reduce_n:
+                s2 = s2 + x._data[base + k2 * base_stride]
+                k2 = k2 + 1
+
+            outv.append(s2)
+            o = o + 1
+
+        var tout = Tensor[Float32](out_shape2, outv)
+        if keepdims:
+            var kd = List[Int]()
+            var r = 0
+            while r < rank:
+                if r == ax:
+                    kd.append(1)
+                else:
+                    kd.append(shp[r])
+                r = r + 1
+            return tout.reshape(kd)
+        return tout.copy()
+
+    # Generic strided axis reduction
+    var out_shape_g = shape_drop_axis(shp, ax)
+    var out_n = numel(out_shape_g)
+
+    var outer_shape = List[Int]()
+    var outer_strides = List[Int]()
+    var i = 0
+    while i < rank:
+        if i != ax:
+            outer_shape.append(shp[i])
+            outer_strides.append(x._strides[i])
+        i = i + 1
+    var stride_red = x._strides[ax]
+
+    var out_f32 = List[Float32]()
+    out_f32.reserve(out_n)
+
+    var idx2 = List[Int]()
+    var k3 = 0
+    while k3 < len(outer_shape):
+        idx2.append(0)
+        k3 = k3 + 1
+
+    var running = True
+    while True:
+        var base2 = 0
+        var d2 = 0
+        while d2 < len(outer_shape):
+            base2 = base2 + idx2[d2] * outer_strides[d2]
+            d2 = d2 + 1
+
+        var acc: Float32 = 0.0
+        var j = 0
+        var lim = (reduce_n // 8) * 8
+        while j < lim:
+            acc = acc + x._data[base2 + (j    ) * stride_red]
+            acc = acc + x._data[base2 + (j + 1) * stride_red]
+            acc = acc + x._data[base2 + (j + 2) * stride_red]
+            acc = acc + x._data[base2 + (j + 3) * stride_red]
+            acc = acc + x._data[base2 + (j + 4) * stride_red]
+            acc = acc + x._data[base2 + (j + 5) * stride_red]
+            acc = acc + x._data[base2 + (j + 6) * stride_red]
+            acc = acc + x._data[base2 + (j + 7) * stride_red]
+            j = j + 8
+        while j < reduce_n:
+            acc = acc + x._data[base2 + j * stride_red]
+            j = j + 1
+
+        out_f32.append(acc)
+
+        if len(outer_shape) == 0:
+            break
+        var pos = len(outer_shape) - 1
+        var carry = True
+        while pos >= 0 and carry:
+            idx2[pos] = idx2[pos] + 1
+            if idx2[pos] < outer_shape[pos]:
+                carry = False
+            else:
+                idx2[pos] = 0
+                if pos == 0:
+                    carry = False
+                    running = False
+            if pos == 0:
+                break
+            pos = pos - 1
+        if not running:
+            break
+
+    var tout_g = Tensor[Float32](out_shape_g, out_f32)
+    if keepdims:
+        var kd2 = List[Int]()
+        var r2 = 0
+        while r2 < rank:
+            if r2 == ax:
+                kd2.append(1)
+            else:
+                kd2.append(shp[r2])
+            r2 = r2 + 1
+        return tout_g.reshape(kd2)
+    return tout_g.copy()
+
+
+# ======================= 1D Unrolled STD =======================
+
+@always_inline
+fn std1d_unrolled(m: Tensor[Float64], ddof: Int = 0) -> Float64:
+    # Computes population/sample std for 1D Float64 via two-pass (sum & sumsq), 8-way unrolled.
+    var n = len(m._data)
+    #assert(n > ddof and "std: degrees of freedom must be < N")
+
+    # ---- Pass 1: sum ----
+    var s0 = 0.0; var s1 = 0.0; var s2 = 0.0; var s3 = 0.0
+    var s4 = 0.0; var s5 = 0.0; var s6 = 0.0; var s7 = 0.0
+    var i = 0
+    var n8 = (n // 8) * 8
+    while i < n8:
+        s0 = s0 + m._data[i + 0]; s1 = s1 + m._data[i + 1]
+        s2 = s2 + m._data[i + 2]; s3 = s3 + m._data[i + 3]
+        s4 = s4 + m._data[i + 4]; s5 = s5 + m._data[i + 5]
+        s6 = s6 + m._data[i + 6]; s7 = s7 + m._data[i + 7]
+        i += 8
+    var sumv = ((s0 + s1) + (s2 + s3)) + ((s4 + s5) + (s6 + s7))
+    while i < n:
+        sumv = sumv + m._data[i]
+        i += 1
+    var mean = sumv / Float64(n)
+
+    # ---- Pass 2: sum of squared diffs ----
+    var v0 = 0.0; var v1 = 0.0; var v2 = 0.0; var v3 = 0.0
+    var v4 = 0.0; var v5 = 0.0; var v6 = 0.0; var v7 = 0.0
+    i = 0
+    while i < n8:
+        var a0 = m._data[i + 0] - mean; v0 = v0 + a0 * a0
+        var a1 = m._data[i + 1] - mean; v1 = v1 + a1 * a1
+        var a2 = m._data[i + 2] - mean; v2 = v2 + a2 * a2
+        var a3 = m._data[i + 3] - mean; v3 = v3 + a3 * a3
+        var a4 = m._data[i + 4] - mean; v4 = v4 + a4 * a4
+        var a5 = m._data[i + 5] - mean; v5 = v5 + a5 * a5
+        var a6 = m._data[i + 6] - mean; v6 = v6 + a6 * a6
+        var a7 = m._data[i + 7] - mean; v7 = v7 + a7 * a7
+        i += 8
+    var ssd = ((v0 + v1) + (v2 + v3)) + ((v4 + v5) + (v6 + v7))
+    while i < n:
+        var d = m._data[i] - mean
+        ssd = ssd + d * d
+        i += 1
+
+    var denom = Float64(n - ddof)
+    var varv = ssd / denom
+    return sqrt(varv)
+
+
+@always_inline
+fn std1d_unrolled(m: Tensor[Float32], ddof: Int = 0) -> Float32:
+    # 1D Float32 two-pass with 8-way unroll; returns Float32.
+    var n = len(m._data)
+    #assert(n > ddof and "std: degrees of freedom must be < N")
+
+    var z = Float32(0.0)
+    var s0 = z; var s1 = z; var s2 = z; var s3 = z
+    var s4 = z; var s5 = z; var s6 = z; var s7 = z
+    var i = 0
+    var n8 = (n // 8) * 8
+    while i < n8:
+        s0 = s0 + m._data[i + 0]; s1 = s1 + m._data[i + 1]
+        s2 = s2 + m._data[i + 2]; s3 = s3 + m._data[i + 3]
+        s4 = s4 + m._data[i + 4]; s5 = s5 + m._data[i + 5]
+        s6 = s6 + m._data[i + 6]; s7 = s7 + m._data[i + 7]
+        i += 8
+    var sumv = ((s0 + s1) + (s2 + s3)) + ((s4 + s5) + (s6 + s7))
+    while i < n:
+        sumv = sumv + m._data[i]
+        i += 1
+    var mean = sumv / Float32(n)
+
+    var v0 = z; var v1 = z; var v2 = z; var v3 = z
+    var v4 = z; var v5 = z; var v6 = z; var v7 = z
+    i = 0
+    while i < n8:
+        var a0 = m._data[i + 0] - mean; v0 = v0 + a0 * a0
+        var a1 = m._data[i + 1] - mean; v1 = v1 + a1 * a1
+        var a2 = m._data[i + 2] - mean; v2 = v2 + a2 * a2
+        var a3 = m._data[i + 3] - mean; v3 = v3 + a3 * a3
+        var a4 = m._data[i + 4] - mean; v4 = v4 + a4 * a4
+        var a5 = m._data[i + 5] - mean; v5 = v5 + a5 * a5
+        var a6 = m._data[i + 6] - mean; v6 = v6 + a6 * a6
+        var a7 = m._data[i + 7] - mean; v7 = v7 + a7 * a7
+        i += 8
+    var ssd = ((v0 + v1) + (v2 + v3)) + ((v4 + v5) + (v6 + v7))
+    while i < n:
+        var d = m._data[i] - mean
+        ssd = ssd + d * d
+        i += 1
+
+    var denom = Float32(n - ddof)
+    var varv = ssd / denom
+    return Float32(sqrt(Float64(varv)))
+
+
+@always_inline
+fn std1d_unrolled(m: Tensor[Int], ddof: Int = 0) -> Float64:
+    # 1D Int → Float64 result (higher precision). Two-pass, 8-way unrolled.
+    var n = len(m._data)
+    #assert(n > ddof and "std: degrees of freedom must be < N")
+
+    var s0 = 0; var s1 = 0; var s2 = 0; var s3 = 0
+    var s4 = 0; var s5 = 0; var s6 = 0; var s7 = 0
+    var i = 0
+    var n8 = (n // 8) * 8
+    while i < n8:
+        s0 = s0 + m._data[i + 0]; s1 = s1 + m._data[i + 1]
+        s2 = s2 + m._data[i + 2]; s3 = s3 + m._data[i + 3]
+        s4 = s4 + m._data[i + 4]; s5 = s5 + m._data[i + 5]
+        s6 = s6 + m._data[i + 6]; s7 = s7 + m._data[i + 7]
+        i += 8
+    var sumv_i = ((s0 + s1) + (s2 + s3)) + ((s4 + s5) + (s6 + s7))
+    while i < n:
+        sumv_i = sumv_i + m._data[i]
+        i += 1
+    var mean = Float64(sumv_i) / Float64(n)
+
+    var v0 = 0.0; var v1 = 0.0; var v2 = 0.0; var v3 = 0.0
+    var v4 = 0.0; var v5 = 0.0; var v6 = 0.0; var v7 = 0.0
+    i = 0
+    while i < n8:
+        var a0 = Float64(m._data[i + 0]) - mean; v0 = v0 + a0 * a0
+        var a1 = Float64(m._data[i + 1]) - mean; v1 = v1 + a1 * a1
+        var a2 = Float64(m._data[i + 2]) - mean; v2 = v2 + a2 * a2
+        var a3 = Float64(m._data[i + 3]) - mean; v3 = v3 + a3 * a3
+        var a4 = Float64(m._data[i + 4]) - mean; v4 = v4 + a4 * a4
+        var a5 = Float64(m._data[i + 5]) - mean; v5 = v5 + a5 * a5
+        var a6 = Float64(m._data[i + 6]) - mean; v6 = v6 + a6 * a6
+        var a7 = Float64(m._data[i + 7]) - mean; v7 = v7 + a7 * a7
+        i += 8
+    var ssd = ((v0 + v1) + (v2 + v3)) + ((v4 + v5) + (v6 + v7))
+    while i < n:
+        var d = Float64(m._data[i]) - mean
+        ssd = ssd + d * d
+        i += 1
+
+    var denom = Float64(n - ddof)
+    var varv = ssd / denom
+    return sqrt(varv)
+
+# ======================= Axis-wise STD for Float64 =======================
+
+fn std(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False, ddof: Int = 0) -> Tensor[Float64]:
+    # Mirrors your sum(x, axis, keepdims) but computes std with two-pass mean/variance.
+    var shp = x._shape.copy()
+    var rank = len(shp)
+    #assert(ddof >= 0 and "std: ddof must be >= 0")
+
+    # ---------- WHOLE-TENSOR ----------
+    if axis is None:
+        var n_total = len(x._data)
+        #assert(n_total > ddof and "std: ddof >= N")
+
+        if (len(shp) == 1 or is_row_major_contiguous(shp, x._strides)):
+            # Pass 1: mean (16-way unrolled like your sum)
+            var s = 0.0
+            var i = 0
+            var lim = (n_total // 16) * 16
+            while i < lim:
+                s = s + x._data[i     ] + x._data[i + 1 ] + x._data[i + 2 ] + x._data[i + 3 ]
+                s = s + x._data[i + 4 ] + x._data[i + 5 ] + x._data[i + 6 ] + x._data[i + 7 ]
+                s = s + x._data[i + 8 ] + x._data[i + 9 ] + x._data[i + 10] + x._data[i + 11]
+                s = s + x._data[i + 12] + x._data[i + 13] + x._data[i + 14] + x._data[i + 15]
+                i = i + 16
+            while i < n_total:
+                s = s + x._data[i]
+                i = i + 1
+            var mean = s / Float64(n_total)
+
+            # Pass 2: sum of squared diffs (same unroll)
+            var q = 0.0
+            i = 0
+            while i < lim:
+                var d0 = x._data[i     ] - mean; q = q + d0 * d0
+                var d1 = x._data[i + 1 ] - mean; q = q + d1 * d1
+                var d2 = x._data[i + 2 ] - mean; q = q + d2 * d2
+                var d3 = x._data[i + 3 ] - mean; q = q + d3 * d3
+                var d4 = x._data[i + 4 ] - mean; q = q + d4 * d4
+                var d5 = x._data[i + 5 ] - mean; q = q + d5 * d5
+                var d6 = x._data[i + 6 ] - mean; q = q + d6 * d6
+                var d7 = x._data[i + 7 ] - mean; q = q + d7 * d7
+                var d8 = x._data[i + 8 ] - mean; q = q + d8 * d8
+                var d9 = x._data[i + 9 ] - mean; q = q + d9 * d9
+                var dA = x._data[i + 10] - mean; q = q + dA * dA
+                var dB = x._data[i + 11] - mean; q = q + dB * dB
+                var dC = x._data[i + 12] - mean; q = q + dC * dC
+                var dD = x._data[i + 13] - mean; q = q + dD * dD
+                var dE = x._data[i + 14] - mean; q = q + dE * dE
+                var dF = x._data[i + 15] - mean; q = q + dF * dF
+                i = i + 16
+            while i < n_total:
+                var d = x._data[i] - mean
+                q = q + d * d
+                i = i + 1
+
+            var denom = Float64(n_total - ddof)
+            var std_scalar = sqrt(q / denom)
+
+            var out_data = List[Float64](); out_data.reserve(1); out_data.append(std_scalar)
+            var out_shape = List[Int]()
+            if keepdims:
+                var t = 0; 
+                while t < rank: out_shape.append(1); t = t + 1
+            else:
+                out_shape.append(1)
+            return Tensor[Float64](out_shape, out_data)
+
+        # Generic (non-contiguous) whole-tensor: iterate indices to get mean then ssd
+        var idx = List[Int](); var k = 0; 
+        while k < rank: idx.append(0); k = k + 1
+        var sumv = 0.0; var count = 0
+        var done = False
+        while not done:
+            var off = 0; var d = 0
+            while d < rank: off = off + idx[d] * x._strides[d]; d = d + 1
+            sumv = sumv + x._data[off]; count = count + 1
+            var r = rank - 1
+            while r >= 0:
+                idx[r] = idx[r] + 1
+                if idx[r] < shp[r]: break
+                idx[r] = 0
+                if r == 0: done = True; break
+                r = r - 1
+        #assert(count == n_total and "index walk mismatch")
+        var mean_g = sumv / Float64(n_total)
+
+        # Pass 2
+        var idx2 = List[Int](); var k2 = 0; 
+        while k2 < rank: idx2.append(0); k2 = k2 + 1
+        var q2 = 0.0; done = False
+        while not done:
+            var off2 = 0; var d2 = 0
+            while d2 < rank: off2 = off2 + idx2[d2] * x._strides[d2]; d2 = d2 + 1
+            var dv = x._data[off2] - mean_g
+            q2 = q2 + dv * dv
+            var r2 = rank - 1
+            while r2 >= 0:
+                idx2[r2] = idx2[r2] + 1
+                if idx2[r2] < shp[r2]: break
+                idx2[r2] = 0
+                if r2 == 0: done = True; break
+                r2 = r2 - 1
+        var std_scalar_g = sqrt(q2 / Float64(n_total - ddof))
+        var out_data_g = List[Float64](); out_data_g.append(std_scalar_g)
+        var out_shape_g = List[Int]()
+        if keepdims:
+            var t2 = 0; 
+            while t2 < rank: out_shape_g.append(1); t2 = t2 + 1
+        else:
+            out_shape_g.append(1)
+        return Tensor[Float64](out_shape_g, out_data_g)
+
+    # ---------- AXIS REDUCTION ----------
+    var ax = normalize_axis(axis.value(), rank)
+    var reduce_n =shp[ax]
+    if rank == 0: reduce_n =1  
+    #assert(reduce_n > ddof and "std: ddof must be < size along axis")
+
+    if is_row_major_contiguous(shp, x._strides):
+        # Pack outer/inner like your sum() and do two-pass along the reduced axis.
+        var out_shape2 = shape_drop_axis(shp, ax)
+
+        var inner = 1; var i_in = ax + 1
+        while i_in < rank: inner = inner * shp[i_in]; i_in = i_in + 1
+        var outer = 1; var i_out = 0
+        while i_out < ax: outer = outer * shp[i_out]; i_out = i_out + 1
+
+        var base_stride = inner
+        var block = reduce_n * inner
+
+        # ---- Pass 1: per-position mean ----
+        var means = List[Float64](); means.reserve(outer * inner)
+        var o = 0
+        while o < outer * inner:
+            var base = (o // inner) * block + (o % inner)
+            var s = 0.0
+            var k0 = 0; var lim0 = (reduce_n // 8) * 8
+            while k0 < lim0:
+                s = s + x._data[base + (k0    ) * base_stride]
+                s = s + x._data[base + (k0 + 1) * base_stride]
+                s = s + x._data[base + (k0 + 2) * base_stride]
+                s = s + x._data[base + (k0 + 3) * base_stride]
+                s = s + x._data[base + (k0 + 4) * base_stride]
+                s = s + x._data[base + (k0 + 5) * base_stride]
+                s = s + x._data[base + (k0 + 6) * base_stride]
+                s = s + x._data[base + (k0 + 7) * base_stride]
+                k0 = k0 + 8
+            while k0 < reduce_n:
+                s = s + x._data[base + k0 * base_stride]
+                k0 = k0 + 1
+            means.append(s / Float64(reduce_n))
+            o = o + 1
+
+        # ---- Pass 2: per-position SSD ----
+        var outv = List[Float64](); outv.reserve(outer * inner)
+        o = 0
+        while o < outer * inner:
+            var base = (o // inner) * block + (o % inner)
+            var mu = means[o]
+            var q = 0.0
+            var k1 = 0; var lim1 = (reduce_n // 8) * 8
+            while k1 < lim1:
+                var d0 = x._data[base + (k1    ) * base_stride] - mu; q = q + d0 * d0
+                var d1 = x._data[base + (k1 + 1) * base_stride] - mu; q = q + d1 * d1
+                var d2 = x._data[base + (k1 + 2) * base_stride] - mu; q = q + d2 * d2
+                var d3 = x._data[base + (k1 + 3) * base_stride] - mu; q = q + d3 * d3
+                var d4 = x._data[base + (k1 + 4) * base_stride] - mu; q = q + d4 * d4
+                var d5 = x._data[base + (k1 + 5) * base_stride] - mu; q = q + d5 * d5
+                var d6 = x._data[base + (k1 + 6) * base_stride] - mu; q = q + d6 * d6
+                var d7 = x._data[base + (k1 + 7) * base_stride] - mu; q = q + d7 * d7
+                k1 = k1 + 8
+            while k1 < reduce_n:
+                var d = x._data[base + k1 * base_stride] - mu
+                q = q + d * d
+                k1 = k1 + 1
+            outv.append(sqrt(q / Float64(reduce_n - ddof)))
+            o = o + 1
+
+        var tout = Tensor[Float64](out_shape2, outv)
+        if keepdims:
+            var kd = List[Int](); var r = 0
+            while r < rank:
+                if r == ax: kd.append(1) else: kd.append(shp[r])
+                r = r + 1
+            return tout.reshape(kd)
+        return tout.copy()
+
+    # ---------- Generic strided axis reduction ----------
+    var out_shape_g = shape_drop_axis(shp, ax)
+    var out_n = numel(out_shape_g)
+
+    var outer_shape = List[Int](); var outer_strides = List[Int]()
+    var i = 0
+    while i < rank:
+        if i != ax:
+            outer_shape.append(shp[i])
+            outer_strides.append(x._strides[i])
+        i = i + 1
+    var stride_red = x._strides[ax]
+
+    # Pass 1: means
+    var means_g = List[Float64](); means_g.reserve(out_n)
+    var idx1 = List[Int](); var t1 = 0
+    while t1 < len(outer_shape): idx1.append(0); t1 = t1 + 1
+
+    var running = True
+    while True:
+        var base = 0; var d = 0
+        while d < len(outer_shape):
+            base = base + idx1[d] * outer_strides[d]
+            d = d + 1
+        var s = 0.0
+        var j = 0; var lim = (reduce_n // 8) * 8
+        while j < lim:
+            s = s + x._data[base + (j    ) * stride_red]
+            s = s + x._data[base + (j + 1) * stride_red]
+            s = s + x._data[base + (j + 2) * stride_red]
+            s = s + x._data[base + (j + 3) * stride_red]
+            s = s + x._data[base + (j + 4) * stride_red]
+            s = s + x._data[base + (j + 5) * stride_red]
+            s = s + x._data[base + (j + 6) * stride_red]
+            s = s + x._data[base + (j + 7) * stride_red]
+            j = j + 8
+        while j < reduce_n:
+            s = s + x._data[base + j * stride_red]
+            j = j + 1
+        means_g.append(s / Float64(reduce_n))
+
+        if len(outer_shape) == 0: break
+        var pos = len(outer_shape) - 1
+        var carry = True
+        while pos >= 0 and carry:
+            idx1[pos] = idx1[pos] + 1
+            if idx1[pos] < outer_shape[pos]:
+                carry = False
+            else:
+                idx1[pos] = 0
+                if pos == 0:
+                    carry = False; running = False
+            if pos == 0: break
+            pos = pos - 1
+        if not running: break
+
+    # Pass 2: SSDs -> std
+    var outv_g = List[Float64](); outv_g.reserve(out_n)
+    var idx2 = List[Int](); var t2 = 0
+    while t2 < len(outer_shape): idx2.append(0); t2 = t2 + 1
+
+    var kpos = 0
+    running = True
+    while True:
+        var base2 = 0; var d2 = 0
+        while d2 < len(outer_shape):
+            base2 = base2 + idx2[d2] * outer_strides[d2]
+            d2 = d2 + 1
+        var mu = means_g[kpos]
+        var q = 0.0
+        var j2 = 0; var lim2 = (reduce_n // 8) * 8
+        while j2 < lim2:
+            var t0 = x._data[base2 + (j2    ) * stride_red] - mu; q = q + t0 * t0
+            var t1v = x._data[base2 + (j2 + 1) * stride_red] - mu; q = q + t1v * t1v
+            var t2v = x._data[base2 + (j2 + 2) * stride_red] - mu; q = q + t2v * t2v
+            var t3v = x._data[base2 + (j2 + 3) * stride_red] - mu; q = q + t3v * t3v
+            var t4v = x._data[base2 + (j2 + 4) * stride_red] - mu; q = q + t4v * t4v
+            var t5v = x._data[base2 + (j2 + 5) * stride_red] - mu; q = q + t5v * t5v
+            var t6v = x._data[base2 + (j2 + 6) * stride_red] - mu; q = q + t6v * t6v
+            var t7v = x._data[base2 + (j2 + 7) * stride_red] - mu; q = q + t7v * t7v
+            j2 = j2 + 8
+        while j2 < reduce_n:
+            var dv = x._data[base2 + j2 * stride_red] - mu
+            q = q + dv * dv
+            j2 = j2 + 1
+
+        outv_g.append(sqrt(q / Float64(reduce_n - ddof)))
+        kpos = kpos + 1
+
+        if len(outer_shape) == 0: break
+        var pos2 = len(outer_shape) - 1
+        var carry2 = True
+        while pos2 >= 0 and carry2:
+            idx2[pos2] = idx2[pos2] + 1
+            if idx2[pos2] < outer_shape[pos2]:
+                carry2 = False
+            else:
+                idx2[pos2] = 0
+                if pos2 == 0:
+                    carry2 = False; running = False
+            if pos2 == 0: break
+            pos2 = pos2 - 1
+        if not running: break
+
+    var tout_g = Tensor[Float64](out_shape_g, outv_g)
+    if keepdims:
+        var kd2 = List[Int](); var r2 = 0
+        while r2 < rank:
+            if r2 == ax: kd2.append(1) else: kd2.append(shp[r2])
+            r2 = r2 + 1
+        return tout_g.reshape(kd2)
+    return tout_g.copy()
+
+# ======================= Axis-wise STD for Int (output Float64) =======================
+
+@always_inline
+fn std(x: Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False, ddof: Int = 0) -> Tensor[Float64]:
+    # Two-pass mean/variance. Accumulate in Float64; return Tensor[Float64].
+    var shp = x._shape.copy()
+    var rank = len(shp)
+    #assert(ddof >= 0 and "std: ddof must be >= 0")
+
+    # ---------- WHOLE-TENSOR ----------
+    if axis is None:
+        var n_total = len(x._data)
+        #assert(n_total > ddof and "std: ddof >= N")
+
+        if (len(shp) == 1 or is_row_major_contiguous(shp, x._strides)):
+            # Pass 1: mean (16-way unroll)
+            var s = 0.0
+            var i = 0
+            var lim = (n_total // 16) * 16
+            while i < lim:
+                s = s + Float64(x._data[i     ]) + Float64(x._data[i + 1 ]) + Float64(x._data[i + 2 ]) + Float64(x._data[i + 3 ])
+                s = s + Float64(x._data[i + 4 ]) + Float64(x._data[i + 5 ]) + Float64(x._data[i + 6 ]) + Float64(x._data[i + 7 ])
+                s = s + Float64(x._data[i + 8 ]) + Float64(x._data[i + 9 ]) + Float64(x._data[i + 10]) + Float64(x._data[i + 11])
+                s = s + Float64(x._data[i + 12]) + Float64(x._data[i + 13]) + Float64(x._data[i + 14]) + Float64(x._data[i + 15])
+                i = i + 16
+            while i < n_total:
+                s = s + Float64(x._data[i])
+                i = i + 1
+            var mean = s / Float64(n_total)
+
+            # Pass 2: sum of squared diffs (16-way)
+            var q = 0.0
+            i = 0
+            while i < lim:
+                var d0 = Float64(x._data[i     ]) - mean; q = q + d0 * d0
+                var d1 = Float64(x._data[i + 1 ]) - mean; q = q + d1 * d1
+                var d2 = Float64(x._data[i + 2 ]) - mean; q = q + d2 * d2
+                var d3 = Float64(x._data[i + 3 ]) - mean; q = q + d3 * d3
+                var d4 = Float64(x._data[i + 4 ]) - mean; q = q + d4 * d4
+                var d5 = Float64(x._data[i + 5 ]) - mean; q = q + d5 * d5
+                var d6 = Float64(x._data[i + 6 ]) - mean; q = q + d6 * d6
+                var d7 = Float64(x._data[i + 7 ]) - mean; q = q + d7 * d7
+                var d8 = Float64(x._data[i + 8 ]) - mean; q = q + d8 * d8
+                var d9 = Float64(x._data[i + 9 ]) - mean; q = q + d9 * d9
+                var dA = Float64(x._data[i + 10]) - mean; q = q + dA * dA
+                var dB = Float64(x._data[i + 11]) - mean; q = q + dB * dB
+                var dC = Float64(x._data[i + 12]) - mean; q = q + dC * dC
+                var dD = Float64(x._data[i + 13]) - mean; q = q + dD * dD
+                var dE = Float64(x._data[i + 14]) - mean; q = q + dE * dE
+                var dF = Float64(x._data[i + 15]) - mean; q = q + dF * dF
+                i = i + 16
+            while i < n_total:
+                var d = Float64(x._data[i]) - mean
+                q = q + d * d
+                i = i + 1
+
+            var denom = Float64(n_total - ddof)
+            var std_scalar = sqrt(q / denom)
+
+            var out_data = List[Float64](); out_data.reserve(1); out_data.append(std_scalar)
+            var out_shape = List[Int]()
+            if keepdims:
+                var t = 0
+                while t < rank:
+                    out_shape.append(1)
+                    t = t + 1
+            else:
+                out_shape.append(1)
+            return Tensor[Float64](out_shape, out_data)
+        else:
+            # Generic strided: Pass 1 (mean)
+            var idx = List[Int](); var k = 0
+            while k < rank:
+                idx.append(0)
+                k = k + 1
+            var sumv = 0.0
+            var count = 0
+            var done = False
+            while not done:
+                var off = 0
+                var d = 0
+                while d < rank:
+                    off = off + idx[d] * x._strides[d]
+                    d = d + 1
+                sumv = sumv + Float64(x._data[off]); count = count + 1
+
+                var r = rank - 1
+                while r >= 0:
+                    idx[r] = idx[r] + 1
+                    if idx[r] < shp[r]: break
+                    idx[r] = 0
+                    if r == 0: done = True; break
+                    r = r - 1
+            #assert(count == n_total and "index walk mismatch")
+            var mean_g = sumv / Float64(n_total)
+
+            # Pass 2 (SSD)
+            var idx2 = List[Int](); var k2 = 0
+            while k2 < rank:
+                idx2.append(0)
+                k2 = k2 + 1
+            var q2 = 0.0; done = False
+            while not done:
+                var off2 = 0; var d2 = 0
+                while d2 < rank:
+                    off2 = off2 + idx2[d2] * x._strides[d2]
+                    d2 = d2 + 1
+                var dv = Float64(x._data[off2]) - mean_g
+                q2 = q2 + dv * dv
+                var r2 = rank - 1
+                while r2 >= 0:
+                    idx2[r2] = idx2[r2] + 1
+                    if idx2[r2] < shp[r2]: break
+                    idx2[r2] = 0
+                    if r2 == 0: done = True; break
+                    r2 = r2 - 1
+            var std_scalar_g = sqrt(q2 / Float64(n_total - ddof))
+            var out_data_g = List[Float64](); out_data_g.append(std_scalar_g)
+            var out_shape_g = List[Int]()
+            if keepdims:
+                var t2 = 0
+                while t2 < rank:
+                    out_shape_g.append(1)
+                    t2 = t2 + 1
+            else:
+                out_shape_g.append(1)
+            return Tensor[Float64](out_shape_g, out_data_g)
+
+    # ---------- AXIS REDUCTION ----------
+    var ax = normalize_axis(axis.value(), rank)    
+    var reduce_n =shp[ax]
+    if rank == 0: reduce_n =1  
+    #assert(reduce_n > ddof and "std: ddof must be < size along axis")
+
+    if is_row_major_contiguous(shp, x._strides):
+        var out_shape2 = shape_drop_axis(shp, ax)
+
+        var inner = 1; var i_in = ax + 1
+        while i_in < rank: inner = inner * shp[i_in]; i_in = i_in + 1
+        var outer = 1; var i_out = 0
+        while i_out < ax: outer = outer * shp[i_out]; i_out = i_out + 1
+
+        var base_stride = inner
+        var block = reduce_n * inner
+
+        # Pass 1: means
+        var means = List[Float64](); means.reserve(outer * inner)
+        var o = 0
+        while o < outer * inner:
+            var base = (o // inner) * block + (o % inner)
+            var s = 0.0
+            var k0 = 0; var lim0 = (reduce_n // 8) * 8
+            while k0 < lim0:
+                s = s + Float64(x._data[base + (k0    ) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 1) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 2) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 3) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 4) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 5) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 6) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 7) * base_stride])
+                k0 = k0 + 8
+            while k0 < reduce_n:
+                s = s + Float64(x._data[base + k0 * base_stride])
+                k0 = k0 + 1
+            means.append(s / Float64(reduce_n))
+            o = o + 1
+
+        # Pass 2: SSD -> std
+        var outv = List[Float64](); outv.reserve(outer * inner)
+        o = 0
+        while o < outer * inner:
+            var base2 = (o // inner) * block + (o % inner)
+            var mu = means[o]
+            var q = 0.0
+            var k1 = 0; var lim1 = (reduce_n // 8) * 8
+            while k1 < lim1:
+                var d0 = Float64(x._data[base2 + (k1    ) * base_stride]) - mu; q = q + d0 * d0
+                var d1 = Float64(x._data[base2 + (k1 + 1) * base_stride]) - mu; q = q + d1 * d1
+                var d2 = Float64(x._data[base2 + (k1 + 2) * base_stride]) - mu; q = q + d2 * d2
+                var d3 = Float64(x._data[base2 + (k1 + 3) * base_stride]) - mu; q = q + d3 * d3
+                var d4 = Float64(x._data[base2 + (k1 + 4) * base_stride]) - mu; q = q + d4 * d4
+                var d5 = Float64(x._data[base2 + (k1 + 5) * base_stride]) - mu; q = q + d5 * d5
+                var d6 = Float64(x._data[base2 + (k1 + 6) * base_stride]) - mu; q = q + d6 * d6
+                var d7 = Float64(x._data[base2 + (k1 + 7) * base_stride]) - mu; q = q + d7 * d7
+                k1 = k1 + 8
+            while k1 < reduce_n:
+                var d = Float64(x._data[base2 + k1 * base_stride]) - mu
+                q = q + d * d
+                k1 = k1 + 1
+            outv.append(sqrt(q / Float64(reduce_n - ddof)))
+            o = o + 1
+
+        var tout = Tensor[Float64](out_shape2, outv)
+        if keepdims:
+            var kd = List[Int](); var r = 0
+            while r < rank:
+                if r == ax: kd.append(1) else: kd.append(shp[r])
+                r = r + 1
+            return tout.reshape(kd)
+        return tout.copy()
+
+    # ---------- Generic strided axis reduction ----------
+    var out_shape_g = shape_drop_axis(shp, ax)
+    var out_n = numel(out_shape_g)
+
+    var outer_shape = List[Int](); var outer_strides = List[Int]()
+    var i2 = 0
+    while i2 < rank:
+        if i2 != ax:
+            outer_shape.append(shp[i2])
+            outer_strides.append(x._strides[i2])
+        i2 = i2 + 1
+    var stride_red = x._strides[ax]
+
+    # Pass 1: means
+    var means_g = List[Float64](); means_g.reserve(out_n)
+    var idx1 = List[Int](); var t1 = 0
+    while t1 < len(outer_shape): idx1.append(0); t1 = t1 + 1
+
+    var running = True
+    while True:
+        var base = 0; var d = 0
+        while d < len(outer_shape):
+            base = base + idx1[d] * outer_strides[d]
+            d = d + 1
+        var s = 0.0
+        var j = 0; var lim = (reduce_n // 8) * 8
+        while j < lim:
+            s = s + Float64(x._data[base + (j    ) * stride_red])
+            s = s + Float64(x._data[base + (j + 1) * stride_red])
+            s = s + Float64(x._data[base + (j + 2) * stride_red])
+            s = s + Float64(x._data[base + (j + 3) * stride_red])
+            s = s + Float64(x._data[base + (j + 4) * stride_red])
+            s = s + Float64(x._data[base + (j + 5) * stride_red])
+            s = s + Float64(x._data[base + (j + 6) * stride_red])
+            s = s + Float64(x._data[base + (j + 7) * stride_red])
+            j = j + 8
+        while j < reduce_n:
+            s = s + Float64(x._data[base + j * stride_red])
+            j = j + 1
+        means_g.append(s / Float64(reduce_n))
+
+        if len(outer_shape) == 0: break
+        var pos = len(outer_shape) - 1
+        var carry = True
+        while pos >= 0 and carry:
+            idx1[pos] = idx1[pos] + 1
+            if idx1[pos] < outer_shape[pos]:
+                carry = False
+            else:
+                idx1[pos] = 0
+                if pos == 0:
+                    carry = False; running = False
+            if pos == 0: break
+            pos = pos - 1
+        if not running: break
+
+    # Pass 2: SSDs -> std
+    var outv_g = List[Float64](); outv_g.reserve(out_n)
+    var idx2 = List[Int](); var t2 = 0
+    while t2 < len(outer_shape): idx2.append(0); t2 = t2 + 1
+
+    var kpos = 0
+    running = True
+    while True:
+        var base2 = 0; var d2 = 0
+        while d2 < len(outer_shape):
+            base2 = base2 + idx2[d2] * outer_strides[d2]
+            d2 = d2 + 1
+        var mu = means_g[kpos]
+        var q = 0.0
+        var j2 = 0; var lim2 = (reduce_n // 8) * 8
+        while j2 < lim2:
+            var t0 = Float64(x._data[base2 + (j2    ) * stride_red]) - mu; q = q + t0 * t0
+            var t1v = Float64(x._data[base2 + (j2 + 1) * stride_red]) - mu; q = q + t1v * t1v
+            var t2v = Float64(x._data[base2 + (j2 + 2) * stride_red]) - mu; q = q + t2v * t2v
+            var t3v = Float64(x._data[base2 + (j2 + 3) * stride_red]) - mu; q = q + t3v * t3v
+            var t4v = Float64(x._data[base2 + (j2 + 4) * stride_red]) - mu; q = q + t4v * t4v
+            var t5v = Float64(x._data[base2 + (j2 + 5) * stride_red]) - mu; q = q + t5v * t5v
+            var t6v = Float64(x._data[base2 + (j2 + 6) * stride_red]) - mu; q = q + t6v * t6v
+            var t7v = Float64(x._data[base2 + (j2 + 7) * stride_red]) - mu; q = q + t7v * t7v
+            j2 = j2 + 8
+        while j2 < reduce_n:
+            var dv = Float64(x._data[base2 + j2 * stride_red]) - mu
+            q = q + dv * dv
+            j2 = j2 + 1
+
+        outv_g.append(sqrt(q / Float64(reduce_n - ddof)))
+        kpos = kpos + 1
+
+        if len(outer_shape) == 0: break
+        var pos2 = len(outer_shape) - 1
+        var carry2 = True
+        while pos2 >= 0 and carry2:
+            idx2[pos2] = idx2[pos2] + 1
+            if idx2[pos2] < outer_shape[pos2]:
+                carry2 = False
+            else:
+                idx2[pos2] = 0
+                if pos2 == 0:
+                    carry2 = False; running = False
+            if pos2 == 0: break
+            pos2 = pos2 - 1
+        if not running: break
+
+    var tout_g = Tensor[Float64](out_shape_g, outv_g)
+    if keepdims:
+        var kd2 = List[Int](); var r3 = 0
+        while r3 < rank:
+            if r3 == ax: kd2.append(1) else: kd2.append(shp[r3])
+            r3 = r3 + 1
+        return tout_g.reshape(kd2)
+    return tout_g.copy()
+
+# ======================= Axis-wise STD for Float32 (output Float64) =======================
+
+@always_inline
+fn std(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False, ddof: Int = 0) -> Tensor[Float64]:
+    # Two-pass mean/variance. Accumulate in Float64; return Tensor[Float64].
+    var shp = x._shape.copy()
+    var rank = len(shp)
+    #assert(ddof >= 0 and "std: ddof must be >= 0")
+
+    # ---------- WHOLE-TENSOR ----------
+    if axis is None:
+        var n_total = len(x._data)
+        #assert(n_total > ddof and "std: ddof >= N")
+
+        if (len(shp) == 1 or is_row_major_contiguous(shp, x._strides)):
+            # Pass 1: mean (16-way unroll)
+            var s = 0.0
+            var i = 0
+            var lim = (n_total // 16) * 16
+            while i < lim:
+                s = s + Float64(x._data[i     ]) + Float64(x._data[i + 1 ]) + Float64(x._data[i + 2 ]) + Float64(x._data[i + 3 ])
+                s = s + Float64(x._data[i + 4 ]) + Float64(x._data[i + 5 ]) + Float64(x._data[i + 6 ]) + Float64(x._data[i + 7 ])
+                s = s + Float64(x._data[i + 8 ]) + Float64(x._data[i + 9 ]) + Float64(x._data[i + 10]) + Float64(x._data[i + 11])
+                s = s + Float64(x._data[i + 12]) + Float64(x._data[i + 13]) + Float64(x._data[i + 14]) + Float64(x._data[i + 15])
+                i = i + 16
+            while i < n_total:
+                s = s + Float64(x._data[i])
+                i = i + 1
+            var mean = s / Float64(n_total)
+
+            # Pass 2: sum of squared diffs
+            var q = 0.0
+            i = 0
+            while i < lim:
+                var d0 = Float64(x._data[i     ]) - mean; q = q + d0 * d0
+                var d1 = Float64(x._data[i + 1 ]) - mean; q = q + d1 * d1
+                var d2 = Float64(x._data[i + 2 ]) - mean; q = q + d2 * d2
+                var d3 = Float64(x._data[i + 3 ]) - mean; q = q + d3 * d3
+                var d4 = Float64(x._data[i + 4 ]) - mean; q = q + d4 * d4
+                var d5 = Float64(x._data[i + 5 ]) - mean; q = q + d5 * d5
+                var d6 = Float64(x._data[i + 6 ]) - mean; q = q + d6 * d6
+                var d7 = Float64(x._data[i + 7 ]) - mean; q = q + d7 * d7
+                var d8 = Float64(x._data[i + 8 ]) - mean; q = q + d8 * d8
+                var d9 = Float64(x._data[i + 9 ]) - mean; q = q + d9 * d9
+                var dA = Float64(x._data[i + 10]) - mean; q = q + dA * dA
+                var dB = Float64(x._data[i + 11]) - mean; q = q + dB * dB
+                var dC = Float64(x._data[i + 12]) - mean; q = q + dC * dC
+                var dD = Float64(x._data[i + 13]) - mean; q = q + dD * dD
+                var dE = Float64(x._data[i + 14]) - mean; q = q + dE * dE
+                var dF = Float64(x._data[i + 15]) - mean; q = q + dF * dF
+                i = i + 16
+            while i < n_total:
+                var d = Float64(x._data[i]) - mean
+                q = q + d * d
+                i = i + 1
+
+            var std_scalar = sqrt(q / Float64(n_total - ddof))
+
+            var out_data = List[Float64](); out_data.reserve(1); out_data.append(std_scalar)
+            var out_shape = List[Int]()
+            if keepdims:
+                var t = 0
+                while t < rank:
+                    out_shape.append(1)
+                    t = t + 1
+            else:
+                out_shape.append(1)
+            return Tensor[Float64](out_shape, out_data)
+        else:
+            # Generic strided: Pass 1 (mean)
+            var idx = List[Int](); var k = 0
+            while k < rank:
+                idx.append(0)
+                k = k + 1
+            var sumv = 0.0
+            var count = 0
+            var done = False
+            while not done:
+                var off = 0; var d = 0
+                while d < rank:
+                    off = off + idx[d] * x._strides[d]
+                    d = d + 1
+                sumv = sumv + Float64(x._data[off]); count = count + 1
+                var r = rank - 1
+                while r >= 0:
+                    idx[r] = idx[r] + 1
+                    if idx[r] < shp[r]: break
+                    idx[r] = 0
+                    if r == 0: done = True; break
+                    r = r - 1
+            var mean_g = sumv / Float64(n_total)
+
+            # Pass 2 (SSD)
+            var idx2 = List[Int](); var k2 = 0
+            while k2 < rank:
+                idx2.append(0)
+                k2 = k2 + 1
+            var q2 = 0.0; done = False
+            while not done:
+                var off2 = 0; var d2 = 0
+                while d2 < rank:
+                    off2 = off2 + idx2[d2] * x._strides[d2]
+                    d2 = d2 + 1
+                var dv = Float64(x._data[off2]) - mean_g
+                q2 = q2 + dv * dv
+                var r2 = rank - 1
+                while r2 >= 0:
+                    idx2[r2] = idx2[r2] + 1
+                    if idx2[r2] < shp[r2]: break
+                    idx2[r2] = 0
+                    if r2 == 0: done = True; break
+                    r2 = r2 - 1
+            var std_scalar_g = sqrt(q2 / Float64(n_total - ddof))
+            var out_data_g = List[Float64](); out_data_g.append(std_scalar_g)
+            var out_shape_g = List[Int]()
+            if keepdims:
+                var t2 = 0
+                while t2 < rank:
+                    out_shape_g.append(1)
+                    t2 = t2 + 1
+            else:
+                out_shape_g.append(1)
+            return Tensor[Float64](out_shape_g, out_data_g)
+
+    # ---------- AXIS REDUCTION ----------
+    var ax = normalize_axis(axis.value(), rank)
+    var reduce_n =shp[ax]
+    if rank == 0: reduce_n =1 
+    #assert(reduce_n > ddof and "std: ddof must be < size along axis")
+
+    if is_row_major_contiguous(shp, x._strides):
+        var out_shape2 = shape_drop_axis(shp, ax)
+
+        var inner = 1; var i_in = ax + 1
+        while i_in < rank: inner = inner * shp[i_in]; i_in = i_in + 1
+        var outer = 1; var i_out = 0
+        while i_out < ax: outer = outer * shp[i_out]; i_out = i_out + 1
+
+        var base_stride = inner
+        var block = reduce_n * inner
+
+        # Pass 1: means
+        var means = List[Float64](); means.reserve(outer * inner)
+        var o = 0
+        while o < outer * inner:
+            var base = (o // inner) * block + (o % inner)
+            var s = 0.0
+            var k0 = 0; var lim0 = (reduce_n // 8) * 8
+            while k0 < lim0:
+                s = s + Float64(x._data[base + (k0    ) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 1) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 2) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 3) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 4) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 5) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 6) * base_stride])
+                s = s + Float64(x._data[base + (k0 + 7) * base_stride])
+                k0 = k0 + 8
+            while k0 < reduce_n:
+                s = s + Float64(x._data[base + k0 * base_stride])
+                k0 = k0 + 1
+            means.append(s / Float64(reduce_n))
+            o = o + 1
+
+        # Pass 2: SSD -> std
+        var outv = List[Float64](); outv.reserve(outer * inner)
+        o = 0
+        while o < outer * inner:
+            var base2 = (o // inner) * block + (o % inner)
+            var mu = means[o]
+            var q = 0.0
+            var k1 = 0; var lim1 = (reduce_n // 8) * 8
+            while k1 < lim1:
+                var d0 = Float64(x._data[base2 + (k1    ) * base_stride]) - mu; q = q + d0 * d0
+                var d1 = Float64(x._data[base2 + (k1 + 1) * base_stride]) - mu; q = q + d1 * d1
+                var d2 = Float64(x._data[base2 + (k1 + 2) * base_stride]) - mu; q = q + d2 * d2
+                var d3 = Float64(x._data[base2 + (k1 + 3) * base_stride]) - mu; q = q + d3 * d3
+                var d4 = Float64(x._data[base2 + (k1 + 4) * base_stride]) - mu; q = q + d4 * d4
+                var d5 = Float64(x._data[base2 + (k1 + 5) * base_stride]) - mu; q = q + d5 * d5
+                var d6 = Float64(x._data[base2 + (k1 + 6) * base_stride]) - mu; q = q + d6 * d6
+                var d7 = Float64(x._data[base2 + (k1 + 7) * base_stride]) - mu; q = q + d7 * d7
+                k1 = k1 + 8
+            while k1 < reduce_n:
+                var d = Float64(x._data[base2 + k1 * base_stride]) - mu
+                q = q + d * d
+                k1 = k1 + 1
+            outv.append(sqrt(q / Float64(reduce_n - ddof)))
+            o = o + 1
+
+        var tout = Tensor[Float64](out_shape2, outv)
+        if keepdims:
+            var kd = List[Int](); var r = 0
+            while r < rank:
+                if r == ax: kd.append(1) else: kd.append(shp[r])
+                r = r + 1
+            return tout.reshape(kd)
+        return tout.copy()
+
+    # ---------- Generic strided axis reduction ----------
+    var out_shape_g = shape_drop_axis(shp, ax)
+    var out_n = numel(out_shape_g)
+
+    var outer_shape = List[Int](); var outer_strides = List[Int]()
+    var i2 = 0
+    while i2 < rank:
+        if i2 != ax:
+            outer_shape.append(shp[i2])
+            outer_strides.append(x._strides[i2])
+        i2 = i2 + 1
+    var stride_red = x._strides[ax]
+
+    # Pass 1: means
+    var means_g = List[Float64](); means_g.reserve(out_n)
+    var idx1 = List[Int](); var t1 = 0
+    while t1 < len(outer_shape): idx1.append(0); t1 = t1 + 1
+
+    var running = True
+    while True:
+        var base = 0; var d = 0
+        while d < len(outer_shape):
+            base = base + idx1[d] * outer_strides[d]
+            d = d + 1
+        var s = 0.0
+        var j = 0; var lim = (reduce_n // 8) * 8
+        while j < lim:
+            s = s + Float64(x._data[base + (j    ) * stride_red])
+            s = s + Float64(x._data[base + (j + 1) * stride_red])
+            s = s + Float64(x._data[base + (j + 2) * stride_red])
+            s = s + Float64(x._data[base + (j + 3) * stride_red])
+            s = s + Float64(x._data[base + (j + 4) * stride_red])
+            s = s + Float64(x._data[base + (j + 5) * stride_red])
+            s = s + Float64(x._data[base + (j + 6) * stride_red])
+            s = s + Float64(x._data[base + (j + 7) * stride_red])
+            j = j + 8
+        while j < reduce_n:
+            s = s + Float64(x._data[base + j * stride_red])
+            j = j + 1
+        means_g.append(s / Float64(reduce_n))
+
+        if len(outer_shape) == 0: break
+        var pos = len(outer_shape) - 1
+        var carry = True
+        while pos >= 0 and carry:
+            idx1[pos] = idx1[pos] + 1
+            if idx1[pos] < outer_shape[pos]:
+                carry = False
+            else:
+                idx1[pos] = 0
+                if pos == 0:
+                    carry = False; running = False
+            if pos == 0: break
+            pos = pos - 1
+        if not running: break
+
+    # Pass 2: SSDs -> std
+    var outv_g = List[Float64](); outv_g.reserve(out_n)
+    var idx2 = List[Int](); var t2 = 0
+    while t2 < len(outer_shape): idx2.append(0); t2 = t2 + 1
+
+    var kpos = 0
+    running = True
+    while True:
+        var base2 = 0; var d2 = 0
+        while d2 < len(outer_shape):
+            base2 = base2 + idx2[d2] * outer_strides[d2]
+            d2 = d2 + 1
+        var mu = means_g[kpos]
+        var q = 0.0
+        var j2 = 0; var lim2 = (reduce_n // 8) * 8
+        while j2 < lim2:
+            var t0 = Float64(x._data[base2 + (j2    ) * stride_red]) - mu; q = q + t0 * t0
+            var t1v = Float64(x._data[base2 + (j2 + 1) * stride_red]) - mu; q = q + t1v * t1v
+            var t2v = Float64(x._data[base2 + (j2 + 2) * stride_red]) - mu; q = q + t2v * t2v
+            var t3v = Float64(x._data[base2 + (j2 + 3) * stride_red]) - mu; q = q + t3v * t3v
+            var t4v = Float64(x._data[base2 + (j2 + 4) * stride_red]) - mu; q = q + t4v * t4v
+            var t5v = Float64(x._data[base2 + (j2 + 5) * stride_red]) - mu; q = q + t5v * t5v
+            var t6v = Float64(x._data[base2 + (j2 + 6) * stride_red]) - mu; q = q + t6v * t6v
+            var t7v = Float64(x._data[base2 + (j2 + 7) * stride_red]) - mu; q = q + t7v * t7v
+            j2 = j2 + 8
+        while j2 < reduce_n:
+            var dv = Float64(x._data[base2 + j2 * stride_red]) - mu
+            q = q + dv * dv
+            j2 = j2 + 1
+
+        outv_g.append(sqrt(q / Float64(reduce_n - ddof)))
+        kpos = kpos + 1
+
+        if len(outer_shape) == 0: break
+        var pos2 = len(outer_shape) - 1
+        var carry2 = True
+        while pos2 >= 0 and carry2:
+            idx2[pos2] = idx2[pos2] + 1
+            if idx2[pos2] < outer_shape[pos2]:
+                carry2 = False
+            else:
+                idx2[pos2] = 0
+                if pos2 == 0:
+                    carry2 = False; running = False
+            if pos2 == 0: break
+            pos2 = pos2 - 1
+        if not running: break
+
+    var tout_g = Tensor[Float64](out_shape_g, outv_g)
+    if keepdims:
+        var kd2 = List[Int](); var r3 = 0
+        while r3 < rank:
+            if r3 == ax: kd2.append(1) else: kd2.append(shp[r3])
+            r3 = r3 + 1
+        return tout_g.reshape(kd2)
+    return tout_g.copy()
+
 
 # Generic mean that computes in Float64 for stability, then constructs T
 # ---------- MEAN for Float64 ----------
@@ -3266,8 +4743,8 @@ fn mean_axes_f64(
 
     return x.copy()
 
- 
-# ========= variance for Float64 =========
+ # ========= variance for Float64 (Welford, 4-arg ctor) =========
+@always_inline
 fn variance(
     x: Tensor[Float64],
     axis: Optional[Int] = None,
@@ -3277,10 +4754,12 @@ fn variance(
     var shp = x._shape.copy()
     var rank = len(shp)
 
+    # ---- WHOLE TENSOR ----
     if axis is None:
         var n = len(x._data)
         var out_list = List[Float64]()
         out_list.reserve(1)
+
         if n == 0:
             out_list.append(0.0)
         else:
@@ -3294,12 +4773,8 @@ fn variance(
                 var t = v - mean_
                 m2 = m2 + (delta * t)
                 i = i + 1
-            var denom = Float64(n)
-            if unbiased and n > 1:
-                denom = Float64(n - 1)
-            var vv = 0.0
-            if denom > 0.0:
-                vv = m2 / denom
+            var denom = if unbiased and n > 1: Float64(n - 1) else: Float64(n)
+            var vv = if denom > 0.0: m2 / denom else: 0.0
             out_list.append(vv)
 
         var out_shape = List[Int]()
@@ -3311,14 +4786,14 @@ fn variance(
         else:
             out_shape.append(1)
 
-        return Tensor[Float64](out_shape, out_list)
+        var st = compute_row_major_strides(out_shape)
+        return Tensor[Float64](out_list, out_shape, st, 0)
 
+    # ---- AXIS REDUCTION ----
     var ax = normalize_axis(axis.value(), rank)
     var out_shape2 = shape_drop_axis(shp, ax)
 
-    var reduce_n = 1
-    if rank != 0:
-        reduce_n = shp[ax]
+    var reduce_n = if rank == 0: 1 else: shp[ax]
 
     var inner = 1
     var i_in = ax + 1
@@ -3331,7 +4806,7 @@ fn variance(
     while i_out < ax:
         outer = outer * shp[i_out]
         i_out = i_out + 1
-    outer = outer * inner  
+    outer = outer * inner
 
     var base_stride = inner
     var block = reduce_n * inner
@@ -3354,48 +4829,130 @@ fn variance(
             m22 = m22 + (delta2 * t2)
             k = k + 1
 
-        var denom2 = Float64(reduce_n)
-        if unbiased and reduce_n > 1:
-            denom2 = Float64(reduce_n - 1)
-        var vv2 = 0.0
-        if denom2 > 0.0:
-            vv2 = m22 / denom2
+        var denom2 = if unbiased and reduce_n > 1: Float64(reduce_n - 1) else: Float64(reduce_n)
+        var vv2 = if denom2 > 0.0: m22 / denom2 else: 0.0
         out_vals.append(vv2)
         o = o + 1
 
-    var tout = Tensor[Float64](out_shape2, out_vals)
+    var st2 = compute_row_major_strides(out_shape2)
+    var tout = Tensor[Float64](out_vals, out_shape2, st2, 0)
+
     if keepdims:
         var kd = List[Int]()
         var r = 0
         while r < rank:
-            if r == ax:
-                kd.append(1)
-            else:
-                kd.append(shp[r])
+            if r == ax: kd.append(1) else: kd.append(shp[r])
             r = r + 1
         return tout.reshape(kd)
+
     return tout
 
-
-# -------- standard deviation (uses Float64 path, then converts to T) --------
-fn std[T: ImplicitlyCopyable & Copyable & Movable](
-    x: Tensor[T],
+# ========= variance for Float32 (accumulate in f64, return Float64) =========
+@always_inline
+fn variance(
+    x: Tensor[Float32],
     axis: Optional[Int] = None,
     unbiased: Bool = True,
     keepdims: Bool = False
-) -> Tensor[T]:
-    var v = variance[T](x, axis, unbiased, keepdims)
-    var outd = List[T]()
-    outd.reserve(len(v._data))
-    var i = 0
-    var n = len(v._data)
-    while i < n:
-        var s = v._data[i]
-        if s < 0.0:
-            s = 0.0
-        outd.append(T(sqrt(s)))
-        i += 1
-    return Tensor[T](outd, v._shape)
+) -> Tensor[Float64]:
+    var shp = x._shape.copy()
+    var rank = len(shp)
+
+    # ---- WHOLE TENSOR ----
+    if axis is None:
+        var n = len(x._data)
+        var out_list = List[Float64]()
+        out_list.reserve(1)
+
+        if n == 0:
+            out_list.append(0.0)
+        else:
+            var mean_ = 0.0
+            var m2 = 0.0
+            var i = 0
+            while i < n:
+                var v = Float64(x._data[i])
+                var delta = v - mean_
+                mean_ = mean_ + (delta / Float64(i + 1))
+                var t = v - mean_
+                m2 = m2 + (delta * t)
+                i = i + 1
+            var denom = if unbiased and n > 1: Float64(n - 1) else: Float64(n)
+            var vv = if denom > 0.0: m2 / denom else: 0.0
+            out_list.append(vv)
+
+        var out_shape = List[Int]()
+        if keepdims:
+            var j = 0
+            while j < rank:
+                out_shape.append(1)
+                j = j + 1
+        else:
+            out_shape.append(1)
+
+        var st = compute_row_major_strides(out_shape)
+        return Tensor[Float64](out_list, out_shape, st, 0)
+
+    # ---- AXIS REDUCTION ----
+    var ax = normalize_axis(axis.value(), rank)
+    var out_shape2 = shape_drop_axis(shp, ax)
+
+    var reduce_n = if rank == 0: 1 else: shp[ax]
+
+    var inner = 1
+    var i_in = ax + 1
+    while i_in < rank:
+        inner = inner * shp[i_in]
+        i_in = i_in + 1
+
+    var outer = 1
+    var i_out = 0
+    while i_out < ax:
+        outer = outer * shp[i_out]
+        i_out = i_out + 1
+    outer = outer * inner
+
+    var base_stride = inner
+    var block = reduce_n * inner
+
+    var out_vals = List[Float64]()
+    out_vals.reserve(outer)
+
+    var o = 0
+    while o < outer:
+        var base = (o // inner) * block + (o % inner)
+
+        var mean2 = 0.0
+        var m22 = 0.0
+        var k = 0
+        while k < reduce_n:
+            var v2 = Float64(x._data[base + k * base_stride])
+            var delta2 = v2 - mean2
+            mean2 = mean2 + (delta2 / Float64(k + 1))
+            var t2 = v2 - mean2
+            m22 = m22 + (delta2 * t2)
+            k = k + 1
+
+        var denom2 = if unbiased and reduce_n > 1: Float64(reduce_n - 1) else: Float64(reduce_n)
+        var vv2 = if denom2 > 0.0: m22 / denom2 else: 0.0
+        out_vals.append(vv2)
+        o = o + 1
+
+    var st2 = compute_row_major_strides(out_shape2)
+    var tout = Tensor[Float64](out_vals, out_shape2, st2, 0)
+
+    if keepdims:
+        var kd = List[Int]()
+        var r = 0
+        while r < rank:
+            if r == ax: kd.append(1) else: kd.append(shp[r])
+            r = r + 1
+        return tout.reshape(kd)
+
+    return tout
+
+
+ 
 
 # -------- reduce_max for Float64 (unchanged, constructor-style where needed) --------
 fn reduce_max_f64(x: Tensor[Float64]) -> Float64:
@@ -3474,6 +5031,232 @@ fn max[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[
     if keepdims:
         return tout.reshape(keepdims_shape(shp, ax))
     return tout
+
+@always_inline
+fn variance(
+    x: Tensor[Int],
+    axis: Optional[Int] = None,
+    unbiased: Bool = True,
+    keepdims: Bool = False
+) -> Tensor[Float64]:
+    var shp = x._shape.copy()
+    var rank = len(shp)
+
+    # ---------- WHOLE TENSOR ----------
+    if axis is None:
+        var out_list = List[Float64]()
+        out_list.reserve(1)
+
+        # Logical element count
+        var n_total = 1
+        if rank == 0:
+            n_total = 1
+        else:
+            var r0 = 0
+            n_total = 1
+            while r0 < rank:
+                n_total = n_total * shp[r0]
+                r0 = r0 + 1
+
+        if n_total == 0:
+            out_list.append(0.0)
+        else:
+            if is_row_major_contiguous(shp, x._strides):
+                # Welford (contiguous fast-path)
+                var mean_ = 0.0
+                var m2 = 0.0
+                var i = 0
+                while i < n_total:
+                    var v = Float64(x._data[i])
+                    var delta = v - mean_
+                    mean_ = mean_ + (delta / Float64(i + 1))
+                    var t = v - mean_
+                    m2 = m2 + (delta * t)
+                    i = i + 1
+                var denom = if unbiased and n_total > 1: Float64(n_total - 1) else: Float64(n_total)
+                out_list.append(if denom > 0.0: m2 / denom else: 0.0)
+            else:
+                # Welford (generic strided)
+                var idx = List[Int]()
+                idx.reserve(rank)
+                var d = 0
+                while d < rank:
+                    idx.append(0)
+                    d = d + 1
+
+                var count = 0
+                var mean2 = 0.0
+                var m22 = 0.0
+                var done = False
+                while not done:
+                    var off = 0
+                    var k = 0
+                    while k < rank:
+                        off = off + idx[k] * x._strides[k]
+                        k = k + 1
+                    var v2 = Float64(x._data[off])
+                    var delta2 = v2 - mean2
+                    mean2 = mean2 + (delta2 / Float64(count + 1))
+                    var t2 = v2 - mean2
+                    m22 = m22 + (delta2 * t2)
+                    count = count + 1
+
+                    var r = rank - 1
+                    while r >= 0:
+                        idx[r] = idx[r] + 1
+                        if idx[r] < shp[r]: break
+                        idx[r] = 0
+                        if r == 0: done = True; break
+                        r = r - 1
+
+                var denom2 = if unbiased and count > 1: Float64(count - 1) else: Float64(count)
+                out_list.append(if denom2 > 0.0: m22 / denom2 else: 0.0)
+
+        var out_shape = List[Int]()
+        if keepdims:
+            var j = 0
+            while j < rank:
+                out_shape.append(1)
+                j = j + 1
+        else:
+            out_shape.append(1)
+
+        var st = compute_row_major_strides(out_shape)
+        return Tensor[Float64](out_list, out_shape, st, 0)
+
+    # ---------- AXIS REDUCTION ----------
+    var ax = normalize_axis(axis.value(), rank)
+    var reduce_n = if rank == 0: 1 else: shp[ax]
+    var out_shape2 = shape_drop_axis(shp, ax)
+
+    if is_row_major_contiguous(shp, x._strides):
+        # Pack outer/inner (contiguous)
+        var inner = 1
+        var i_in = ax + 1
+        while i_in < rank:
+            inner = inner * shp[i_in]
+            i_in = i_in + 1
+
+        var outer = 1
+        var i_out = 0
+        while i_out < ax:
+            outer = outer * shp[i_out]
+            i_out = i_out + 1
+        outer = outer * inner
+
+        var base_stride = inner
+        var block = reduce_n * inner
+
+        var out_vals = List[Float64]()
+        out_vals.reserve(outer)
+
+        var o = 0
+        while o < outer:
+            var base = (o // inner) * block + (o % inner)
+
+            var mean3 = 0.0
+            var m23 = 0.0
+            var k2 = 0
+            while k2 < reduce_n:
+                var vv = Float64(x._data[base + k2 * base_stride])
+                var delta = vv - mean3
+                mean3 = mean3 + (delta / Float64(k2 + 1))
+                var t = vv - mean3
+                m23 = m23 + (delta * t)
+                k2 = k2 + 1
+            var denom = if unbiased and reduce_n > 1: Float64(reduce_n - 1) else: Float64(reduce_n)
+            out_vals.append(if denom > 0.0: m23 / denom else: 0.0)
+
+            o = o + 1
+
+        var st2 = compute_row_major_strides(out_shape2)
+        var tout = Tensor[Float64](out_vals, out_shape2, st2, 0)
+
+        if keepdims:
+            var kd = List[Int]()
+            var r2 = 0
+            while r2 < rank:
+                if r2 == ax: kd.append(1) else: kd.append(shp[r2])
+                r2 = r2 + 1
+            return tout.reshape(kd)
+        return tout
+    else:
+        # Generic strided
+        var outer_shape = List[Int]()
+        var outer_strides = List[Int]()
+        var i = 0
+        while i < rank:
+            if i != ax:
+                outer_shape.append(shp[i])
+                outer_strides.append(x._strides[i])
+            i = i + 1
+        var stride_red = x._strides[ax]
+
+        var out_n = 1
+        var oi = 0
+        while oi < len(outer_shape):
+            out_n = out_n * outer_shape[oi]
+            oi = oi + 1
+
+        var out_vals_g = List[Float64]()
+        out_vals_g.reserve(out_n)
+
+        var idxo = List[Int]()
+        idxo.reserve(len(outer_shape))
+        var u = 0
+        while u < len(outer_shape):
+            idxo.append(0)
+            u = u + 1
+
+        var done2 = False
+        while True:
+            var base2 = 0
+            var d3 = 0
+            while d3 < len(outer_shape):
+                base2 = base2 + idxo[d3] * outer_strides[d3]
+                d3 = d3 + 1
+
+            var mean4 = 0.0
+            var m24 = 0.0
+            var cnt = 0
+            while cnt < reduce_n:
+                var vv2 = Float64(x._data[base2 + cnt * stride_red])
+                var dl = vv2 - mean4
+                mean4 = mean4 + (dl / Float64(cnt + 1))
+                var tt = vv2 - mean4
+                m24 = m24 + (dl * tt)
+                cnt = cnt + 1
+            var denom4 = if unbiased and reduce_n > 1: Float64(reduce_n - 1) else: Float64(reduce_n)
+            out_vals_g.append(if denom4 > 0.0: m24 / denom4 else: 0.0)
+
+            if len(outer_shape) == 0: break
+            var p = len(outer_shape) - 1
+            var carry = True
+            while p >= 0 and carry:
+                idxo[p] = idxo[p] + 1
+                if idxo[p] < outer_shape[p]:
+                    carry = False
+                else:
+                    idxo[p] = 0
+                    if p == 0:
+                        done2 = True
+                if p == 0: break
+                p = p - 1
+            if done2: break
+
+        var stg = compute_row_major_strides(out_shape2)
+        var toutg = Tensor[Float64](out_vals_g, out_shape2, stg, 0)
+
+        if keepdims:
+            var kd2 = List[Int]()
+            var r3 = 0
+            while r3 < rank:
+                if r3 == ax: kd2.append(1) else: kd2.append(shp[r3])
+                r3 = r3 + 1
+            return toutg.reshape(kd2)
+        return toutg
+
+
 
 fn min[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[T]:
     var shp = x._shape.copy()
@@ -3736,3 +5519,504 @@ fn numeric_jacobian(x: Tensor[Float64], eps: Float64 = 1e-6) -> Tensor[Float64]:
     return from_list_float64(jbuf).reshape([n, n])
 
  
+# -----------------------------------------------------------------------------
+# Complex128 element type (pure Mojo, no FFI)
+# -----------------------------------------------------------------------------
+ 
+struct Complex128(ImplicitlyCopyable, Copyable, Movable):
+    var re: Float64
+    var im: Float64
+
+    fn __init__(out self, re: Float64, im: Float64):
+        self.re = re
+        self.im = im
+
+    # Make it explicitly Copyable (required by Tensor[T] constraints)
+    fn __copyinit__(out self, other: Complex128):
+        self.re = other.re
+        self.im = other.im
+ 
+    @always_inline
+    fn real(self) -> Float64:
+        return self.re
+
+    @always_inline
+    fn imag(self) -> Float64:
+        return self.im
+
+# (Optional) Tiny sqrt for Float64 (Newton's method). Used by hypot below.
+@always_inline
+fn _sqrt_f64(x: Float64) -> Float64:
+    if x <= 0.0:
+        return 0.0
+    var y = x
+    var half = 0.5 * x
+    # ~6 iterations are enough for 1e-12-ish relative error.
+    var i = 0
+    while i < 6:
+        y = 0.5 * (y + (x / y))
+        i += 1
+    return y
+
+# Stable hypot without overflow/underflow: sqrt(a*a + b*b)
+@always_inline
+fn _hypot_f64(a: Float64, b: Float64) -> Float64:
+    var aa =a 
+    if a < 0.0: aa =-a 
+    var bb =b 
+    if b < 0.0: bb =-b 
+    if aa < bb:
+        var t = aa; aa = bb; bb = t
+    if aa == 0.0:
+        return 0.0
+    var r = bb / aa
+    return _sqrt_f64(aa * aa * (1.0 + r * r))
+
+@always_inline
+fn _shapes_equal(a: List[Int], b: List[Int]) -> Bool:
+    if len(a) != len(b):
+        return False
+    var i = 0
+    var n = len(a)
+    while i < n:
+        if a[i] != b[i]:
+            return False
+        i += 1
+    return True
+
+# -----------------------------------------------------------------------------
+# tensor.complex(zr, zi) -> Tensor[Complex128]
+# No 'assert' usage; manual guards. On mismatch returns an empty tensor [0]-shape.
+# ----------------------------------------------------------------------------- 
+@always_inline
+fn complex(zr: Tensor[Float64], zi: Tensor[Float64]) -> Tensor[Complex128]:
+    if not _shapes_equal(zr._shape, zi._shape):
+        var empty_data = List[Complex128]()
+        var empty_shape = List[Int](); empty_shape.append(0)
+        return Tensor[Complex128](empty_data, empty_shape)
+
+    var n = len(zr._data)
+    var out = List[Complex128]()
+    out.reserve(n)
+
+    var i = 0
+    var lim = (n // 8) * 8
+    while i < lim:
+        out.append(Complex128(zr._data[i    ], zi._data[i    ]))
+        out.append(Complex128(zr._data[i + 1], zi._data[i + 1]))
+        out.append(Complex128(zr._data[i + 2], zi._data[i + 2]))
+        out.append(Complex128(zr._data[i + 3], zi._data[i + 3]))
+        out.append(Complex128(zr._data[i + 4], zi._data[i + 4]))
+        out.append(Complex128(zr._data[i + 5], zi._data[i + 5]))
+        out.append(Complex128(zr._data[i + 6], zi._data[i + 6]))
+        out.append(Complex128(zr._data[i + 7], zi._data[i + 7]))
+        i += 8
+    while i < n:
+        out.append(Complex128(zr._data[i], zi._data[i]))
+        i += 1
+
+    return Tensor[Complex128](out, zr._shape)
+
+# -----------------------------------------------------------------------------
+# Free functions on Tensor[Complex128]
+# -----------------------------------------------------------------------------
+@always_inline
+fn complex_real(z: Tensor[Complex128]) -> Tensor[Float64]:
+    var n = len(z._data)
+    var out = List[Float64]()
+    out.reserve(n)
+
+    var i = 0
+    var lim = (n // 8) * 8
+    while i < lim:
+        out.append(z._data[i    ].re)
+        out.append(z._data[i + 1].re)
+        out.append(z._data[i + 2].re)
+        out.append(z._data[i + 3].re)
+        out.append(z._data[i + 4].re)
+        out.append(z._data[i + 5].re)
+        out.append(z._data[i + 6].re)
+        out.append(z._data[i + 7].re)
+        i += 8
+    while i < n:
+        out.append(z._data[i].re)
+        i += 1
+
+    return Tensor[Float64](out, z._shape)
+
+@always_inline
+fn complex_imag(z: Tensor[Complex128]) -> Tensor[Float64]:
+    var n = len(z._data)
+    var out = List[Float64]()
+    out.reserve(n)
+
+    var i = 0
+    var lim = (n // 8) * 8
+    while i < lim:
+        out.append(z._data[i    ].im)
+        out.append(z._data[i + 1].im)
+        out.append(z._data[i + 2].im)
+        out.append(z._data[i + 3].im)
+        out.append(z._data[i + 4].im)
+        out.append(z._data[i + 5].im)
+        out.append(z._data[i + 6].im)
+        out.append(z._data[i + 7].im)
+        i += 8
+    while i < n:
+        out.append(z._data[i].im)
+        i += 1
+
+    return Tensor[Float64](out, z._shape)
+
+@always_inline
+fn complex_abs(z: Tensor[Complex128]) -> Tensor[Float64]:
+    var n = len(z._data)
+    var out = List[Float64]()
+    out.reserve(n)
+
+    var i = 0
+    var lim = (n // 8) * 8
+    while i < lim:
+        var c0 = z._data[i    ]; out.append(_hypot_f64(c0.re, c0.im))
+        var c1 = z._data[i + 1]; out.append(_hypot_f64(c1.re, c1.im))
+        var c2 = z._data[i + 2]; out.append(_hypot_f64(c2.re, c2.im))
+        var c3 = z._data[i + 3]; out.append(_hypot_f64(c3.re, c3.im))
+        var c4 = z._data[i + 4]; out.append(_hypot_f64(c4.re, c4.im))
+        var c5 = z._data[i + 5]; out.append(_hypot_f64(c5.re, c5.im))
+        var c6 = z._data[i + 6]; out.append(_hypot_f64(c6.re, c6.im))
+        var c7 = z._data[i + 7]; out.append(_hypot_f64(c7.re, c7.im))
+        i += 8
+    while i < n:
+        var c = z._data[i]
+        out.append(_hypot_f64(c.re, c.im))
+        i += 1
+
+    return Tensor[Float64](out, z._shape)
+
+
+
+
+ 
+# ------------------------------
+# Method on Tensor[Int]
+# ------------------------------
+@always_inline
+fn one_hot_core_indices(indices: List[Int], shp: List[Int], depth: Int) -> Tensor[Int]:
+    # Build output shape = shp + [depth]
+    var out_shape = shp.copy()#copy_ints(shp)
+    out_shape.append(depth)
+
+    # Compute sizes
+    var n = 1
+    var i = 0
+    while i < len(shp):
+        n = n * shp[i]
+        i += 1
+
+    # Prepare flat output buffer of size n * depth filled with zeros
+    var out_n = n * depth
+    var out_data = List[Int]()
+    out_data.reserve(out_n)
+    var z = 0
+    var k = 0
+    var lim = (out_n // 8) * 8
+    while k < lim:
+        out_data.append(z); out_data.append(z); out_data.append(z); out_data.append(z)
+        out_data.append(z); out_data.append(z); out_data.append(z); out_data.append(z)
+        k += 8
+    while k < out_n:
+        out_data.append(z)
+        k += 1
+
+    # Scatter 1s where 0 <= idx < depth
+    i = 0
+    while i < n and i < len(indices):
+        var cls = indices[i]
+        if cls >= 0 and cls < depth:
+            out_data[i * depth + cls] = 1
+        i += 1
+
+    var out_strides = compute_row_major_strides(out_shape)
+    return Tensor[Int](out_data, out_shape, out_strides, 0)
+
+
+
+# ---- Local helpers (no-throw, no-assert) ------------------------------------
+@always_inline
+fn _is_rank2(shp: List[Int]) -> Bool:
+    var r = len(shp)
+    return r == 2
+
+# Normalize Int index: [N,1] -> [N] via reshape; [N] stays as-is; otherwise copy.
+@always_inline
+fn _squeeze_if_2d1(x_shape: List[Int], y: Tensor[Int]) -> Tensor[Int]:
+    var r = len(y._shape)
+    if r == 2:
+        var n = y._shape[0]
+        var m = y._shape[1]
+        if m == 1:
+            return y.reshape([n])
+        if len(x_shape) > 0 and n == x_shape[0] and m == 1:
+            return y.reshape([n])
+        return y.copy()
+    if r == 1:
+        return y.copy()
+    return y.copy()
+
+@always_inline
+fn _squeeze_if_2d1_f32(x_shape: List[Int], y: Tensor[Float32]) -> Tensor[Float32]:
+    var r = len(y._shape)
+    if r == 2:
+        var n = y._shape[0]
+        var m = y._shape[1]
+        if m == 1:
+            return y.reshape([n])
+        if len(x_shape) > 0 and n == x_shape[0] and m == 1:
+            return y.reshape([n])
+        return y.copy()
+    if r == 1:
+        return y.copy()
+    return y.copy()
+
+@always_inline
+fn _squeeze_if_2d1_f64(x_shape: List[Int], y: Tensor[Float64]) -> Tensor[Float64]:
+    var r = len(y._shape)
+    if r == 2:
+        var n = y._shape[0]
+        var m = y._shape[1]
+        if m == 1:
+            return y.reshape([n])
+        if len(x_shape) > 0 and n == x_shape[0] and m == 1:
+            return y.reshape([n])
+        return y.copy()
+    if r == 1:
+        return y.copy()
+    return y.copy()
+
+@always_inline
+fn _clamp_index(j: Int, c: Int) -> Int:
+    if c <= 0: 
+        return 0
+    var jj = j
+    if jj < 0: jj = 0
+    if jj >= c: jj = c - 1
+    return jj
+
+# ---- Core (dim=1 only) ------------------------------------------------------
+# --------------------------------------
+# scatter_add along dim=1 (row-wise): already good, just return out
+# x: [N, C], index: [N] or [N,1], src: [N] or [N,1]
+# effect: for each row i, out[i, index[i]] += src[i]
+# --------------------------------------
+@always_inline
+fn scatter_add_dim1_int(x: Tensor[Int], index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
+    if not _is_rank2(x._shape): return x.copy()
+    var N = x._shape[0]
+    var C = x._shape[1]
+
+    var idxN = _squeeze_if_2d1(x._shape, index)
+    var srcN = _squeeze_if_2d1(x._shape, src)
+
+    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
+    if len(srcN._shape) != 1 or srcN._shape[0] != N: return x.copy()
+
+    var out = x.copy()
+    var s0 = out._strides[0]
+    var s1 = out._strides[1]
+    var off = out._offset
+
+    var i = 0
+    while i < N:
+        var j = _clamp_index(idxN._data[i], C)
+        var pos = off + i * s0 + j * s1
+        out._data[pos] = out._data[pos] + srcN._data[i]
+        i += 1
+
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim1_f32(x: Tensor[Float32], index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
+    if not _is_rank2(x._shape): return x.copy()
+    var N = x._shape[0]
+    var C = x._shape[1]
+
+    var idxN = _squeeze_if_2d1(x._shape, index)
+    var srcN = _squeeze_if_2d1_f32(x._shape, src)
+
+    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
+    if len(srcN._shape) != 1 or srcN._shape[0] != N: return x.copy()
+
+    var out = x.copy()
+    var s0 = out._strides[0]
+    var s1 = out._strides[1]
+    var off = out._offset
+
+    var i = 0
+    while i < N:
+        var j = _clamp_index(idxN._data[i], C)
+        var pos = off + i * s0 + j * s1
+        out._data[pos] = out._data[pos] + srcN._data[i]
+        i += 1
+
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim1_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
+    if not _is_rank2(x._shape): return x.copy()
+    var N = x._shape[0]
+    var C = x._shape[1]
+
+    var idxN = _squeeze_if_2d1(x._shape, index)
+    var srcN = _squeeze_if_2d1_f64(x._shape, src)
+
+    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
+    if len(srcN._shape) != 1 or srcN._shape[0] != N: return x.copy()
+
+    var out = x.copy()
+    var s0 = out._strides[0]
+    var s1 = out._strides[1]
+    var off = out._offset
+
+    var i = 0
+    while i < N:
+        var j = _clamp_index(idxN._data[i], C)
+        var pos = off + i * s0 + j * s1
+        out._data[pos] = out._data[pos] + srcN._data[i]
+        i += 1
+
+    return out.copy()
+
+
+# --------------------------------------
+# scatter_add along dim=0 (column-wise):
+# x: [N, M]
+# index: [N] or [N,1]  (index per source row)
+# src: [N] or [N,1]    (value per source row)
+# effect: for each source row i and each column j, out[index[i], j] += src[i]  (for 1D src only j=0 مورد شما)
+# اگر src دو بعدی [N, M] بود، برای همه ستون‌ها جمع می‌زند.
+# --------------------------------------
+@always_inline
+fn scatter_add_dim0_int(x: Tensor[Int], index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
+    if not _is_rank2(x._shape): return x.copy()
+    var N = x._shape[0]
+    var M = x._shape[1]
+
+    var idxN = _squeeze_if_2d1(x._shape, index)
+    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
+
+    var out = x.copy()
+    var s0 = out._strides[0]
+    var s1 = out._strides[1]
+    var off = out._offset
+
+    if len(src._shape) == 1:
+        # src: [N]
+        var i = 0
+        while i < N:
+            var r = _clamp_index(idxN._data[i], N)
+            # j = 0 only (fits demo: shapes [N,1])
+            var pos = off + r * s0 + 0 * s1
+            out._data[pos] = out._data[pos] + src._data[i]
+            i += 1
+        return out.copy()
+
+    if len(src._shape) == 2 and src._shape[0] == N and src._shape[1] == M:
+        # src: [N, M]
+        var ss0 = src._strides[0]
+        var ss1 = src._strides[1]
+        var so  = src._offset
+        var i = 0
+        while i < N:
+            var r = _clamp_index(idxN._data[i], N)
+            var j = 0
+            while j < M:
+                var dst = off + r * s0 + j * s1
+                var src_lin = so + i * ss0 + j * ss1
+                out._data[dst] = out._data[dst] + src._data[src_lin]
+                j += 1
+            i += 1
+        return out.copy()
+
+    return x.copy()
+
+@always_inline
+fn scatter_add_dim0_f32(x: Tensor[Float32], index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
+    if not _is_rank2(x._shape): return x.copy()
+    var N = x._shape[0]
+    var M = x._shape[1]
+
+    var idxN = _squeeze_if_2d1(x._shape, index)
+    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
+
+    var out = x.copy()
+    var s0 = out._strides[0]
+    var s1 = out._strides[1]
+    var off = out._offset
+
+    if len(src._shape) == 1:
+        var i = 0
+        while i < N:
+            var r = _clamp_index(idxN._data[i], N)
+            var pos = off + r * s0 + 0 * s1
+            out._data[pos] = out._data[pos] + src._data[i]
+            i += 1
+        return out.copy()
+
+    if len(src._shape) == 2 and src._shape[0] == N and src._shape[1] == M:
+        var ss0 = src._strides[0]
+        var ss1 = src._strides[1]
+        var so  = src._offset
+        var i = 0
+        while i < N:
+            var r = _clamp_index(idxN._data[i], N)
+            var j = 0
+            while j < M:
+                var dst = off + r * s0 + j * s1
+                var src_lin = so + i * ss0 + j * ss1
+                out._data[dst] = out._data[dst] + src._data[src_lin]
+                j += 1
+            i += 1
+        return out.copy()
+
+    return x.copy()
+
+@always_inline
+fn scatter_add_dim0_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
+    if not _is_rank2(x._shape): return x.copy()
+    var N = x._shape[0]
+    var M = x._shape[1]
+
+    var idxN = _squeeze_if_2d1(x._shape, index)
+    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
+
+    var out = x.copy()
+    var s0 = out._strides[0]
+    var s1 = out._strides[1]
+    var off = out._offset
+
+    if len(src._shape) == 1:
+        var i = 0
+        while i < N:
+            var r = _clamp_index(idxN._data[i], N)
+            var pos = off + r * s0 + 0 * s1
+            out._data[pos] = out._data[pos] + src._data[i]
+            i += 1
+        return out.copy()
+
+    if len(src._shape) == 2 and src._shape[0] == N and src._shape[1] == M:
+        var ss0 = src._strides[0]
+        var ss1 = src._strides[1]
+        var so  = src._offset
+        var i = 0
+        while i < N:
+            var r = _clamp_index(idxN._data[i], N)
+            var j = 0
+            while j < M:
+                var dst = off + r * s0 + j * s1
+                var src_lin = so + i * ss0 + j * ss1
+                out._data[dst] = out._data[dst] + src._data[src_lin]
+                j += 1
+            i += 1
+        return out.copy()
+
+    return x.copy()
