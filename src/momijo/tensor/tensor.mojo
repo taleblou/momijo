@@ -135,7 +135,7 @@ fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Op
     else:
         step = c_opt.value()
         if step == 0:
-            step = 1   # یا ارور بده؛ صفر مجاز نیست
+            step = 1  
 
     var start: Int
     var stop:  Int
@@ -908,22 +908,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
 
 
-    # ---------------- introspection ----------------
-    fn shape(self) -> List[Int]:
-        return self._shape.copy()
-
-    fn strides(self) -> List[Int]:
-        return self._strides.copy()
-
-    fn offset(self) -> Int:
-        return self._offset
-
-    fn rank(self) -> Int:
-        return len(self._shape)
-
-    fn size(self) -> Int:
-        return numel_shape(self._shape)
-
+   
     # ---------------- view maker (zero-copy) ----------------
     @always_inline
     fn _make_view(self, new_shape: List[Int], new_strides: List[Int], new_off: Int) -> Tensor[T]:
@@ -2621,7 +2606,22 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         if s.start is None and s.end is None and s.step is None:
             trip = (0, n, 1)
         return trip
-    # ---------- Introspection ---------- 
+     # ---------------- introspection ----------------
+    fn shape(self) -> List[Int]:
+        return self._shape.copy()
+
+    fn strides(self) -> List[Int]:
+        return self._strides.copy()
+
+    fn offset(self) -> Int:
+        return self._offset
+
+    fn rank(self) -> Int:
+        return len(self._shape)
+
+    fn size(self) -> Int:
+        return numel_shape(self._shape)
+
 
     fn len(self) -> Int:
         return numel(self._shape)
@@ -2629,9 +2629,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # rank (number of dimensions)
     fn ndim(self) -> Int:
         return len(self._shape)
-
-    fn strides(self) -> List[Int]:
-        return self._strides.copy()
+ 
 
     fn rank(self) -> Int:
         return len(self._shape)
@@ -4731,20 +4729,20 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn sub   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return sub_t(self, to_float32(other))     # a - b (f32,int→f32)
 
     fn mul   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return mul_t(to_float64(self), other)     # a * b (f32,f64→f64)
-    fn mul   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return mul_t(self, other)                 # a * b (f32,f32→f32)
-    fn mul   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return mul_t(self, to_float32(other))     # a * b (f32,int→f32)
+    fn mul   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return mul_t(self, other)                 # a * b (f32,f32→f32)
+    fn mul   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return mul_t(self, to_float32(other))     # a * b (f32,int→f32)
 
     fn divide(self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), other)     # a / b (f32,f64→f64)
-    fn divide(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return div_t(self, other)                 # a / b (f32,f32→f32)
-    fn divide(self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return div_t(self, to_float32(other))     # a / b (f32,int→f32)
+    fn divide(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return div_t(self, other)                 # a / b (f32,f32→f32)
+    fn divide(self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return div_t(self, to_float32(other))     # a / b (f32,int→f32)
 
     fn mod   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), other)     # a % b (f32,f64→f64)
-    fn mod   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return mod_t(self, other)                 # a % b (f32,f32→f32)
-    fn mod   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return mod_t(self, to_float32(other))     # a % b (f32,int→f32)
+    fn mod   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return mod_t(self, other)                 # a % b (f32,f32→f32)
+    fn mod   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return mod_t(self, to_float32(other))     # a % b (f32,int→f32)
 
     fn pow   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), other)     # a ** b (f32,f64→f64)
-    fn pow   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return pow_t(self, other)                 # a ** b (f32,f32→f32)
-    fn pow   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return pow_t(self, to_float32(other))     # a ** b (f32,int→f32)
+    fn pow   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return pow_t(self, other)                 # a ** b (f32,f32→f32)
+    fn pow   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return pow_t(self, to_float32(other))     # a ** b (f32,int→f32)
 
 
     # =========================
@@ -4757,23 +4755,23 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn add   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return add_t(self, other)                     # a + b (int,int→int)
 
     fn sub   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return sub_t(to_float64(self), other)         # a - b (int,f64→f64)
-    fn sub   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return sub_t(to_float32(self), other)         # a - b (int,f32→f32)
-    fn sub   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return sub_t(self, other)                     # a - b (int,int→int)
+    fn sub   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return sub_t(to_float32(self), other)         # a - b (int,f32→f32)
+    fn sub   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return sub_t(self, other)                     # a - b (int,int→int)
 
     fn mul   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return mul_t(to_float64(self), other)         # a * b (int,f64→f64)
-    fn mul   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return mul_t(to_float32(self), other)         # a * b (int,f32→f32)
-    fn mul   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return mul_t(self, other)                     # a * b (int,int→int)
+    fn mul   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return mul_t(to_float32(self), other)         # a * b (int,f32→f32)
+    fn mul   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return mul_t(self, other)                     # a * b (int,int→int)
 
     fn divide(self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), other)         # a / b (int,f64→f64)
-    fn divide(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return div_t(to_float32(self), other)         # a / b (int,f32→f32)
+    fn divide(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return div_t(to_float32(self), other)         # a / b (int,f32→f32)
     fn divide(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return div_t(self, other)                     # a / b (int,int→int)
 
     fn mod   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), other)         # a % b (int,f64→f64)
-    fn mod   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return mod_t(to_float32(self), other)         # a % b (int,f32→f32)
+    fn mod   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return mod_t(to_float32(self), other)         # a % b (int,f32→f32)
     fn mod   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return mod_t(self, other)                     # a % b (int,int→int)
 
     fn pow   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), other)         # a ** b (int,f64→f64)
-    fn pow   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return pow_t(to_float32(self), other)         # a ** b (int,f32→f32)
+    fn pow   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return pow_t(to_float32(self), other)         # a ** b (int,f32→f32)
     fn pow   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return pow_t(self, other)                     # a ** b (int,int→int)
 
     # =========================
@@ -5223,7 +5221,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var flat = self.flatten()
         var shp = copy_list_int(self._shape)
         var strides = compute_row_major_strides(shp)
-        return Tensor[Float64](flat._data, shp, strides) 
+        return Tensor[Float64](flat._data, shp, strides, 0)
 
     fn contiguous(self: Tensor[Float32]) -> Tensor[Float32]:
         if is_row_major_contiguous(self._shape, self._strides):
@@ -5231,7 +5229,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var flat = self.flatten()
         var shp = copy_list_int(self._shape)
         var strides = compute_row_major_strides(shp)
-        return Tensor[Float32](flat._data, shp, strides) 
+        return Tensor[Float32](flat._data, shp, strides, 0)
 
     fn contiguous(self: Tensor[Int]) -> Tensor[Int]:
         if is_row_major_contiguous(self._shape, self._strides):
@@ -5239,7 +5237,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var flat = self.flatten()
         var shp = copy_list_int(self._shape)
         var strides = compute_row_major_strides(shp)
-        return Tensor[Int](flat._data, shp, strides)
+        return Tensor[Int](flat._data, shp, strides, 0)
 
 
 
