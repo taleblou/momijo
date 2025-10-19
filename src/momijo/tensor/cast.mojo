@@ -5229,22 +5229,11 @@ fn val_f64(xs: List[Float64], i: Int) -> Float64:
 @always_inline
 fn val_f64(xs: List[Int], i: Int) -> Float64:
     return Float64(xs[i])
+
  
-@always_inline 
-fn cast_from_f64[Int](x: Float64) -> Int:      
-    return Int(x)
-@always_inline 
-fn cast_from_f64[UInt](x: Float64) -> UInt:    
-    return UInt(x)
-@always_inline 
-fn cast_from_f64[Bool](x: Float64) -> Bool:    
-    return x != 0.0
-@always_inline 
-fn cast_from_f64[Float32](x: Float64) -> Float32: 
-    return Float32(x)
-@always_inline 
-fn cast_from_f64[Float64](x: Float64) -> Float64: 
-    return x
+
+
+ 
 @always_inline 
 fn to_f64_f64(x: Float64) -> Float64: 
     return x
@@ -5315,3 +5304,28 @@ fn astype_f64_from_f32(t: Tensor[Float32]) -> Tensor[Float64]:
         k = k + 1
 
     return Tensor[Float64](sh, flat)
+
+@always_inline 
+fn opt_i_to_f32(o: Optional[Int])      -> Optional[Float32]:
+    if o is None: return None
+    return Optional[Float32](Float32(o.value()))
+
+@always_inline 
+fn opt_i_to_f64(o: Optional[Int])      -> Optional[Float64]:
+    if o is None: return None
+    return Optional[Float64](Float64(o.value()))
+
+@always_inline 
+fn opt_f32_to_f64(o: Optional[Float32]) -> Optional[Float64]:
+    if o is None: return None
+    return Optional[Float64](Float64(o.value()))
+
+@always_inline 
+fn some_i(x: Int) -> Optional[Int]: 
+    return Optional[Int](x)
+@always_inline 
+fn some_f32(x: Float32) -> Optional[Float32]: 
+    return Optional[Float32](x)
+@always_inline 
+fn some_f64(x: Float64) -> Optional[Float64]: 
+    return Optional[Float64](x)
