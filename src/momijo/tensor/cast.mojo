@@ -154,6 +154,9 @@ fn f64_to_uint32(v: Float64) -> UInt32:
 @always_inline
 fn f64_to_uint64(v: Float64) -> UInt64:
     return to_u64_from_f64(v)
+@always_inline
+fn f64_to_bool(v: Float64) -> Bool:
+    return to_bool_from_f64(v)
 
 
 # ===================== Identity =====================
@@ -304,7 +307,7 @@ fn to_f32_from_f64(x: Float64) -> Float32:
 fn to_f64_from_f64(x: Float64) -> Float64:
     return x
 
-
+ 
 # ===================== Float32 -> {Int, UInt, Float} =====================
 
 @always_inline
@@ -5233,6 +5236,12 @@ fn val_f64(xs: List[Int], i: Int) -> Float64:
  
 
 
+@always_inline
+fn to_f64_bool(x: Bool) -> Float64:
+    # Convert logical true/false to 1.0/0.0 explicitly.
+    if x:
+        return 1.0
+    return 0.0
  
 @always_inline 
 fn to_f64_f64(x: Float64) -> Float64: 
