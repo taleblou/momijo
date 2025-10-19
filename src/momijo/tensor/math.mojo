@@ -1216,7 +1216,9 @@ fn apply_broadcast5(a: Tensor[UInt32], b: Tensor[UInt32], op_id: Int) -> Tensor[
 fn apply_broadcast5(a: Tensor[UInt64], b: Tensor[UInt64], op_id: Int) -> Tensor[Bool]:
     return to_bool(apply_broadcast2_impl[UInt64](a, b, op_id, to_f64_u64, f64_to_uint64))
 
-
+@always_inline
+fn apply_broadcast5(a: Tensor[Bool], b: Tensor[Bool], op_id: Int) -> Tensor[Bool]:
+    return to_bool(apply_broadcast2_impl[Bool](a, b, op_id, to_f64_bool, f64_to_bool))
  
 
 @always_inline
@@ -1673,8 +1675,32 @@ fn lnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
 fn lxnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 25)
 @always_inline 
-fn landnot_t(x: Tensor[Float32], y: Tensor[FloFloat32at64]) -> Tensor[Bool]:
+fn landnot_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 26)
+
+@always_inline
+fn land_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
+     return apply_broadcast5(x, y, 20)
+@always_inline 
+fn lor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]: 
+    return apply_broadcast5(x, y, 21)
+@always_inline
+fn lxor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
+     return apply_broadcast5(x, y, 22)
+@always_inline
+fn lnand_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]: 
+    return apply_broadcast5(x, y, 23)
+@always_inline 
+fn lnor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]: 
+    return apply_broadcast5(x, y, 24)
+@always_inline 
+fn lxnor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
+     return apply_broadcast5(x, y, 25)
+@always_inline 
+fn landnot_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
+     return apply_broadcast5(x, y, 26)
+
+
 
 @always_inline
 fn _not_to_int_impl[T: ImplicitlyCopyable & Copyable & Movable](
@@ -1813,7 +1839,7 @@ fn lnot_t(x: Tensor[Float32]) -> Tensor[Bool]:
     return _not_to_bool_impl[Float32](x, to_float64_of)
 @always_inline
 fn lnot_t(x: Tensor[Int]) -> Tensor[Bool]:
-    return _not_to_bool_impl[n](x, to_float64_of)
+    return _not_to_bool_impl[Int](x, to_float64_of)
 
 @always_inline
 fn lnot_t(x: Tensor[Bool]) -> Tensor[Bool]:
@@ -5895,89 +5921,789 @@ fn _clamp_index(j: Int, c: Int) -> Int:
     if jj < 0: jj = 0
     if jj >= c: jj = c - 1
     return jj
+ 
 
-# ---- Core (dim=1 only) ------------------------------------------------------
-# --------------------------------------
-# scatter_add along dim=1 (row-wise): already good, just return out
-# x: [N, C], index: [N] or [N,1], src: [N] or [N,1]
-# effect: for each row i, out[i, index[i]] += src[i]
-# --------------------------------------
+@always_inline
+fn _same_shape(a: List[Int], b: List[Int]) -> Bool:
+    if len(a) != len(b): return False
+    var k = 0
+    while k < len(a):
+        if a[k] != b[k]: return False
+        k += 1
+    return True
+
+# Squeeze helpers with out-params only (no tuple returns)
+
+@always_inline
+fn _squeeze_trailing1_like_outer_Int(
+    outer: List[Int],
+    y: Tensor[Int],
+    mut out_y: Tensor[Int],
+    mut ok: Bool
+) -> None:
+    if _same_shape(y._shape, outer):
+        out_y = y.copy()
+        ok = True
+        return
+    var r_y = len(y._shape)
+    if r_y == len(outer) + 1 and y._shape[r_y - 1] == 1:
+        out_y = y.reshape(outer.copy())
+        ok = True
+        return
+    out_y = y.copy()
+    ok = False
+
+@always_inline
+fn _squeeze_trailing1_like_outer_F32(
+    outer: List[Int],
+    y: Tensor[Float32],
+    mut out_y: Tensor[Float32],
+    mut ok: Bool
+) -> None:
+    if _same_shape(y._shape, outer):
+        out_y = y.copy()
+        ok = True
+        return
+    var r_y = len(y._shape)
+    if r_y == len(outer) + 1 and y._shape[r_y - 1] == 1:
+        out_y = y.reshape(outer.copy())
+        ok = True
+        return
+    out_y = y.copy()
+    ok = False
+
+@always_inline
+fn _squeeze_trailing1_like_outer_F64(
+    outer: List[Int],
+    y: Tensor[Float64],
+    mut out_y: Tensor[Float64],
+    mut ok: Bool
+) -> None:
+    if _same_shape(y._shape, outer):
+        out_y = y.copy()
+        ok = True
+        return
+    var r_y = len(y._shape)
+    if r_y == len(outer) + 1 and y._shape[r_y - 1] == 1:
+        out_y = y.reshape(outer.copy())
+        ok = True
+        return
+    out_y = y.copy()
+    ok = False
+
+# ------------------------------------------------------------
+# dim = 1 (target axis = shape[1]; outer = dim0 + dims 2..r-1)
+# ------------------------------------------------------------
+
 @always_inline
 fn scatter_add_dim1_int(x: Tensor[Int], index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
-    if not _is_rank2(x._shape): return x.copy()
-    var N = x._shape[0]
-    var C = x._shape[1]
+    var r = len(x._shape)
+    if r < 2: return x.copy()
 
-    var idxN = _squeeze_if_2d1(x._shape, index)
-    var srcN = _squeeze_if_2d1(x._shape, src)
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0])
+    var k = 2
+    while k < r:
+        outer_shape.append(x._shape[k]); k += 1
 
-    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
-    if len(srcN._shape) != 1 or srcN._shape[0] != N: return x.copy()
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
 
     var out = x.copy()
-    var s0 = out._strides[0]
-    var s1 = out._strides[1]
     var off = out._offset
+    var s = out._strides.copy()
+    var N1 = out._shape[1]
 
-    var i = 0
-    while i < N:
-        var j = _clamp_index(idxN._data[i], C)
-        var pos = off + i * s0 + j * s1
-        out._data[pos] = out._data[pos] + srcN._data[i]
-        i += 1
+    var tail_rank = r - 2
+    if tail_rank == 0:
+        var N0 = out._shape[0]
+        var i0 = 0
+        while i0 < N0:
+            var j = _clamp_index(idxT._data[i0], N1)
+            var pos0 = off + i0 * s[0] + j * s[1]
+            out._data[pos0] = out._data[pos0] + srcT._data[i0]
+            i0 += 1
+        return out.copy()
 
+    var tail_shape = List[Int]()
+    k = 2
+    while k < r:
+        tail_shape.append(out._shape[k]); k += 1
+
+    var N0 = out._shape[0]
+    var tail_count = 1
+    k = 0
+    while k < tail_rank:
+        tail_count = tail_count * tail_shape[k]; k += 1
+
+    var mul = List[Int]()
+    mul.reserve(tail_rank)
+    k = 0
+    while k < tail_rank: mul.append(1); k += 1
+    if tail_rank > 0:
+        var acc = 1
+        var i = tail_rank - 1
+        while True:
+            mul[i] = acc; acc = acc * tail_shape[i]
+            if i == 0: break
+            i -= 1
+
+    var outer_count = N0 * tail_count
+    var lin = 0
+    while lin < outer_count:
+        var a = 0
+        var rem = lin
+        if tail_count > 0:
+            a = rem // tail_count
+            rem = rem % tail_count
+
+        var pos_base = off + a * s[0]
+        k = 0
+        while k < tail_rank:
+            var idx_tail = (rem // mul[k]) % tail_shape[k]
+            pos_base = pos_base + idx_tail * s[k + 2]
+            k += 1
+
+        var j = _clamp_index(idxT._data[lin], N1)
+        var pos = pos_base + j * s[1]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
     return out.copy()
 
 @always_inline
 fn scatter_add_dim1_f32(x: Tensor[Float32], index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
-    if not _is_rank2(x._shape): return x.copy()
-    var N = x._shape[0]
-    var C = x._shape[1]
+    var r = len(x._shape)
+    if r < 2: return x.copy()
 
-    var idxN = _squeeze_if_2d1(x._shape, index)
-    var srcN = _squeeze_if_2d1_f32(x._shape, src)
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0])
+    var k = 2
+    while k < r:
+        outer_shape.append(x._shape[k]); k += 1
 
-    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
-    if len(srcN._shape) != 1 or srcN._shape[0] != N: return x.copy()
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F32(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
 
     var out = x.copy()
-    var s0 = out._strides[0]
-    var s1 = out._strides[1]
     var off = out._offset
+    var s = out._strides.copy()
+    var N1 = out._shape[1]
 
-    var i = 0
-    while i < N:
-        var j = _clamp_index(idxN._data[i], C)
-        var pos = off + i * s0 + j * s1
-        out._data[pos] = out._data[pos] + srcN._data[i]
-        i += 1
+    var tail_rank = r - 2
+    if tail_rank == 0:
+        var N0 = out._shape[0]
+        var i0 = 0
+        while i0 < N0:
+            var j = _clamp_index(idxT._data[i0], N1)
+            var pos0 = off + i0 * s[0] + j * s[1]
+            out._data[pos0] = out._data[pos0] + srcT._data[i0]
+            i0 += 1
+        return out.copy()
 
+    var tail_shape = List[Int]()
+    k = 2
+    while k < r:
+        tail_shape.append(out._shape[k]); k += 1
+
+    var N0 = out._shape[0]
+    var tail_count = 1
+    k = 0
+    while k < tail_rank:
+        tail_count = tail_count * tail_shape[k]; k += 1
+
+    var mul = List[Int]()
+    mul.reserve(tail_rank)
+    k = 0
+    while k < tail_rank: mul.append(1); k += 1
+    if tail_rank > 0:
+        var acc = 1
+        var i = tail_rank - 1
+        while True:
+            mul[i] = acc; acc = acc * tail_shape[i]
+            if i == 0: break
+            i -= 1
+
+    var outer_count = N0 * tail_count
+    var lin = 0
+    while lin < outer_count:
+        var a = 0
+        var rem = lin
+        if tail_count > 0:
+            a = rem // tail_count
+            rem = rem % tail_count
+
+        var pos_base = off + a * s[0]
+        k = 0
+        while k < tail_rank:
+            var idx_tail = (rem // mul[k]) % tail_shape[k]
+            pos_base = pos_base + idx_tail * s[k + 2]
+            k += 1
+
+        var j = _clamp_index(idxT._data[lin], N1)
+        var pos = pos_base + j * s[1]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
     return out.copy()
 
 @always_inline
 fn scatter_add_dim1_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
-    if not _is_rank2(x._shape): return x.copy()
-    var N = x._shape[0]
-    var C = x._shape[1]
+    var r = len(x._shape)
+    if r < 2: return x.copy()
 
-    var idxN = _squeeze_if_2d1(x._shape, index)
-    var srcN = _squeeze_if_2d1_f64(x._shape, src)
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0])
+    var k = 2
+    while k < r:
+        outer_shape.append(x._shape[k]); k += 1
 
-    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
-    if len(srcN._shape) != 1 or srcN._shape[0] != N: return x.copy()
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F64(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
 
     var out = x.copy()
-    var s0 = out._strides[0]
-    var s1 = out._strides[1]
     var off = out._offset
+    var s = out._strides.copy()
+    var N1 = out._shape[1]
 
-    var i = 0
-    while i < N:
-        var j = _clamp_index(idxN._data[i], C)
-        var pos = off + i * s0 + j * s1
-        out._data[pos] = out._data[pos] + srcN._data[i]
-        i += 1
+    var tail_rank = r - 2
+    if tail_rank == 0:
+        var N0 = out._shape[0]
+        var i0 = 0
+        while i0 < N0:
+            var j = _clamp_index(idxT._data[i0], N1)
+            var pos0 = off + i0 * s[0] + j * s[1]
+            out._data[pos0] = out._data[pos0] + srcT._data[i0]
+            i0 += 1
+        return out.copy()
 
+    var tail_shape = List[Int]()
+    k = 2
+    while k < r:
+        tail_shape.append(out._shape[k]); k += 1
+
+    var N0 = out._shape[0]
+    var tail_count = 1
+    k = 0
+    while k < tail_rank:
+        tail_count = tail_count * tail_shape[k]; k += 1
+
+    var mul = List[Int]()
+    mul.reserve(tail_rank)
+    k = 0
+    while k < tail_rank: mul.append(1); k += 1
+    if tail_rank > 0:
+        var acc = 1
+        var i = tail_rank - 1
+        while True:
+            mul[i] = acc; acc = acc * tail_shape[i]
+            if i == 0: break
+            i -= 1
+
+    var outer_count = N0 * tail_count
+    var lin = 0
+    while lin < outer_count:
+        var a = 0
+        var rem = lin
+        if tail_count > 0:
+            a = rem // tail_count
+            rem = rem % tail_count
+
+        var pos_base = off + a * s[0]
+        k = 0
+        while k < tail_rank:
+            var idx_tail = (rem // mul[k]) % tail_shape[k]
+            pos_base = pos_base + idx_tail * s[k + 2]
+            k += 1
+
+        var j = _clamp_index(idxT._data[lin], N1)
+        var pos = pos_base + j * s[1]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+# ------------------------------------------------------------
+# dim = 0 (target axis = shape[0]; outer = dims 1..r-1)
+# ------------------------------------------------------------
+
+@always_inline
+fn scatter_add_dim0_int(x: Tensor[Int], index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
+    var r = len(x._shape)
+    if r < 2: return x.copy()
+
+    var outer_shape = List[Int]()
+    var k = 1
+    while k < r:
+        outer_shape.append(x._shape[k]); k += 1
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var N0 = out._shape[0]
+
+    var outer_rank = len(outer_shape)
+    var outer_count = 1
+    k = 0
+    while k < outer_rank:
+        outer_count = outer_count * outer_shape[k]; k += 1
+
+    var mul = List[Int]()
+    mul.reserve(outer_rank)
+    k = 0
+    while k < outer_rank: mul.append(1); k += 1
+    if outer_rank > 0:
+        var acc = 1
+        var i = outer_rank - 1
+        while True:
+            mul[i] = acc; acc = acc * outer_shape[i]
+            if i == 0: break
+            i -= 1
+
+    var coords = List[Int]()
+    coords.reserve(outer_rank)
+    k = 0
+    while k < outer_rank: coords.append(0); k += 1
+
+    var lin = 0
+    while lin < outer_count:
+        var t = lin
+        k = 0
+        while k < outer_rank:
+            var m = mul[k]
+            coords[k] = (t // m) % outer_shape[k]
+            k += 1
+
+        var j = _clamp_index(idxT._data[lin], N0)
+
+        var pos = off + j * s[0]
+        k = 0
+        while k < outer_rank:
+            pos = pos + coords[k] * s[k + 1]
+            k += 1
+
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim0_f32(x: Tensor[Float32], index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
+    var r = len(x._shape)
+    if r < 2: return x.copy()
+
+    var outer_shape = List[Int]()
+    var k = 1
+    while k < r:
+        outer_shape.append(x._shape[k]); k += 1
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F32(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var N0 = out._shape[0]
+
+    var outer_rank = len(outer_shape)
+    var outer_count = 1
+    k = 0
+    while k < outer_rank:
+        outer_count = outer_count * outer_shape[k]; k += 1
+
+    var mul = List[Int]()
+    mul.reserve(outer_rank)
+    k = 0
+    while k < outer_rank: mul.append(1); k += 1
+    if outer_rank > 0:
+        var acc = 1
+        var i = outer_rank - 1
+        while True:
+            mul[i] = acc; acc = acc * outer_shape[i]
+            if i == 0: break
+            i -= 1
+
+    var coords = List[Int]()
+    coords.reserve(outer_rank)
+    k = 0
+    while k < outer_rank: coords.append(0); k += 1
+
+    var lin = 0
+    while lin < outer_count:
+        var t = lin
+        k = 0
+        while k < outer_rank:
+            var m = mul[k]
+            coords[k] = (t // m) % outer_shape[k]
+            k += 1
+
+        var j = _clamp_index(idxT._data[lin], N0)
+
+        var pos = off + j * s[0]
+        k = 0
+        while k < outer_rank:
+            pos = pos + coords[k] * s[k + 1]
+            k += 1
+
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim0_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
+    var r = len(x._shape)
+    if r < 2: return x.copy()
+
+    var outer_shape = List[Int]()
+    var k = 1
+    while k < r:
+        outer_shape.append(x._shape[k]); k += 1
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F64(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var N0 = out._shape[0]
+
+    var outer_rank = len(outer_shape)
+    var outer_count = 1
+    k = 0
+    while k < outer_rank:
+        outer_count = outer_count * outer_shape[k]; k += 1
+
+    var mul = List[Int]()
+    mul.reserve(outer_rank)
+    k = 0
+    while k < outer_rank: mul.append(1); k += 1
+    if outer_rank > 0:
+        var acc = 1
+        var i = outer_rank - 1
+        while True:
+            mul[i] = acc; acc = acc * outer_shape[i]
+            if i == 0: break
+            i -= 1
+
+    var coords = List[Int]()
+    coords.reserve(outer_rank)
+    k = 0
+    while k < outer_rank: coords.append(0); k += 1
+
+    var lin = 0
+    while lin < outer_count:
+        var t = lin
+        k = 0
+        while k < outer_rank:
+            var m = mul[k]
+            coords[k] = (t // m) % outer_shape[k]
+            k += 1
+
+        var j = _clamp_index(idxT._data[lin], N0)
+
+        var pos = off + j * s[0]
+        k = 0
+        while k < outer_rank:
+            pos = pos + coords[k] * s[k + 1]
+            k += 1
+
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+# ------------------------------------------------------------
+# dim = 3 (target axis = shape[3]; outer = dims 0,1,2)
+# ------------------------------------------------------------
+
+@always_inline
+fn scatter_add_dim3_int(x: Tensor[Int], index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
+    var r = len(x._shape)
+    if r < 4: return x.copy()
+
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0]); outer_shape.append(x._shape[1]); outer_shape.append(x._shape[2])
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var Ndim = out._shape[3]
+
+    var aN = outer_shape[0]; var bN = outer_shape[1]; var cN = outer_shape[2]
+    var mul0 = bN * cN
+    var mul1 = cN
+    var outer_count = aN * bN * cN
+
+    var lin = 0
+    while lin < outer_count:
+        var a = lin // mul0
+        var b = (lin // mul1) % bN
+        var c = lin % cN
+
+        var j = _clamp_index(idxT._data[lin], Ndim)
+        var pos = off + a * s[0] + b * s[1] + c * s[2] + j * s[3]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim3_f32(x: Tensor[Float32], index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
+    var r = len(x._shape)
+    if r < 4: return x.copy()
+
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0]); outer_shape.append(x._shape[1]); outer_shape.append(x._shape[2])
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F32(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var Ndim = out._shape[3]
+
+    var aN = outer_shape[0]; var bN = outer_shape[1]; var cN = outer_shape[2]
+    var mul0 = bN * cN
+    var mul1 = cN
+    var outer_count = aN * bN * cN
+
+    var lin = 0
+    while lin < outer_count:
+        var a = lin // mul0
+        var b = (lin // mul1) % bN
+        var c = lin % cN
+
+        var j = _clamp_index(idxT._data[lin], Ndim)
+        var pos = off + a * s[0] + b * s[1] + c * s[2] + j * s[3]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim3_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
+    var r = len(x._shape)
+    if r < 4: return x.copy()
+
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0]); outer_shape.append(x._shape[1]); outer_shape.append(x._shape[2])
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F64(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var Ndim = out._shape[3]
+
+    var aN = outer_shape[0]; var bN = outer_shape[1]; var cN = outer_shape[2]
+    var mul0 = bN * cN
+    var mul1 = cN
+    var outer_count = aN * bN * cN
+
+    var lin = 0
+    while lin < outer_count:
+        var a = lin // mul0
+        var b = (lin // mul1) % bN
+        var c = lin % cN
+
+        var j = _clamp_index(idxT._data[lin], Ndim)
+        var pos = off + a * s[0] + b * s[1] + c * s[2] + j * s[3]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+# ------------------------------------------------------------
+# dim = 4 (target axis = shape[4]; outer = dims 0,1,2,3)
+# ------------------------------------------------------------
+
+@always_inline
+fn scatter_add_dim4_int(x: Tensor[Int], index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
+    var r = len(x._shape)
+    if r < 5: return x.copy()
+
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0]); outer_shape.append(x._shape[1]); outer_shape.append(x._shape[2]); outer_shape.append(x._shape[3])
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var Ndim = out._shape[4]
+
+    var aN = outer_shape[0]; var bN = outer_shape[1]; var cN = outer_shape[2]; var dN = outer_shape[3]
+    var mul0 = bN * cN * dN
+    var mul1 = cN * dN
+    var mul2 = dN
+    var outer_count = aN * bN * cN * dN
+
+    var lin = 0
+    while lin < outer_count:
+        var a = lin // mul0
+        var b = (lin // mul1) % bN
+        var c = (lin // mul2) % cN
+        var d = lin % dN
+
+        var j = _clamp_index(idxT._data[lin], Ndim)
+        var pos = off + a * s[0] + b * s[1] + c * s[2] + d * s[3] + j * s[4]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim4_f32(x: Tensor[Float32], index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
+    var r = len(x._shape)
+    if r < 5: return x.copy()
+
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0]); outer_shape.append(x._shape[1]); outer_shape.append(x._shape[2]); outer_shape.append(x._shape[3])
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F32(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var Ndim = out._shape[4]
+
+    var aN = outer_shape[0]; var bN = outer_shape[1]; var cN = outer_shape[2]; var dN = outer_shape[3]
+    var mul0 = bN * cN * dN
+    var mul1 = cN * dN
+    var mul2 = dN
+    var outer_count = aN * bN * cN * dN
+
+    var lin = 0
+    while lin < outer_count:
+        var a = lin // mul0
+        var b = (lin // mul1) % bN
+        var c = (lin // mul2) % cN
+        var d = lin % dN
+
+        var j = _clamp_index(idxT._data[lin], Ndim)
+        var pos = off + a * s[0] + b * s[1] + c * s[2] + d * s[3] + j * s[4]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
+    return out.copy()
+
+@always_inline
+fn scatter_add_dim4_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
+    var r = len(x._shape)
+    if r < 5: return x.copy()
+
+    var outer_shape = List[Int]()
+    outer_shape.append(x._shape[0]); outer_shape.append(x._shape[1]); outer_shape.append(x._shape[2]); outer_shape.append(x._shape[3])
+
+    var idxT = index.copy()
+    var ok1 = False
+    _squeeze_trailing1_like_outer_Int(outer_shape, index, idxT, ok1)
+    if not ok1: return x.copy()
+
+    var srcT = src.copy()
+    var ok2 = False
+    _squeeze_trailing1_like_outer_F64(outer_shape, src, srcT, ok2)
+    if not ok2: return x.copy()
+
+    var out = x.copy()
+    var off = out._offset
+    var s = out._strides.copy()
+    var Ndim = out._shape[4]
+
+    var aN = outer_shape[0]; var bN = outer_shape[1]; var cN = outer_shape[2]; var dN = outer_shape[3]
+    var mul0 = bN * cN * dN
+    var mul1 = cN * dN
+    var mul2 = dN
+    var outer_count = aN * bN * cN * dN
+
+    var lin = 0
+    while lin < outer_count:
+        var a = lin // mul0
+        var b = (lin // mul1) % bN
+        var c = (lin // mul2) % cN
+        var d = lin % dN
+
+        var j = _clamp_index(idxT._data[lin], Ndim)
+        var pos = off + a * s[0] + b * s[1] + c * s[2] + d * s[3] + j * s[4]
+        out._data[pos] = out._data[pos] + srcT._data[lin]
+        lin += 1
     return out.copy()
 
 
