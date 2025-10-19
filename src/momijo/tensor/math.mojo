@@ -638,6 +638,66 @@ fn selu_t(x: Tensor[Float32]) -> Tensor[Float64]:
 fn selu_t(x: Tensor[Int]) -> Tensor[Float64]:
     return apply_unary(x, 20)
 
+
+# =========================
+# Fast helpers (row-major)
+# =========================
+
+@always_inline
+fn _row_major_multipliers(shape: List[Int]) -> List[Int]:
+    var r = len(shape)
+    var rm = List[Int]()
+    rm.reserve(r)
+    var i = 0
+    while i < r:
+        rm.append(0)
+        i += 1
+    var acc = 1
+    var k = r - 1
+    while k >= 0:
+        rm[k] = acc
+        acc = acc * shape[k]
+        k -= 1
+    return rm.copy()
+
+@always_inline
+fn _offset_from_linear(
+    shape: List[Int], strides: List[Int], off: Int, rm: List[Int], lin: Int
+) -> Int:
+    var r = len(shape)
+    var o = off
+    var d = 0
+    while d < r:
+        var s = 0
+        if shape[d] != 0 and rm[d] != 0:
+            s = (lin // rm[d]) % shape[d]
+        o = o + s * strides[d]
+        d += 1
+    return o
+
+@always_inline
+fn _coords_from_linear(shape: List[Int], rm: List[Int], lin: Int) -> List[Int]:
+    var r = len(shape)
+    var coord = List[Int]()
+    coord.reserve(r)
+    var d = 0
+    while d < r:
+        var s = 0
+        if shape[d] != 0 and rm[d] != 0:
+            s = (lin // rm[d]) % shape[d]
+        coord.append(s)
+        d += 1
+    return coord.copy()
+
+@always_inline
+fn _offset_from_coords(strides: List[Int], off: Int, coords: List[Int]) -> Int:
+    var o = off
+    var d = 0
+    while d < len(coords):
+        o = o + coords[d] * strides[d]
+        d += 1
+    return o
+
 # ====================== Binary: comparisons (mask Float64) ======================
 
 @always_inline
@@ -646,13 +706,11 @@ fn _cmp_eval_impl[T: ImplicitlyCopyable & Copyable & Movable](
 ) -> Float64:
     var af = to_f64(a)
     var bf = to_f64(b)
-    # cmp_id: 0==, 1!=, 2<, 3<=, 4>, 5>=
     if cmp_id == 0:   return 1.0 if af == bf else 0.0
     if cmp_id == 1:   return 1.0 if af != bf else 0.0
     if cmp_id == 2:   return 1.0 if af <  bf else 0.0
     if cmp_id == 3:   return 1.0 if af <= bf else 0.0
     if cmp_id == 4:   return 1.0 if af >  bf else 0.0
-    # default: >=
     return 1.0 if af >= bf else 0.0
 
 @always_inline
@@ -662,42 +720,75 @@ fn _apply_compare_impl[T: ImplicitlyCopyable & Copyable & Movable](
     cmp_id: Int,
     to_f64: fn (T) -> Float64
 ) -> Tensor[Float64]:
-    var n = len(x._data)              # assumes same-sized flattened buffers
-    var out = List[Float64]()
-    out.reserve(n)
+    # Scalar RHS fast path
+    if len(y._shape) == 0:
+        var n = 1
+        var d = 0
+        while d < len(x._shape):
+            n = n * x._shape[d]
+            d += 1
+
+        var out = List[Float64]()
+        out.reserve(n)
+        if n == 0:
+            var shp0 = List[Int](); shp0.append(0)
+            var str0 = compute_row_major_strides(shp0)
+            return Tensor[Float64](out, shp0, str0, 0)
+
+        var rm_x = _row_major_multipliers(x._shape)
+        var sval = y._data[y._offset]
+        var lin = 0
+        while lin < n:
+            var offx = _offset_from_linear(x._shape, x._strides, x._offset, rm_x, lin)
+            out.append(_cmp_eval_impl[T](x._data[offx], sval, cmp_id, to_f64))
+            lin += 1
+        var strx = compute_row_major_strides(x._shape)
+        return Tensor[Float64](out, x._shape, strx, 0)
+
+    # General path: shape-equal, stride/offset-aware
+    var nlog = 1
     var i = 0
-    var lim = (n // 8) * 8
-    while i < lim:
-        out.append(_cmp_eval_impl[T](x._data[i    ], y._data[i    ], cmp_id, to_f64))
-        out.append(_cmp_eval_impl[T](x._data[i + 1], y._data[i + 1], cmp_id, to_f64))
-        out.append(_cmp_eval_impl[T](x._data[i + 2], y._data[i + 2], cmp_id, to_f64))
-        out.append(_cmp_eval_impl[T](x._data[i + 3], y._data[i + 3], cmp_id, to_f64))
-        out.append(_cmp_eval_impl[T](x._data[i + 4], y._data[i + 4], cmp_id, to_f64))
-        out.append(_cmp_eval_impl[T](x._data[i + 5], y._data[i + 5], cmp_id, to_f64))
-        out.append(_cmp_eval_impl[T](x._data[i + 6], y._data[i + 6], cmp_id, to_f64))
-        out.append(_cmp_eval_impl[T](x._data[i + 7], y._data[i + 7], cmp_id, to_f64))
-        i += 8
-    while i < n:
-        out.append(_cmp_eval_impl[T](x._data[i], y._data[i], cmp_id, to_f64))
+    while i < len(x._shape):
+        nlog = nlog * x._shape[i]
         i += 1
-    return Tensor[Float64](out, x._shape)
+
+    var out = List[Float64]()
+    out.reserve(nlog)
+    if nlog == 0:
+        var shp0 = List[Int](); shp0.append(0)
+        var str0 = compute_row_major_strides(shp0)
+        return Tensor[Float64](out, shp0, str0, 0)
+
+    var rm_x = _row_major_multipliers(x._shape)
+    var rm_y = _row_major_multipliers(y._shape)
+
+    var lin2 = 0
+    while lin2 < nlog:
+        var offx = _offset_from_linear(x._shape, x._strides, x._offset, rm_x, lin2)
+        var offy = _offset_from_linear(y._shape, y._strides, y._offset, rm_y, lin2)
+        out.append(_cmp_eval_impl[T](x._data[offx], y._data[offy], cmp_id, to_f64))
+        lin2 += 1
+
+    var str = compute_row_major_strides(x._shape)
+    return Tensor[Float64](out, x._shape, str, 0)
+
+
 
 # Per-dtype dispatch (mirrors your unary style)
 @always_inline
 fn _apply_compare(x: Tensor[Float64], y: Tensor[Float64], cmp_id: Int) -> Tensor[Int]:
-    # Run impl at T=Float64, then cast mask (0.0/1.0) to Int (0/1).
     var mf64 = _apply_compare_impl[Float64](x, y, cmp_id, to_float64_of)
     return to_int(mf64)
 
-@always_inline
+
+@always_inline 
 fn _apply_compare(x: Tensor[Float32], y: Tensor[Float32], cmp_id: Int) -> Tensor[Int]:
-    # Run impl at T=Float32, then cast mask to Int.
     var mf64 = _apply_compare_impl[Float32](x, y, cmp_id, to_float64_of)
     return to_int(mf64)
 
+
 @always_inline
 fn _apply_compare(x: Tensor[Int], y: Tensor[Int], cmp_id: Int) -> Tensor[Int]:
-    # Run impl at T=Int, then cast mask to Int.
     var mf64 = _apply_compare_impl[Int](x, y, cmp_id, to_float64_of)
     return to_int(mf64)
  
@@ -1720,6 +1811,9 @@ fn lnot_t(x: Tensor[Float64]) -> Tensor[Bool]:
 @always_inline
 fn lnot_t(x: Tensor[Float32]) -> Tensor[Bool]:
     return _not_to_bool_impl[Float32](x, to_float64_of)
+@always_inline
+fn lnot_t(x: Tensor[Int]) -> Tensor[Bool]:
+    return _not_to_bool_impl[n](x, to_float64_of)
 
 @always_inline
 fn lnot_t(x: Tensor[Bool]) -> Tensor[Bool]:
@@ -1958,7 +2052,7 @@ fn dot[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -
 # ---------- Normalize (L2) ----------
 
 fn normalize[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None, eps: Float64 = 1e-12) -> Tensor[T]:
-    var shp = x._shape
+    var shp = x._shape.copy()
     var lenr = len(shp)
 
     if axis is None:
@@ -2038,7 +2132,7 @@ fn normalize[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Opt
     return Tensor[T](out2, shp)
 
 fn normalize_[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], axis: Optional[Int] = None, eps: Float64 = 1e-12) -> None:
-    var shp = x._shape
+    var shp = x._shape.copy()
     var lenr = len(shp)
 
     if axis is None:
@@ -4996,7 +5090,7 @@ fn max[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[
                 kd.append(1)
                 i += 1
             return out.reshape(kd)
-        return out
+        return out.copy()
 
     var ax = normalize_axis(axis.value(), rank)
     var reduce_n = shp[ax]
@@ -5273,7 +5367,7 @@ fn min[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[
                 kd.append(1)
                 i += 1
             return out.reshape(kd)
-        return out
+        return out.copy()
 
     var ax = normalize_axis(axis.value(), rank)
     var reduce_n = shp[ax]
@@ -5887,136 +5981,758 @@ fn scatter_add_dim1_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Floa
     return out.copy()
 
 
-# --------------------------------------
-# scatter_add along dim=0 (column-wise):
-# x: [N, M]
-# index: [N] or [N,1]  (index per source row)
-# src: [N] or [N,1]    (value per source row)
-# effect: for each source row i and each column j, out[index[i], j] += src[i]  (for 1D src only j=0 مورد شما)
-# اگر src دو بعدی [N, M] بود، برای همه ستون‌ها جمع می‌زند.
-# --------------------------------------
 @always_inline
-fn scatter_add_dim0_int(x: Tensor[Int], index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
-    if not _is_rank2(x._shape): return x.copy()
-    var N = x._shape[0]
-    var M = x._shape[1]
-
-    var idxN = _squeeze_if_2d1(x._shape, index)
-    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
-
-    var out = x.copy()
-    var s0 = out._strides[0]
-    var s1 = out._strides[1]
-    var off = out._offset
-
-    if len(src._shape) == 1:
-        # src: [N]
-        var i = 0
-        while i < N:
-            var r = _clamp_index(idxN._data[i], N)
-            # j = 0 only (fits demo: shapes [N,1])
-            var pos = off + r * s0 + 0 * s1
-            out._data[pos] = out._data[pos] + src._data[i]
-            i += 1
-        return out.copy()
-
-    if len(src._shape) == 2 and src._shape[0] == N and src._shape[1] == M:
-        # src: [N, M]
-        var ss0 = src._strides[0]
-        var ss1 = src._strides[1]
-        var so  = src._offset
-        var i = 0
-        while i < N:
-            var r = _clamp_index(idxN._data[i], N)
-            var j = 0
-            while j < M:
-                var dst = off + r * s0 + j * s1
-                var src_lin = so + i * ss0 + j * ss1
-                out._data[dst] = out._data[dst] + src._data[src_lin]
-                j += 1
-            i += 1
-        return out.copy()
-
-    return x.copy()
+fn _prod_shape(xs: List[Int]) -> Int:
+    var p = 1
+    var i = 0
+    while i < len(xs):
+        p = p * xs[i]
+        i += 1
+    return p
 
 @always_inline
-fn scatter_add_dim0_f32(x: Tensor[Float32], index: Tensor[Int], src: Tensor[Float32]) -> Tensor[Float32]:
-    if not _is_rank2(x._shape): return x.copy()
-    var N = x._shape[0]
-    var M = x._shape[1]
-
-    var idxN = _squeeze_if_2d1(x._shape, index)
-    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
-
-    var out = x.copy()
-    var s0 = out._strides[0]
-    var s1 = out._strides[1]
-    var off = out._offset
-
-    if len(src._shape) == 1:
-        var i = 0
-        while i < N:
-            var r = _clamp_index(idxN._data[i], N)
-            var pos = off + r * s0 + 0 * s1
-            out._data[pos] = out._data[pos] + src._data[i]
-            i += 1
-        return out.copy()
-
-    if len(src._shape) == 2 and src._shape[0] == N and src._shape[1] == M:
-        var ss0 = src._strides[0]
-        var ss1 = src._strides[1]
-        var so  = src._offset
-        var i = 0
-        while i < N:
-            var r = _clamp_index(idxN._data[i], N)
-            var j = 0
-            while j < M:
-                var dst = off + r * s0 + j * s1
-                var src_lin = so + i * ss0 + j * ss1
-                out._data[dst] = out._data[dst] + src._data[src_lin]
-                j += 1
-            i += 1
-        return out.copy()
-
-    return x.copy()
+fn _is_vec_shape(shp: List[Int]) -> Bool:
+    return len(shp) == 1
 
 @always_inline
-fn scatter_add_dim0_f64(x: Tensor[Float64], index: Tensor[Int], src: Tensor[Float64]) -> Tensor[Float64]:
-    if not _is_rank2(x._shape): return x.copy()
-    var N = x._shape[0]
-    var M = x._shape[1]
+fn _is_mat_shape(shp: List[Int]) -> Bool:
+    return len(shp) == 2
 
-    var idxN = _squeeze_if_2d1(x._shape, index)
-    if len(idxN._shape) != 1 or idxN._shape[0] != N: return x.copy()
+@always_inline
+fn _clone_contiguous_f64(x: Tensor[Float64]) -> Tensor[Float64]:
+    var shp = x._shape.copy()
+    var r   = len(shp)
+    var out = tensor.zeros_f64(shp)
+    var expect = compute_row_major_strides(shp)
+    var n = 1
+    var i = 0
+    while i < r:
+        n = n * shp[i]
+        i += 1
+    var L = 0
+    while L < n:
+        var src_off = x._offset
+        var d = 0
+        while d < r:
+            var idx_d = (L // expect[d]) % shp[d]
+            src_off = src_off + idx_d * x._strides[d]
+            d += 1
+        out._data[out._offset + L] = x._data[src_off]
+        L += 1
+    return out.copy()
 
-    var out = x.copy()
-    var s0 = out._strides[0]
-    var s1 = out._strides[1]
-    var off = out._offset
+@always_inline
+fn _ensure_contiguous_f64(x: Tensor[Float64]) -> Tensor[Float64]:
+    var r = len(x._shape)
+    var expect = compute_row_major_strides(x._shape)
+    var is_contig = True
+    var i = 0
+    while i < r:
+        if x._strides[i] != expect[i]:
+            is_contig = False
+            break
+        i += 1
+    if is_contig:
+        return x.copy()
+    return _clone_contiguous_f64(x).copy()
 
-    if len(src._shape) == 1:
-        var i = 0
-        while i < N:
-            var r = _clamp_index(idxN._data[i], N)
-            var pos = off + r * s0 + 0 * s1
-            out._data[pos] = out._data[pos] + src._data[i]
-            i += 1
-        return out.copy()
-
-    if len(src._shape) == 2 and src._shape[0] == N and src._shape[1] == M:
-        var ss0 = src._strides[0]
-        var ss1 = src._strides[1]
-        var so  = src._offset
-        var i = 0
-        while i < N:
-            var r = _clamp_index(idxN._data[i], N)
+@always_inline
+fn _matmul_square_f64(A: Tensor[Float64], B: Tensor[Float64]) -> Tensor[Float64]:
+    var n = A._shape[0]
+    var C = tensor.zeros_f64([n, n])
+    var sAr = A._strides[0]; var sAc = A._strides[1]
+    var sBr = B._strides[0]; var sBc = B._strides[1]
+    var sCr = C._strides[0]; var sCc = C._strides[1]
+    var i = 0
+    while i < n:
+        var k = 0
+        while k < n:
+            var aik = A._data[A._offset + i * sAr + k * sAc]
             var j = 0
-            while j < M:
-                var dst = off + r * s0 + j * s1
-                var src_lin = so + i * ss0 + j * ss1
-                out._data[dst] = out._data[dst] + src._data[src_lin]
+            while j < n:
+                var idx = C._offset + i * sCr + j * sCc
+                var bkj = B._data[B._offset + k * sBr + j * sBc]
+                C._data[idx] = C._data[idx] + aik * bkj
                 j += 1
-            i += 1
-        return out.copy()
+            k += 1
+        i += 1
+    return C.copy()
 
-    return x.copy()
+@always_inline
+fn qr(xx: Tensor[Float64]) -> (Tensor[Float64], Tensor[Float64]):
+    var rA = len(xx._shape)
+    if rA < 2:
+        var Q1 = tensor.eye_f64(1).to_float64()
+        var R1 = tensor.zeros_f64([1, 1])
+        return (Q1.copy(), R1.copy())
+    var n0 = xx._shape[rA - 2]
+    var n1 = xx._shape[rA - 1]
+    if n0 != n1:
+        var Qbad = xx.copy()
+        var Rbad = tensor.zeros_f64([n1, n1])
+        return (Qbad.copy(), Rbad.copy())
+    var n = n0
+    if rA == 2:
+        var Ai = _ensure_contiguous_f64(xx).reshape([n, n])
+        var Q  = tensor.zeros_f64([n, n])
+        var R  = tensor.zeros_f64([n, n])
+        var s0 = Ai._strides[0]
+        var s1 = Ai._strides[1]
+        var k = 0
+        while k < n:
+            var r = 0
+            while r < n:
+                var val = Ai._data[Ai._offset + r * s0 + k * s1]
+                Q._data[Q._offset + r * s0 + k * s1] = val
+                r += 1
+            var j = 0
+            while j < k:
+                var dot = 0.0
+                var t = 0
+                while t < n:
+                    var qjt = Q._data[Q._offset + t * s0 + j * s1]
+                    var vt  = Q._data[Q._offset + t * s0 + k * s1]
+                    dot = dot + qjt * vt
+                    t += 1
+                R._data[R._offset + j * s0 + k * s1] = dot
+                t = 0
+                while t < n:
+                    var idx_vk = Q._offset + t * s0 + k * s1
+                    var qjt2   = Q._data[Q._offset + t * s0 + j * s1]
+                    Q._data[idx_vk] = Q._data[idx_vk] - dot * qjt2
+                    t += 1
+                j += 1
+            var norm2 = 0.0
+            var u = 0
+            while u < n:
+                var vv = Q._data[Q._offset + u * s0 + k * s1]
+                norm2 = norm2 + vv * vv
+                u += 1
+            var rkk = 0.0
+            if norm2 > 0.0:
+                rkk = sqrt64(norm2)
+            R._data[R._offset + k * s0 + k * s1] = rkk
+            if rkk != 0.0:
+                var inv_rkk = 1.0 / rkk
+                var t2 = 0
+                while t2 < n:
+                    var idx = Q._offset + t2 * s0 + k * s1
+                    Q._data[idx] = Q._data[idx] * inv_rkk
+                    t2 += 1
+            k += 1
+        return (Q.copy(), R.copy())
+    var batch_shape = List[Int]()
+    var i = 0
+    while i < rA - 2:
+        batch_shape.append(xx._shape[i])
+        i += 1
+    var B = _prod_shape(batch_shape)
+    var A3 = xx.copy()
+    if rA == 2:
+        A3 = xx.reshape([1, n, n])
+    else:
+        A3 = xx.reshape([B, n, n])
+    var Q3 = tensor.zeros_f64([B, n, n])
+    var R3 = tensor.zeros_f64([B, n, n])
+    var bi = 0
+    while bi < B:
+        var Ai0 = A3[bi]
+        var Ai  = _ensure_contiguous_f64(Ai0).reshape([n, n])
+        var Qi = tensor.zeros_f64([n, n])
+        var Ri = tensor.zeros_f64([n, n])
+        var s0 = Ai._strides[0]
+        var s1 = Ai._strides[1]
+        var k = 0
+        while k < n:
+            var r = 0
+            while r < n:
+                var val = Ai._data[Ai._offset + r * s0 + k * s1]
+                Qi._data[Qi._offset + r * s0 + k * s1] = val
+                r += 1
+            var j = 0
+            while j < k:
+                var dot = 0.0
+                var t = 0
+                while t < n:
+                    var qjt = Qi._data[Qi._offset + t * s0 + j * s1]
+                    var vt  = Qi._data[Qi._offset + t * s0 + k * s1]
+                    dot = dot + qjt * vt
+                    t += 1
+                Ri._data[Ri._offset + j * s0 + k * s1] = dot
+                t = 0
+                while t < n:
+                    var idx_vk = Qi._offset + t * s0 + k * s1
+                    var qjt2   = Qi._data[Qi._offset + t * s0 + j * s1]
+                    Qi._data[idx_vk] = Qi._data[idx_vk] - dot * qjt2
+                    t += 1
+                j += 1
+            var norm2 = 0.0
+            var u = 0
+            while u < n:
+                var vv = Qi._data[Qi._offset + u * s0 + k * s1]
+                norm2 = norm2 + vv * vv
+                u += 1
+            var rkk = 0.0
+            if norm2 > 0.0:
+                rkk = sqrt64(norm2)
+            Ri._data[Ri._offset + k * s0 + k * s1] = rkk
+            if rkk != 0.0:
+                var inv_rkk = 1.0 / rkk
+                var t2 = 0
+                while t2 < n:
+                    var idx = Qi._offset + t2 * s0 + k * s1
+                    Qi._data[idx] = Qi._data[idx] * inv_rkk
+                    t2 += 1
+            k += 1
+        Q3[bi] = Qi
+        R3[bi] = Ri
+        bi += 1
+    if len(batch_shape) == 0:
+        return (Q3[0].copy(), R3[0].copy())
+    else:
+        var qshp = batch_shape.copy(); qshp.append(n); qshp.append(n)
+        var rshp = batch_shape.copy(); rshp.append(n); rshp.append(n)
+        return (Q3.reshape(qshp), R3.reshape(rshp))
+
+@always_inline
+fn inv(xx: Tensor[Float64]) -> Tensor[Float64]:
+    var rA = len(xx._shape)
+    if rA < 2:
+        return tensor.eye_f64(1).to_float64()
+    var n0 = xx._shape[rA - 2]
+    var n1 = xx._shape[rA - 1]
+    if n0 != n1:
+        return xx.copy()
+    var n = n0
+    if rA == 2:
+        var Ai = _ensure_contiguous_f64(xx).reshape([n, n])
+        var M   = Ai.copy()
+        var Inv = tensor.eye_f64(n).to_float64()
+        var s0 = M._strides[0]
+        var s1 = M._strides[1]
+        var k = 0
+        while k < n:
+            var piv = k
+            var best = abs64(M._data[M._offset + k * s0 + k * s1])
+            var r = k + 1
+            while r < n:
+                var v = abs64(M._data[M._offset + r * s0 + k * s1])
+                if v > best:
+                    best = v
+                    piv = r
+                r += 1
+            if piv != k:
+                var c = 0
+                while c < n:
+                    var a0 = M._data[M._offset + k   * s0 + c * s1]
+                    var a1 = M._data[M._offset + piv * s0 + c * s1]
+                    M._data[M._offset + k   * s0 + c * s1] = a1
+                    M._data[M._offset + piv * s0 + c * s1] = a0
+                    var b0 = Inv._data[Inv._offset + k   * s0 + c * s1]
+                    var b1 = Inv._data[Inv._offset + piv * s0 + c * s1]
+                    Inv._data[Inv._offset + k   * s0 + c * s1] = b1
+                    Inv._data[Inv._offset + piv * s0 + c * s1] = b0
+                    c += 1
+            var diag = M._data[M._offset + k * s0 + k * s1]
+            if diag == 0.0:
+                return tensor.eye_f64(n).to_float64()
+            var inv_diag = 1.0 / diag
+            var c2 = 0
+            while c2 < n:
+                M  ._data[M  ._offset + k * s0 + c2 * s1] = M  ._data[M  ._offset + k * s0 + c2 * s1] * inv_diag
+                Inv._data[Inv._offset + k * s0 + c2 * s1] = Inv._data[Inv._offset + k * s0 + c2 * s1] * inv_diag
+                c2 += 1
+            var rr = 0
+            while rr < n:
+                if rr != k:
+                    var factor = M._data[M._offset + rr * s0 + k * s1]
+                    if factor != 0.0:
+                        var cc = 0
+                        while cc < n:
+                            var rrcc = M  ._offset + rr * s0 + cc * s1
+                            var rkcc = M  ._offset + k  * s0 + cc * s1
+                            var irrcc= Inv._offset + rr * s0 + cc * s1
+                            var irkcc= Inv._offset + k  * s0 + cc * s1
+                            M  ._data[rrcc] = M  ._data[rrcc] - factor * M  ._data[rkcc]
+                            Inv._data[irrcc]= Inv._data[irrcc]- factor * Inv._data[irkcc]
+                            cc += 1
+                rr += 1
+            k += 1
+        return Inv.copy()
+    var batch_shape = List[Int]()
+    var i = 0
+    while i < rA - 2:
+        batch_shape.append(xx._shape[i])
+        i += 1
+    var B = _prod_shape(batch_shape)
+    var A3 = xx.copy()
+    if rA == 2:
+        A3 = xx.reshape([1, n, n])
+    else:
+        A3 = xx.reshape([B, n, n])
+    var out = tensor.zeros_f64([B, n, n])
+    var bi = 0
+    while bi < B:
+        var Ai0 = A3[bi]
+        var Ai  = _ensure_contiguous_f64(Ai0).reshape([n, n])
+        var M   = Ai.copy()
+        var Inv = tensor.eye_f64(n).to_float64()
+        var s0 = M._strides[0]
+        var s1 = M._strides[1]
+        var k = 0
+        while k < n:
+            var piv = k
+            var best = abs64(M._data[M._offset + k * s0 + k * s1])
+            var r = k + 1
+            while r < n:
+                var v = abs64(M._data[M._offset + r * s0 + k * s1])
+                if v > best:
+                    best = v
+                    piv = r
+                r += 1
+            if piv != k:
+                var c = 0
+                while c < n:
+                    var a0 = M._data[M._offset + k   * s0 + c * s1]
+                    var a1 = M._data[M._offset + piv * s0 + c * s1]
+                    M._data[M._offset + k   * s0 + c * s1] = a1
+                    M._data[M._offset + piv * s0 + c * s1] = a0
+                    var b0 = Inv._data[Inv._offset + k   * s0 + c * s1]
+                    var b1 = Inv._data[Inv._offset + piv * s0 + c * s1]
+                    Inv._data[Inv._offset + k   * s0 + c * s1] = b1
+                    Inv._data[Inv._offset + piv * s0 + c * s1] = b0
+                    c += 1
+            var diag = M._data[M._offset + k * s0 + k * s1]
+            if diag == 0.0:
+                out[bi] = tensor.eye_f64(n).to_float64()
+                break
+            var inv_diag = 1.0 / diag
+            var c2 = 0
+            while c2 < n:
+                M  ._data[M  ._offset + k * s0 + c2 * s1] = M  ._data[M  ._offset + k * s0 + c2 * s1] * inv_diag
+                Inv._data[Inv._offset + k * s0 + c2 * s1] = Inv._data[Inv._offset + k * s0 + c2 * s1] * inv_diag
+                c2 += 1
+            var rr = 0
+            while rr < n:
+                if rr != k:
+                    var factor = M._data[M._offset + rr * s0 + k * s1]
+                    if factor != 0.0:
+                        var cc = 0
+                        while cc < n:
+                            var rrcc = M  ._offset + rr * s0 + cc * s1
+                            var rkcc = M  ._offset + k  * s0 + cc * s1
+                            var irrcc= Inv._offset + rr * s0 + cc * s1
+                            var irkcc= Inv._offset + k  * s0 + cc * s1
+                            M  ._data[rrcc] = M  ._data[rrcc] - factor * M  ._data[rkcc]
+                            Inv._data[irrcc]= Inv._data[irrcc]- factor * Inv._data[irkcc]
+                            cc += 1
+                rr += 1
+            k += 1
+        out[bi] = Inv
+        bi += 1
+    if len(batch_shape) == 0:
+        return out[0].copy()
+    else:
+        var shp = batch_shape.copy()
+        shp.append(n)
+        shp.append(n)
+        return out.reshape(shp)
+
+@always_inline
+fn _eig_sym_qr(C_in: Tensor[Float64], iters: Int = 64) -> (Tensor[Float64], Tensor[Float64]):
+    var n = C_in._shape[0]
+    var C = _ensure_contiguous_f64(C_in).reshape([n, n])
+    var V = tensor.eye_f64(n).to_float64()
+    var t = 0
+    while t < iters:
+        var qr_pair = C.qr()
+        var Q = qr_pair[0].copy()
+        var R = qr_pair[1].copy()
+        C = _matmul_square_f64(R, Q)
+        V = _matmul_square_f64(V, Q)
+        t += 1
+    return (V.copy(), C.copy())
+
+@always_inline
+fn _permute_cols_f64(M: Tensor[Float64], perm: List[Int]) -> Tensor[Float64]:
+    var n = M._shape[0]
+    var out = tensor.zeros_f64([n, n])
+    var sr = M._strides[0]; var sc = M._strides[1]
+    var or_ = out._strides[0]; var oc = out._strides[1]
+    var j = 0
+    while j < n:
+        var src = perm[j]
+        var i = 0
+        while i < n:
+            out._data[out._offset + i * or_ + j * oc] = M._data[M._offset + i * sr + src * sc]
+            i += 1
+        j += 1
+    return out.copy()
+
+@always_inline
+fn _scale_cols_f64(M: Tensor[Float64], scale: Tensor[Float64]) -> Tensor[Float64]:
+    var n  = M._shape[0]
+    var nc = M._shape[1]
+    var out = M.copy()
+    var sr = out._strides[0]; var sc = out._strides[1]
+    var ss = scale._strides[0]
+    var j = 0
+    while j < nc:
+        var f = scale._data[scale._offset + j * ss]
+        var i = 0
+        while i < n:
+            var idx = out._offset + i * sr + j * sc
+            out._data[idx] = out._data[idx] * f
+            i += 1
+        j += 1
+    return out.copy()
+
+@always_inline
+fn svd(xx: Tensor[Float64]) -> (Tensor[Float64], Tensor[Float64], Tensor[Float64]):
+    var rA = len(xx._shape)
+    if rA < 2:
+        var U1 = tensor.eye_f64(1).to_float64()
+        var S1 = tensor.from_list_float64([1.0])
+        var Vh1 = tensor.eye_f64(1).to_float64()
+        return (U1.copy(), S1.copy(), Vh1.copy())
+    var n0 = xx._shape[rA - 2]
+    var n1 = xx._shape[rA - 1]
+    if n0 != n1:
+        var n = n0
+        var Ubad = tensor.eye_f64(n).to_float64()
+        var Sbad = tensor.zeros_f64([n])
+        var Vhbad = tensor.eye_f64(n1).to_float64()
+        return (Ubad.copy(), Sbad.copy(), Vhbad.copy())
+    var n = n0
+    if rA == 2:
+        var Ai = _ensure_contiguous_f64(xx).reshape([n, n])
+        var AT = Ai.transpose([1, 0])
+        var C  = AT.matmul(Ai)
+        var ev = _eig_sym_qr(C, 64)
+        var V  = ev[0].copy()
+        var Dm = ev[1].copy()
+        var lam = tensor.zeros_f64([n])
+        var sr = Dm._strides[0]; var sc = Dm._strides[1]
+        var s1 = lam._strides[0]
+        var j = 0
+        while j < n:
+            var lj = Dm._data[Dm._offset + j * sr + j * sc]
+            if lj < 0.0:
+                lj = 0.0
+            lam._data[lam._offset + j * s1] = lj
+            j += 1
+        var Svec = tensor.zeros_f64([n])
+        j = 0
+        while j < n:
+            var v = lam._data[lam._offset + j * s1]
+            Svec._data[Svec._offset + j * s1] = sqrt64(v)
+            j += 1
+        var perm = List[Int]()
+        var jj = 0
+        while jj < n:
+            perm.append(jj)
+            jj += 1
+        var a = 0
+        while a < n:
+            var b = a + 1
+            while b < n:
+                var sa = Svec._data[Svec._offset + a * s1]
+                var sb = Svec._data[Svec._offset + b * s1]
+                if sb > sa:
+                    var tmp = perm[a]; perm[a] = perm[b]; perm[b] = tmp
+                    var tv = Svec._data[Svec._offset + a * s1]
+                    Svec._data[Svec._offset + a * s1] = Svec._data[Svec._offset + b * s1]
+                    Svec._data[Svec._offset + b * s1] = tv
+                b += 1
+            a += 1
+        var Vs = _permute_cols_f64(V, perm)
+        var AV = Ai.matmul(Vs)
+        var inv_sigma = tensor.zeros_f64([n])
+        j = 0
+        while j < n:
+            var s = Svec._data[Svec._offset + j * s1]
+            var invs = 0.0
+            if s != 0.0:
+                invs = 1.0 / s
+            inv_sigma._data[inv_sigma._offset + j * s1] = invs
+            j += 1
+        var U  = _scale_cols_f64(AV, inv_sigma)
+        var Vh = Vs.transpose([1, 0])
+        return (U.copy(), Svec.copy(), Vh.copy())
+    var batch_shape = List[Int]()
+    var i = 0
+    while i < rA - 2:
+        batch_shape.append(xx._shape[i])
+        i += 1
+    var B = _prod_shape(batch_shape)
+    var A3 = xx.copy()
+    if rA == 2:
+        A3 = xx.reshape([1, n, n])
+    else:
+        A3 = xx.reshape([B, n, n])
+    var U3  = tensor.zeros_f64([B, n, n])
+    var S3v = tensor.zeros_f64([B, n])
+    var Vh3 = tensor.zeros_f64([B, n, n])
+    var bi = 0
+    while bi < B:
+        var Ai = _ensure_contiguous_f64(A3[bi]).reshape([n, n])
+        var AT = Ai.transpose([1, 0])
+        var C  = AT.matmul(Ai)
+        var ev = _eig_sym_qr(C, 64)
+        var V  = ev[0].copy()
+        var Dm = ev[1].copy()
+        var lam = tensor.zeros_f64([n])
+        var sr = Dm._strides[0]; var sc = Dm._strides[1]
+        var s1 = lam._strides[0]
+        var j = 0
+        while j < n:
+            var lj = Dm._data[Dm._offset + j * sr + j * sc]
+            if lj < 0.0:
+                lj = 0.0
+            lam._data[lam._offset + j * s1] = lj
+            j += 1
+        var Svec = tensor.zeros_f64([n])
+        j = 0
+        while j < n:
+            var v = lam._data[lam._offset + j * s1]
+            Svec._data[Svec._offset + j * s1] = sqrt64(v)
+            j += 1
+        var perm = List[Int]()
+        var jj = 0
+        while jj < n:
+            perm.append(jj)
+            jj += 1
+        var a = 0
+        while a < n:
+            var b = a + 1
+            while b < n:
+                var sa = Svec._data[Svec._offset + a * s1]
+                var sb = Svec._data[Svec._offset + b * s1]
+                if sb > sa:
+                    var tmp = perm[a]; perm[a] = perm[b]; perm[b] = tmp
+                    var tv = Svec._data[Svec._offset + a * s1]
+                    Svec._data[Svec._offset + a * s1] = Svec._data[Svec._offset + b * s1]
+                    Svec._data[Svec._offset + b * s1] = tv
+                b += 1
+            a += 1
+        var Vs = _permute_cols_f64(V, perm)
+        var AV = Ai.matmul(Vs)
+        var inv_sigma = tensor.zeros_f64([n])
+        j = 0
+        while j < n:
+            var s = Svec._data[Svec._offset + j * s1]
+            var invs = 0.0
+            if s != 0.0:
+                invs = 1.0 / s
+            inv_sigma._data[inv_sigma._offset + j * s1] = invs
+            j += 1
+        var U  = _scale_cols_f64(AV, inv_sigma)
+        var Vh = Vs.transpose([1, 0])
+        U3[bi]  = U
+        S3v[bi] = Svec
+        Vh3[bi] = Vh
+        bi += 1
+    if len(batch_shape) == 0:
+        return (U3[0].copy(), S3v[0].copy(), Vh3[0].copy())
+    else:
+        var ush = batch_shape.copy(); ush.append(n); ush.append(n)
+        var ssh = batch_shape.copy(); ssh.append(n)
+        var vsh = batch_shape.copy(); vsh.append(n); vsh.append(n)
+        return (U3.reshape(ush), S3v.reshape(ssh), Vh3.reshape(vsh))
+
+@always_inline
+fn cholesky(xx: Tensor[Float64]) -> Tensor[Float64]:
+    var rA = len(xx._shape)
+    if rA < 2:
+        return tensor.eye_f64(1).to_float64()
+    var n0 = xx._shape[rA - 2]
+    var n1 = xx._shape[rA - 1]
+    if n0 != n1:
+        return xx.copy()
+    var n = n0
+    if rA == 2:
+        var Ai = _ensure_contiguous_f64(xx).reshape([n, n])
+        var L  = tensor.zeros_f64([n, n])
+        var sr = Ai._strides[0]
+        var sc = Ai._strides[1]
+        var lr = L._strides[0]
+        var lc = L._strides[1]
+        var jitter = 1e-12
+        var irow = 0
+        while irow < n:
+            var jcol = 0
+            while jcol <= irow:
+                var s = Ai._data[Ai._offset + irow * sr + jcol * sc]
+                var k = 0
+                while k < jcol:
+                    var Lik = L._data[L._offset + irow * lr + k * lc]
+                    var Ljk = L._data[L._offset + jcol * lr + k * lc]
+                    s = s - Lik * Ljk
+                    k += 1
+                if irow == jcol:
+                    var d = s
+                    if d <= 0.0:
+                        d = d + jitter
+                        if d < 0.0:
+                            d = 0.0
+                    var val = sqrt64(d)
+                    L._data[L._offset + irow * lr + jcol * lc] = val
+                else:
+                    var Ljj = L._data[L._offset + jcol * lr + jcol * lc]
+                    var lij = 0.0
+                    if Ljj != 0.0:
+                        lij = s / Ljj
+                    L._data[L._offset + irow * lr + jcol * lc] = lij
+                jcol += 1
+            irow += 1
+        return L.copy()
+    var batch_shape = List[Int]()
+    var i = 0
+    while i < rA - 2:
+        batch_shape.append(xx._shape[i])
+        i += 1
+    var B = _prod_shape(batch_shape)
+    var A3 = xx.copy()
+    if rA == 2:
+        A3 = xx.reshape([1, n, n])
+    else:
+        A3 = xx.reshape([B, n, n])
+    var out = tensor.zeros_f64([B, n, n])
+    var bi = 0
+    while bi < B:
+        var Ai = _ensure_contiguous_f64(A3[bi]).reshape([n, n])
+        var L  = tensor.zeros_f64([n, n])
+        var sr = Ai._strides[0]
+        var sc = Ai._strides[1]
+        var lr = L._strides[0]
+        var lc = L._strides[1]
+        var jitter = 1e-12
+        var irow = 0
+        while irow < n:
+            var jcol = 0
+            while jcol <= irow:
+                var s = Ai._data[Ai._offset + irow * sr + jcol * sc]
+                var k = 0
+                while k < jcol:
+                    var Lik = L._data[L._offset + irow * lr + k * lc]
+                    var Ljk = L._data[L._offset + jcol * lr + k * lc]
+                    s = s - Lik * Ljk
+                    k += 1
+                if irow == jcol:
+                    var d = s
+                    if d <= 0.0:
+                        d = d + jitter
+                        if d < 0.0:
+                            d = 0.0
+                    var val = sqrt64(d)
+                    L._data[L._offset + irow * lr + jcol * lc] = val
+                else:
+                    var Ljj = L._data[L._offset + jcol * lr + jcol * lc]
+                    var lij = 0.0
+                    if Ljj != 0.0:
+                        lij = s / Ljj
+                    L._data[L._offset + irow * lr + jcol * lc] = lij
+                jcol += 1
+            irow += 1
+        out[bi] = L
+        bi += 1
+    if len(batch_shape) == 0:
+        return out[0].copy()
+    else:
+        var shp = batch_shape.copy()
+        shp.append(n)
+        shp.append(n)
+        return out.reshape(shp)
+
+@always_inline
+fn solve(xx: Tensor[Float64], b: Tensor[Float64]) -> Tensor[Float64]:
+    var rA = len(xx._shape)
+    if rA < 2:
+        return b.copy()
+    var n0 = xx._shape[rA - 2]
+    var n1 = xx._shape[rA - 1]
+    if n0 != n1:
+        return b.copy()
+    var n = n0
+    if rA == 2:
+        var rb = len(b._shape)
+        if rb == 1:
+            var Ainv = xx.inv()
+            var out1 = Ainv.matmul_vec(b)
+            return out1.copy()
+        elif rb == 2:
+            var Ainv = xx.inv()
+            var out2 = Ainv.matmul(b)
+            return out2.copy()
+        else:
+            return b.copy()
+    var batch_shape = List[Int]()
+    var i = 0
+    while i < rA - 2:
+        batch_shape.append(xx._shape[i])
+        i += 1
+    var B = _prod_shape(batch_shape)
+    var A3 = xx.copy()
+    if rA == 2:
+        A3 = xx.reshape([1, n, n])
+    else:
+        A3 = xx.reshape([B, n, n])
+    var rb = len(b._shape)
+    var is_vec_b = False
+    var k_rhs = 1
+    if rb == 0:
+        return b.copy()
+    elif rb == 1:
+        if rA == 2:
+            is_vec_b = True
+            k_rhs = 1
+            var b2 = b.reshape([1, n])
+            var Ainv = A3[0].inv()
+            var out1 = Ainv.matmul_vec(b2[0])
+            return out1.copy()
+        else:
+            return b.copy()
+    elif rb >= 2:
+        var expect_vec_rank = rA - 1
+        var expect_mat_rank = rA
+        if rb == expect_vec_rank:
+            is_vec_b = True
+            k_rhs = 1
+            var b2 = b.reshape([B, n])
+            var out = tensor.zeros_f64([B, n])
+            var bi = 0
+            while bi < B:
+                var Ai = A3[bi]
+                var Ainv = Ai.inv()
+                var xi = Ainv.matmul_vec(b2[bi])
+                out[bi] = xi
+                bi += 1
+            if len(batch_shape) == 0:
+                return out[0].copy()
+            else:
+                var shp = batch_shape.copy()
+                shp.append(n)
+                return out.reshape(shp)
+        elif rb == expect_mat_rank:
+            is_vec_b = False
+            k_rhs = b._shape[rb - 1]
+            var b3 = b.reshape([B, n, k_rhs])
+            var out = tensor.zeros_f64([B, n, k_rhs])
+            var bi = 0
+            while bi < B:
+                var Ai = A3[bi]
+                var Ainv = Ai.inv()
+                var xi  = Ainv.matmul(b3[bi])
+                out[bi] = xi
+                bi += 1
+            if len(batch_shape) == 0:
+                return out[0].copy()
+            else:
+                var shp = batch_shape.copy()
+                shp.append(n)
+                shp.append(k_rhs)
+                return out.reshape(shp)
+        else:
+            return b.copy()
+    else:
+        return b.copy()
