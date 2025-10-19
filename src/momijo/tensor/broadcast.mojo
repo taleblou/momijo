@@ -739,6 +739,249 @@ fn clip[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], lo: T, hi:
     return x
 
 
+# -------------------------------------------------------------------
+# clamp(): out-of-place, no assert (bounds are normalized if swapped)
+# -------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Int
+# -----------------------------------------------------------------------------
+@always_inline
+fn clamp(mut xx: Tensor[Int], min_opt: Optional[Int], max_opt: Optional[Int]) -> None:
+    var use_min = not (min_opt is None)
+    var use_max = not (max_opt is None)
+    if not use_min and not use_max:
+        return
+
+    var r = len(xx._shape)
+
+    # Rank-0
+    if r == 0:
+        var a = xx._data[xx._offset]
+        if use_min and a < min_opt.value(): a = min_opt.value()
+        if use_max and a > max_opt.value(): a = max_opt.value()
+        xx._data[xx._offset] = a
+        return
+
+    # Contiguous fast path
+    var expect = compute_row_major_strides(xx._shape)
+    var is_contig = True
+    var i = 0
+    while i < r:
+        if xx._strides[i] != expect[i]:
+            is_contig = False
+            break
+        i += 1
+
+    if is_contig:
+        var total = 1
+        i = 0
+        while i < r:
+            total = total * xx._shape[i]
+            i += 1
+        var base = xx._offset
+        var k = 0
+        while k < total:
+            var a = xx._data[base + k]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            xx._data[base + k] = a
+            k += 1
+        return
+
+    # General ND path
+    var idx = List[Int]()
+    idx.reserve(r)
+    i = 0
+    while i < r:
+        idx.append(0)
+        i += 1
+
+    var done = False
+    while True:
+        var lin = xx._offset
+        i = 0
+        while i < r:
+            lin = lin + idx[i] * xx._strides[i]
+            i += 1
+
+        var a = xx._data[lin]
+        if use_min and a < min_opt.value(): a = min_opt.value()
+        if use_max and a > max_opt.value(): a = max_opt.value()
+        xx._data[lin] = a
+
+        # increment multi-index
+        i = r - 1
+        while True:
+            if i < 0:
+                done = True
+                break
+            idx[i] = idx[i] + 1
+            if idx[i] < xx._shape[i]:
+                break
+            idx[i] = 0
+            i = i - 1
+        if done:
+            break
+
+
+# -----------------------------------------------------------------------------
+# Float32
+# -----------------------------------------------------------------------------
+@always_inline
+fn clamp(mut xx: Tensor[Float32], min_opt: Optional[Float32], max_opt: Optional[Float32]) -> None:
+    var use_min = not (min_opt is None)
+    var use_max = not (max_opt is None)
+    if not use_min and not use_max:
+        return
+
+    var r = len(xx._shape)
+
+    if r == 0:
+        var a = xx._data[xx._offset]
+        if use_min and a < min_opt.value(): a = min_opt.value()
+        if use_max and a > max_opt.value(): a = max_opt.value()
+        xx._data[xx._offset] = a
+        return
+
+    var expect = compute_row_major_strides(xx._shape)
+    var is_contig = True
+    var i = 0
+    while i < r:
+        if xx._strides[i] != expect[i]:
+            is_contig = False
+            break
+        i += 1
+
+    if is_contig:
+        var total = 1
+        i = 0
+        while i < r:
+            total = total * xx._shape[i]
+            i += 1
+        var base = xx._offset
+        var k = 0
+        while k < total:
+            var a = xx._data[base + k]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            xx._data[base + k] = a
+            k += 1
+        return
+
+    var idx = List[Int]()
+    idx.reserve(r)
+    i = 0
+    while i < r:
+        idx.append(0)
+        i += 1
+
+    var done = False
+    while True:
+        var lin = xx._offset
+        i = 0
+        while i < r:
+            lin = lin + idx[i] * xx._strides[i]
+            i += 1
+
+        var a = xx._data[lin]
+        if use_min and a < min_opt.value(): a = min_opt.value()
+        if use_max and a > max_opt.value(): a = max_opt.value()
+        xx._data[lin] = a
+
+        i = r - 1
+        while True:
+            if i < 0:
+                done = True
+                break
+            idx[i] = idx[i] + 1
+            if idx[i] < xx._shape[i]:
+                break
+            idx[i] = 0
+            i = i - 1
+        if done:
+            break
+
+
+# -----------------------------------------------------------------------------
+# Float64
+# -----------------------------------------------------------------------------
+@always_inline
+fn clamp(mut xx: Tensor[Float64], min_opt: Optional[Float64], max_opt: Optional[Float64]) -> None:
+    var use_min = not (min_opt is None)
+    var use_max = not (max_opt is None)
+    if not use_min and not use_max:
+        return
+
+    var r = len(xx._shape)
+
+    if r == 0:
+        var a = xx._data[xx._offset]
+        if use_min and a < min_opt.value(): a = min_opt.value()
+        if use_max and a > max_opt.value(): a = max_opt.value()
+        xx._data[xx._offset] = a
+        return
+
+    var expect = compute_row_major_strides(xx._shape)
+    var is_contig = True
+    var i = 0
+    while i < r:
+        if xx._strides[i] != expect[i]:
+            is_contig = False
+            break
+        i += 1
+
+    if is_contig:
+        var total = 1
+        i = 0
+        while i < r:
+            total = total * xx._shape[i]
+            i += 1
+        var base = xx._offset
+        var k = 0
+        while k < total:
+            var a = xx._data[base + k]
+            if use_min and a < min_opt.value(): a = min_opt.value()
+            if use_max and a > max_opt.value(): a = max_opt.value()
+            xx._data[base + k] = a
+            k += 1
+        return
+
+    var idx = List[Int]()
+    idx.reserve(r)
+    i = 0
+    while i < r:
+        idx.append(0)
+        i += 1
+
+    var done = False
+    while True:
+        var lin = xx._offset
+        i = 0
+        while i < r:
+            lin = lin + idx[i] * xx._strides[i]
+            i += 1
+
+        var a = xx._data[lin]
+        if use_min and a < min_opt.value(): a = min_opt.value()
+        if use_max and a > max_opt.value(): a = max_opt.value()
+        xx._data[lin] = a
+
+        i = r - 1
+        while True:
+            if i < 0:
+                done = True
+                break
+            idx[i] = idx[i] + 1
+            if idx[i] < xx._shape[i]:
+                break
+            idx[i] = 0
+            i = i - 1
+        if done:
+            break
+
+
+
+
 @always_inline
 fn clamp(x: Int, lo: Int, hi: Int) -> Int:
     var a = lo
@@ -762,6 +1005,7 @@ fn clamp(x: Float32, lo: Float32, hi: Float32) -> Float32:
     if v > b: v = b
     return v
 
+
 @always_inline
 fn clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
     var a = lo
@@ -772,6 +1016,30 @@ fn clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
     if v < a: v = a
     if v > b: v = b
     return v
+
+
+@always_inline
+fn clamp_int(x0: Int, lo: Int, hi: Int) -> Int:
+    var x = x0
+    if x < lo: x = lo
+    if x > hi: x = hi
+    return x
+@always_inline
+fn clamp_f64(x: Float64, lo: Float64, hi: Float64) -> Float64:
+    var v = x
+    if v < lo: v = lo
+    if v > hi: v = hi
+    return v
+
+@always_inline
+fn clamp_axis(ax: Int, rank: Int) -> Int:
+    var v = ax
+    if v < 0: v = v + rank
+    if v < 0: v = 0
+    if v >= rank: v = rank - 1
+    return v
+
+
 
 fn sign_float32(x: Tensor[Float32], out: Tensor[Float32]):
     var n = len(x._data)
@@ -1263,13 +1531,13 @@ fn matmul_core_mm(A: Tensor[Float64], B: Tensor[Float64]) -> Tensor[Float64]:
 
  
 @always_inline
-fn matmul(self: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Float64]:
-    var r_self = len(self._shape)
+fn matmul(xx: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Float64]:
+    var r_xx = len(xx._shape)
     var r_other = len(other._shape)
-    if r_self == 2 and r_other == 1:
-        return matmul_core_vec(self, other)
-    elif r_self == 2 and r_other == 2:
-        return matmul_core_mm(self, other) 
+    if r_xx == 2 and r_other == 1:
+        return matmul_core_vec(xx, other)
+    elif r_xx == 2 and r_other == 2:
+        return matmul_core_mm(xx, other) 
     return empty_f64()
 
 
