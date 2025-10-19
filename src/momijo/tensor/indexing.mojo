@@ -29,7 +29,7 @@ from momijo.tensor.anytensor import (
     AnyTensor,
     AnyBuffer,
 )
-from momijo.tensor.broadcast import clamp,broadcast_shapes
+from momijo.tensor.broadcast import clamp,broadcast_shapes,clamp_axis
 from momijo.tensor.creation import scalar_zero_tensor,zeros_with_shape
 
 # Helpers (no wildcard imports)
@@ -536,95 +536,67 @@ fn take1d[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T], indices: Lis
 # Output shape = pre + index.shape + post
 # Gather along 'axis' preserving other dims.
 # out_shape = x.shape[:axis] + index.shape + x.shape[axis+1:]
+@always_inline
 fn gather[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], axis: Int, index: Tensor[Int]
 ) -> Tensor[T]:
     var r = len(x._shape)
     var ax = normalize_axis(axis, r)
-    var q  = len(index._shape)
 
-    # ----- out_shape -----
-    var out_shape = List[Int]()
-    out_shape.reserve(r - 1 + q)
-
-    var i = 0
-    while i < ax:
-        out_shape.append(x._shape[i]); i += 1
-
-    var j = 0
-    while j < q:
-        out_shape.append(index._shape[j]); j += 1
-
-    var k = ax + 1
-    while k < r:
-        out_shape.append(x._shape[k]); k += 1
-
-    # خالی؟ همان نوع را با shape=[0] برگردانیم
+    var out_shape = index._shape.copy()
     if numel(out_shape) == 0 or numel(x._shape) == 0:
         var empty = List[T]()
         var shp0 = List[Int](); shp0.append(0)
-        return Tensor[T](empty, shp0)
+        var str0 = compute_row_major_strides(shp0)
+        return Tensor[T](empty, shp0, str0, 0)
 
-    # ----- خروجی را با append بسازیم (بدون نوشتن با ایندکس) -----
     var out_data = List[T]()
-    out_data.reserve(numel(out_shape))
+    var n = numel(out_shape)
+    out_data.reserve(n)
 
-    # با unravel روی ایندکس خطی خروجی جلو می‌رویم
-    var out_idx = List[Int]()
-    out_idx.reserve(len(out_shape))
-    var t = 0
-    while t < len(out_shape):
-        out_idx.append(0); t += 1
+    var rm_idx = _row_major_multipliers(index._shape)
 
-    var idx_coords = List[Int]()
-    idx_coords.reserve(q)
-    var w = 0
-    while w < q:
-        idx_coords.append(0); w += 1
+    var pre = ax
+    var post = r - ax - 1
 
-    var pos = List[Int]()   # مختصات ورودی
-    pos.reserve(r)
-    var v = 0
-    while v < r:
-        pos.append(0); v += 1
+    var lin = 0
+    while lin < n:
+        # coords of index at linear 'lin'
+        var icoord = List[Int]()
+        icoord.reserve(len(index._shape))
+        var d = 0
+        while d < len(index._shape):
+            var s = 0
+            if index._shape[d] != 0 and rm_idx[d] != 0:
+                s = (lin // rm_idx[d]) % index._shape[d]
+            icoord.append(s)
+            d += 1
 
-    var dim_ax = x._shape[ax]
-    var n_out = numel(out_shape)
-    var p = 0
-    while p < n_out:
-        unravel_index(p, out_shape, out_idx)
+        # read index value (respect strides/offset)
+        var idx_off = _offset_from_linear(index._shape, index._strides, index._offset, rm_idx, lin)
+        var k = index._data[idx_off]
+        if k < 0: k = k + x._shape[ax]
+        if k < 0: k = 0
+        var mx = x._shape[ax] - 1
+        if k > mx: k = mx
 
-        # pre-axes
-        var a = 0
-        while a < ax:
-            pos[a] = out_idx[a]; a += 1
+        # build x coords and compute offset inline
+        var xoff = x._offset
+        var dd = 0
+        while dd < pre:
+            xoff = xoff + icoord[dd] * x._strides[dd]
+            dd += 1
+        xoff = xoff + k * x._strides[ax]
+        var ee = 0
+        while ee < post:
+            var dim = pre + 1 + ee
+            xoff = xoff + icoord[dim] * x._strides[dim]
+            ee += 1
 
-        # index coords (اگر q==0، اسکالر فرضی)
-        var take_val = 0
-        if q == 0:
-            take_val = index._data[index._offset]
-        else:
-            var b = 0
-            while b < q:
-                idx_coords[b] = out_idx[ax + b]; b += 1
-            var li_idx = lin_index(idx_coords, index._strides) + index._offset
-            take_val = index._data[li_idx]
-        take_val = wrap_index(take_val, dim_ax)
-
-        pos[ax] = take_val
-
-        # post-axes
-        var c = ax + 1
-        while c < r:
-            pos[c] = out_idx[(ax + q) + (c - (ax + 1))]
-            c += 1
-
-        var li_x = lin_index(pos, x._strides) + x._offset
-        out_data.append(x._data[li_x])
-
-        p += 1
-
-    return Tensor[T](out_data, out_shape)
+        out_data.append(x._data[xoff])
+        lin += 1
+    var out_strides = compute_row_major_strides(out_shape)
+    return Tensor[T](out_data, out_shape, out_strides, 0)
 
 
 
@@ -806,21 +778,36 @@ fn set_at[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], i: Int, 
     var st = x._strides.copy()
     x._data[ii * st[0] + jj * st[1]] = v
 
+@always_inline
+fn _clamp_row_index(i: Int, r: Int) -> Int:
+    var ii = i
+    if ii < 0:  ii = 0
+    if ii >= r: ii = r - 1
+    return ii
+
 fn row[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], i: Int) -> Tensor[T]:
     var sh = x._shape.copy()
     if len(sh) < 2:
         return x.copy()
-    var r = sh[0]
-    var c = sh[1]
-    var ii = clamp(i, 0, r - 1)
-    var out = Tensor[T](shape=[c], fill=zero_scalar_of[T](cast_from_f64[T]))
-    var st = x._strides.copy()
-    var off = ii * st[0]
+
+    var r  = sh[0]
+    var c  = sh[1]
+    var ii = _clamp_row_index(i, r)
+
+    var st  = x._strides.copy()
+    var off = x._offset + ii * st[0] 
+
+    var buf = List[T]()
+    buf.reserve(c)
+
     var j = 0
     while j < c:
-        out._data[j] = x._data[off + j * st[1]]
+        buf.append(x._data[off + j * st[1]])
         j += 1
-    return out.copy()
+
+    # سازنده‌ی (data, shape) -> row-major, offset=0
+    return Tensor[T](data=buf, shape=[c])
+
 
 fn col[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], j: Int) -> Tensor[T]:
     var sh = x._shape.copy()
@@ -1027,29 +1014,34 @@ fn masked_select[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T],
     mask: Tensor[Int]
 ) -> Tensor[T]:
-    # Get broadcasted logical shape from the BroadcastResult
+    # Broadcast logical shape
     var br = broadcast_shapes(x._shape, mask._shape)
-    var sh = br.shape.copy()        # NOTE: if your field is 'out_shape', use br.out_shape instead.
+    var sh = br.shape.copy()                # NOTE: use the correct field name from your BroadcastResult
 
     var n = numel(sh)
+    # Empty fast-path: return a []-length 1D tensor
     if n == 0:
-        return Tensor[T](shape=[0], fill=zero_scalar_of[T](cast_from_f64[T]))
+        var shp0 = List[Int](); shp0.append(0)
+        var str0 = compute_row_major_strides(shp0)
+        var dat0 = List[T]()        # empty payload
+        return Tensor[T](dat0, shp0, str0, 0)
 
     var rm = compute_row_major_strides(sh)
 
+    # We don't know the kept count upfront; append then build exact-sized tensor.
     var out_list = List[T]()
-    out_list.reserve(n)
 
-    var st_x = x._strides.copy()
-    var st_m = mask._strides.copy()
-    var base_x = x._offset.copy()
-    var base_m = mask._offset.copy()
+    var st_x   = x._strides.copy()
+    var st_m   = mask._strides.copy()
+    var base_x = x._offset
+    var base_m = mask._offset
 
     var i = 0
     while i < n:
         var offx = base_x
         var offm = base_m
 
+        # Map the i-th logical index to x/mask linear offsets via strides.
         var d = 0
         while d < len(sh):
             var stride = rm[d]
@@ -1057,7 +1049,7 @@ fn masked_select[T: ImplicitlyCopyable & Copyable & Movable](
             if stride != 0 and sh[d] != 0:
                 s = (i // stride) % sh[d]
 
-            # map to x
+            # Map to x-dimension (right-aligned broadcast)
             var jx = d + len(x._shape) - len(sh)
             var ix = s
             if jx < 0 or x._shape[jx] == 1:
@@ -1065,7 +1057,7 @@ fn masked_select[T: ImplicitlyCopyable & Copyable & Movable](
             if jx >= 0:
                 offx = offx + ix * st_x[jx]
 
-            # map to mask
+            # Map to mask-dimension
             var jm = d + len(mask._shape) - len(sh)
             var im = s
             if jm < 0 or mask._shape[jm] == 1:
@@ -1075,65 +1067,69 @@ fn masked_select[T: ImplicitlyCopyable & Copyable & Movable](
 
             d += 1
 
+        # Keep if mask != 0
         if mask._data[offm] != 0:
             out_list.append(x._data[offx])
 
         i += 1
 
-    var out = Tensor[T](shape=[len(out_list)], fill=zero_scalar_of[T](cast_from_f64[T]))
-    var k = 0
-    while k < len(out_list):
-        out._data[k] = out_list[k]
-        k += 1
-    return out.copy()
+    # Build the output tensor [k], k = len(out_list)
+    var out_shape = List[Int](); out_shape.append(len(out_list))
+    var out_strides = compute_row_major_strides(out_shape)
+    return Tensor[T](out_list.copy(), out_shape, out_strides, 0)
 
 @always_inline
 fn masked_fill[T: ImplicitlyCopyable & Copyable & Movable](
-    mut x: Tensor[T],
-    mask: Tensor[UInt8],
-    value: T
+    mut x: Tensor[T], mask: Tensor[Int], value: T
 ) -> None:
-    # Get broadcasted logical shape
     var br = broadcast_shapes(x._shape, mask._shape)
-    var sh = br.shape.copy()       # NOTE: if your field is 'out_shape', use br.out_shape instead.
+    var sh = br.shape.copy()
+    var n  = numel(sh)
+    if n == 0: return
 
-    var n = numel(sh)
-    if n == 0:
+    # Fast path: same shape, both contiguous, same layout
+    var expect = compute_row_major_strides(sh)
+    var contig = (x._offset == 0 and mask._offset == 0)
+    contig = contig and (x._strides == expect) and (mask._strides == expect)
+    if contig:
+        var i = 0
+        while i < n:
+            if mask._data[i] != 0:
+                x._data[i] = value
+            i += 1
         return
 
-    var rm   = compute_row_major_strides(sh)
-    var st_x = x._strides
-    var st_m = mask._strides
+    # General ND path (stride-aware)
+    var rm    = compute_row_major_strides(sh)
+    var st_x  = x._strides.copy()
+    var st_m  = mask._strides.copy()
     var base_x = x._offset
     var base_m = mask._offset
 
     var idx = 0
+    var L = len(sh)
     while idx < n:
         var offx = base_x
         var offm = base_m
 
         var d = 0
-        while d < len(sh):
+        while d < L:
             var stride = rm[d]
             var s = 0
             if stride != 0 and sh[d] != 0:
                 s = (idx // stride) % sh[d]
 
-            # map to x
-            var jx = d + len(x._shape) - len(sh)
+            var jx = d + len(x._shape) - L
             var ix = s
             if jx < 0 or x._shape[jx] == 1:
-                ix = 0
-            if jx >= 0:
-                offx = offx + ix * st_x[jx]
+                  ix = 0 
+            if jx >= 0: offx = offx + ix * st_x[jx]
 
-            # map to mask
-            var jm = d + len(mask._shape) - len(sh)
+            var jm = d + len(mask._shape) - L
             var im = s
             if jm < 0 or mask._shape[jm] == 1:
-                im = 0
-            if jm >= 0:
-                offm = offm + im * st_m[jm]
+                  im = 0  
+            if jm >= 0: offm = offm + im * st_m[jm]
 
             d += 1
 
@@ -1336,46 +1332,54 @@ fn where(cond: Tensor[Int], x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
 # Take / Take-along / Scatter / gather_nd / scatter_nd
 # -----------------------------------------------------------------------------
 
-fn take[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], indices: Tensor[Int], axis: Int = 0) -> Tensor[T]:
-    var ax = normalize_axis(axis, len(x._shape))
-    var sh = x._shape.copy()
-    var out_shape = List[Int]()
-    var d = 0
-    while d < len(sh):
-        out_shape.append(len(indices._data) if d == ax else sh[d])
-        d += 1
+@always_inline
+fn take[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], indices: Tensor[Int], axis: Int = 0
+) -> Tensor[T]:
+    var r = len(x._shape)
+    var ax = normalize_axis(axis, r)
+
+    var idx_len = len(indices._data)
+    var out_shape = x._shape.copy()
+    out_shape[ax] = idx_len
+
     var out = Tensor[T](shape=out_shape, fill=zero_scalar_of[T](cast_from_f64[T]))
-    var nidx = len(indices._data)
-    var rm = compute_row_major_strides(sh)
-    var i = 0
-    while i < nidx:
-        var idxv = clamp(indices._data[i], 0, sh[ax] - 1)
-        var total = numel(sh)
-        var f = 0
-        while f < total:
-            var idxs = List[Int]()
-            idxs.reserve(len(sh))
-            var dd = 0
-            while dd < len(sh):
-                var stride = rm[dd]
-                var s = 0
-                if stride != 0 and sh[dd] != 0:
-                    s = (f // stride) % sh[dd]
-                idxs.append(s)
-                dd += 1
-            if idxs[ax] == idxv:
-                var out_idxs = idxs
-                out_idxs[ax] = i
-                var ox = 0
-                var oo = 0
-                var d2 = 0
-                while d2 < len(sh):
-                    ox = ox + idxs[d2] * x._strides[d2]
-                    oo = oo + out_idxs[d2] * out._strides[d2]
-                    d2 += 1
-                out._data[oo] = x._data[ox]
-            f += 1
-        i += 1
+    if numel(out_shape) == 0:
+        return out.copy()
+
+    var rm_out = _row_major_multipliers(out_shape)
+    var n = numel(out_shape)
+
+    var pre = ax
+    var post = r - ax - 1
+
+    var lin = 0
+    while lin < n:
+        var ocoord = _coords_from_linear(out_shape, rm_out, lin)
+
+        var k = indices._data[indices._offset + ocoord[ax]]
+        if k < 0:
+            k = k + x._shape[ax]
+        if k < 0:
+            k = 0
+        var mx = x._shape[ax] - 1
+        if k > mx:
+            k = mx
+
+        var xcoord = List[Int]()
+        xcoord.reserve(r)
+
+        var d = 0
+        while d < pre:
+            xcoord.append(ocoord[d]); d += 1
+        xcoord.append(k)
+        var e = 0
+        while e < post:
+            xcoord.append(ocoord[pre + 1 + e]); e += 1
+
+        var xoff = _offset_from_coords(x._strides, x._offset, xcoord)
+        out._data[out._offset + lin] = x._data[xoff]
+        lin += 1
     return out.copy()
 
 fn take_along_axis[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], indices: Tensor[Int], axis: Int) -> Tensor[T]:
@@ -1418,56 +1422,64 @@ fn take_along_axis[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], ind
         i += 1
     return out.copy()
 
-fn scatter[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], indices: Tensor[Int], updates: Tensor[T], axis: Int = 0):
-    var ax = normalize_axis(axis, len(x._shape))
-    var total = numel(indices._shape)
-    var rm = compute_row_major_strides(indices._shape)
-    var i = 0
-    while i < total:
-        var idxs = List[Int]()
-        idxs.reserve(len(indices._shape))
+@always_inline
+fn scatter[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], axis: Int, index: Tensor[Int], updates: Tensor[T]
+) -> Tensor[T]:
+    var r = len(x._shape)
+    var ax = normalize_axis(axis, r)
+
+    var out = x.copy()
+    var n = numel(index._shape)
+    if n == 0:
+        return out.copy()
+
+    var rm_idx = _row_major_multipliers(index._shape)
+
+    var pre = ax
+    var post = r - ax - 1
+
+    var lin = 0
+    while lin < n:
+        var icoord = _coords_from_linear(index._shape, rm_idx, lin)
+
+        # dest coords in out
+        var dcoord = List[Int]()
+        dcoord.reserve(r)
+
         var d = 0
-        while d < len(indices._shape):
-            var stride = rm[d]
-            var s = 0
-            if stride != 0 and indices._shape[d] != 0:
-                s = (i // stride) % indices._shape[d]
-            idxs.append(s)
+        while d < pre:
+            dcoord.append(icoord[d])
             d += 1
-        var j = 0
-        var offi = 0
-        while j < len(idxs):
-            offi = offi + idxs[j] * indices._strides[j]
-            j += 1
-        var at_ax = clamp(indices._data[offi], 0, x._shape[ax] - 1)
-        var x_idxs = idxs
-        if len(x_idxs) < len(x._shape):
-            var pad = len(x._shape) - len(x_idxs)
-            var tmp = List[Int]()
-            tmp.reserve(len(x._shape))
-            var t = 0
-            while t < pad:
-                tmp.append(0)
-                t += 1
-            var q = 0
-            while q < len(x_idxs):
-                tmp.append(x_idxs[q])
-                q += 1
-            x_idxs = tmp
-        x_idxs[ax] = at_ax
-        var offx = 0
-        var offu = 0
-        var d2 = 0
-        while d2 < len(x._shape):
-            offx = offx + x_idxs[d2] * x._strides[d2]
-            d2 += 1
-        var d3 = 0
-        while d3 < len(idxs):
-            offu = offu + idxs[d3] * updates._strides[d3]
-            d3 += 1
-        x._data[offx] = updates._data[offu]
-        i += 1
- 
+
+        var idx_off = _offset_from_linear(index._shape, index._strides, index._offset, rm_idx, lin)
+        var k = index._data[idx_off]
+        if k < 0:
+            k = k + out._shape[ax]
+        if k < 0:
+            k = 0
+        var mx = out._shape[ax] - 1
+        if k > mx:
+            k = mx
+        dcoord.append(k)
+
+        var e = 0
+        while e < post:
+            dcoord.append(icoord[pre + 1 + e])
+            e += 1
+
+        var doff = _offset_from_coords(out._strides, out._offset, dcoord)
+
+        var uoff = 0
+        if len(updates._shape) == 0 or numel(updates._shape) == 1 and numel(updates._shape) == 1 and updates._shape[0] == 1:
+            uoff = updates._offset
+        else:
+            uoff = _offset_from_linear(updates._shape, updates._strides, updates._offset, rm_idx, lin)
+
+        out._data[doff] = updates._data[uoff]
+        lin += 1
+    return out.copy()
+
 
 fn scatter_nd[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], indices: Tensor[Int], updates: Tensor[T]):
     var sh = x._shape.copy()
@@ -1522,6 +1534,73 @@ fn scatter_nd[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], indi
             d3 += 1
         x._data[offx] = updates._data[offu]
         p += 1
+
+
+# -----------------------------------------------------------------------------
+# Utilities (compact, English-only comments; no asserts)
+# -----------------------------------------------------------------------------
+@always_inline
+fn _same_shape(a: List[Int], b: List[Int]) -> Bool:
+    var ra = len(a)
+    if ra != len(b): return False
+    var i = 0
+    while i < ra:
+        if a[i] != b[i]: return False
+        i += 1
+    return True
+
+@always_inline
+fn _row_major_multipliers(shape: List[Int]) -> List[Int]:
+    var r = len(shape)
+    var rm = List[Int]()
+    rm.reserve(r)
+    var i = 0
+    while i < r:
+        rm.append(0)
+        i += 1
+    var acc = 1
+    var k = r - 1
+    while k >= 0:
+        rm[k] = acc
+        acc = acc * shape[k]
+        k -= 1
+    return rm.copy()
+
+@always_inline
+fn _offset_from_linear(
+    shape: List[Int], strides: List[Int], off: Int, rm: List[Int], lin: Int
+) -> Int:
+    var r = len(shape)
+    var o = off
+    var d = 0
+    while d < r:
+        var s = 0
+        if shape[d] != 0 and rm[d] != 0:
+            s = (lin // rm[d]) % shape[d]
+        o = o + s * strides[d]
+        d += 1
+    return o
+
+
+@always_inline
+fn _offset_from_coords(coords: List[Int], strides: List[Int], base: Int) -> Int:
+    var off = base
+    var d = 0
+    var r = len(coords)
+    while d < r:
+        off = off + coords[d] * strides[d]
+        d += 1
+    return off
+
+ 
+@always_inline
+fn _offset_from_coords(strides: List[Int], off: Int, coords: List[Int]) -> Int:
+    var o = off
+    var d = 0
+    while d < len(coords):
+        o = o + coords[d] * strides[d]
+        d += 1
+    return o
 
 # -----------------------------------------------------------------------------
 # argwhere (Tensor) and argwhere_any (AnyTensor)
@@ -2934,4 +3013,85 @@ fn fill[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], v: T) -> N
             break
 
 
- 
+  
+@always_inline
+fn _coords_from_linear(shape: List[Int], rm: List[Int], lin: Int) -> List[Int]:
+    var r = len(shape)
+    var coord = List[Int]()
+    coord.reserve(r)
+    var d = 0
+    while d < r:
+        var s = 0
+        if shape[d] != 0 and rm[d] != 0:
+            s = (lin // rm[d]) % shape[d]
+        coord.append(s)
+        d += 1
+    return coord.copy()
+
+
+# -----------------------------------------------------------------------------
+# put: write flat indices from `index` with values from `src` into a COPY of xx
+# - Works with non-contiguous/view tensors (uses strides mapping)
+# - Negative indices allowed (normalized by n); out-of-range are clamped
+# - Broadcasting rules for `src`: scalar → all; len>=m → ith; len<m → repeat last
+# - Last-write-wins on duplicate indices
+# -----------------------------------------------------------------------------
+
+@always_inline
+fn put[T: ImplicitlyCopyable & Copyable & Movable](
+    xx: Tensor[T], index: Tensor[Int], src: Tensor[T]
+) -> Tensor[T]:
+    var r = len(xx._shape)
+    var n = 1
+    var di = 0
+    while di < r:
+        n = n * xx._shape[di]
+        di += 1
+    if n == 0:
+        return xx.copy()
+
+    var m = 1
+    var i = 0
+    while i < len(index._shape):
+        m = m * index._shape[i]
+        i += 1
+    if m == 0:
+        return xx.copy()
+
+    var sN = 1
+    var j = 0
+    while j < len(src._shape):
+        sN = sN * src._shape[j]
+        j += 1
+
+    var out = xx.copy()
+
+    var rm_idx = _row_major_multipliers(index._shape)
+    var rm_dst = _row_major_multipliers(xx._shape)
+    var rm_src = _row_major_multipliers(src._shape)
+
+    var k = 0
+    while k < m:
+        var ioff = _offset_from_linear(index._shape, index._strides, index._offset, rm_idx, k)
+        var pos = index._data[ioff]
+
+        if pos < 0:
+            pos = pos + n
+        if pos < 0:
+            pos = 0
+        var maxp = n - 1
+        if pos > maxp:
+            pos = maxp
+
+        var val_off = src._offset
+        if not (len(src._shape) == 0 or sN == 1):
+            var s_lin = k
+            if s_lin >= sN:
+                s_lin = sN - 1
+            val_off = _offset_from_linear(src._shape, src._strides, src._offset, rm_src, s_lin)
+
+        var doff = _offset_from_linear(xx._shape, xx._strides, xx._offset, rm_dst, pos)
+        out._data[doff] = src._data[val_off]
+
+        k += 1
+    return out.copy()
