@@ -39,17 +39,18 @@ from momijo.tensor.nanops import nanmean,nansum,nanmin
  
  
 from momijo.tensor.transform import reshape,transpose,unsqueeze,squeeze_all,repeat
-from momijo.tensor.broadcast import broadcast_shapes,can_broadcast_shapes
+from momijo.tensor.broadcast import broadcast_shapes,can_broadcast_shapes,clamp
+from momijo.tensor.broadcast import matmul_core_vec,clamp_int
  
 from momijo.tensor.broadcast import matmul as _matmul_free
 from momijo.tensor.broadcast import tensordot as _tensordot_free
 from momijo.tensor.math import mean as _mean_free
- 
+  
 from momijo.tensor.math import *
 from momijo.tensor.cast import *
 from momijo.tensor.creation import scalar_f64,scalar_f32,scalar_int
 from momijo.tensor.indexing import *
-from momijo.tensor.transform import flatten,view ,clamp_int,permute
+from momijo.tensor.transform import flatten,view ,permute,unbind,split_sizes,cat,chunk
 
 from momijo.tensor.creation import empty_tensor_with
 
@@ -147,8 +148,7 @@ fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Op
         # wrap منفی‌ها
         if start < 0: start += n
         if stop  < 0: stop  += n
-
-        # clamp به [0..n]
+ 
         if start < 0: start = 0
         if start > n: start = n
         if stop  < 0: stop  = 0
@@ -782,6 +782,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     var _strides: List[Int]
     var _offset: Int
 
+
+    fn resize_like_with_pad(self, new_tensor: Tensor[T]) -> Tensor[T]:
+        return resize_like_with_pad(self, new_shape)
      # (data, shape, strides, offset)
     fn __init__(out self, data: List[T], shape: List[Int], strides: List[Int], off: Int):
         self._data    = data.copy()
@@ -945,20 +948,11 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn take(self, js: List[Int]) -> IndexSel:
         return make_fancy_sel(js)
-
-    # Expand/truncate selector list to exactly ndim, fill full-axis as needed
+    
     @always_inline
-    fn pad_full_axes(self, sels: List[IndexSel]) -> List[IndexSel]:
-        var out = List[IndexSel]()
-        var d = len(self._shape)
-        var i = 0
-        while i < len(sels) and i < d:
-            out.append(clone_sel(sels[i]))   # ⬅️ کپیِ صریح
-            i = i + 1
-        while i < d:
-            out.append(self.all_axis())      # تازه ساخته می‌شود؛ مشکلی ندارد
-            i = i + 1
-        return out.copy()
+    fn take(self, js: Tensor[Int]) -> IndexSel:
+        ls=js.to_list()
+        return make_fancy_sel(ls)
 
 
     # Normalize a slice selector against dim and (possibly) negative step.
@@ -3023,7 +3017,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
         self._data[lin] = value 
 
-    
+    fn put(self,index: Tensor[Int], src: Tensor[T]) -> Tensor[T]:
+        return put(self,index, src)
     # ---------------- string-based multi-axis selector ----------------
     @always_inline
     fn _trim(self, s: String) -> String:
@@ -3157,17 +3152,6 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
  
  
 
-    fn numel(self) -> Int:
-        return numel(self._shape)
-
-    fn reshape(self, new_shape: List[Int]) -> Tensor[T]:
-        return reshape(self, new_shape)
-
-    fn reshape_infer(self, new_shape: List[Int]) -> Tensor[T]:
-        return reshape_infer(self, new_shape)
-
-    fn resize_like_with_pad(self, new_tensor: Tensor[T]) -> Tensor[T]:
-        return resize_like_with_pad(self, new_shape)
  
  
 
@@ -3179,7 +3163,24 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var Af = astype_f64_from_int(self)
         var xf = astype_f64_from_int(x)
         return _matmul_free(Af, xf)
+    fn matmul(self: Tensor[Float32], x: Tensor[Float32]) -> Tensor[Float64]:
+        var Af = astype_f64_from_f32(self)
+        var xf = astype_f64_from_f32(x)
+        return _matmul_free(Af, xf)
 
+
+    fn matmul_vec(self: Tensor[Float64], x: Tensor[Float64]) -> Tensor[Float64]:
+        return matmul_core_vec(self, x)
+
+    # Tensor[Int] @ Tensor[Int] -> Tensor[Float64]  (upcast then call Float64 impl)
+    fn matmul_vec(self: Tensor[Int], x: Tensor[Int]) -> Tensor[Float64]:
+        var Af = astype_f64_from_int(self)
+        var xf = astype_f64_from_int(x)
+        return matmul_core_vec(Af, xf)
+    fn matmul_vec(self: Tensor[Float32], x: Tensor[Float32]) -> Tensor[Float64]:
+        var Af = astype_f64_from_f32(self)
+        var xf = astype_f64_from_f32(x)
+        return matmul_core_vec(Af, xf)
 
     # Float64 x Float64
     fn tensordot(self: Tensor[Float64], B: Tensor[Float64], axis: Int = 1) -> Tensor[Float64]:
@@ -4722,12 +4723,12 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     # Arithmetic (tensor)
     fn add   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return add_t(to_float64(self), other)     # a + b (f32,f64→f64)
-    fn add   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return add_t(self, other)                 # a + b (f32,f32→f32)
-    fn add   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return add_t(self, to_float32(other))     # a + b (f32,int→f32)
+    fn add   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return add_t(self, other)                 # a + b (f32,f32→f32)
+    fn add   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return add_t(self, to_float32(other))     # a + b (f32,int→f32)
 
     fn sub   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return sub_t(to_float64(self), other)     # a - b (f32,f64→f64)
-    fn sub   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return sub_t(self, other)                 # a - b (f32,f32→f32)
-    fn sub   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return sub_t(self, to_float32(other))     # a - b (f32,int→f32)
+    fn sub   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return sub_t(self, other)                 # a - b (f32,f32→f32)
+    fn sub   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return sub_t(self, to_float32(other))     # a - b (f32,int→f32)
 
     fn mul   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return mul_t(to_float64(self), other)     # a * b (f32,f64→f64)
     fn mul   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return mul_t(self, other)                 # a * b (f32,f32→f32)
@@ -4752,8 +4753,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     # Arithmetic (tensor)
     fn add   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return add_t(to_float64(self), other)         # a + b (int,f64→f64)
-    fn add   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return add_t(to_float32(self), other)         # a + b (int,f32→f32)
-    fn add   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return add_t(self, other)                     # a + b (int,int→int)
+    fn add   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return add_t(to_float32(self), other)         # a + b (int,f32→f32)
+    fn add   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return add_t(self, other)                     # a + b (int,int→int)
 
     fn sub   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return sub_t(to_float64(self), other)         # a - b (int,f64→f64)
     fn sub   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return sub_t(to_float32(self), other)         # a - b (int,f32→f32)
@@ -4817,7 +4818,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn xor_bitwise(self: Tensor[Float64], s: Tensor[Float64]) -> Tensor[Int]: return to_int(xor_t(self, (s)))                                         # a(f64) ^ s(f64) ⇒ f64
     fn xor_bitwise(self: Tensor[Float64], s: Tensor[Float32]) -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))                             # a(f64) ^ s(f32→f64) ⇒ f64
-    fn xor_bitwise(self: Tensor[Float64], s: Tensor[Int])     -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))                           # a(f64) ^ s(int→f64) ⇒ f64
+    fn xor_bitwise(self: Tensor[Float64], s: Tensor[Int])     -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))  
+    
+    
+              
 
     # =========================
     # Float32 overloads (full combos)
@@ -4929,13 +4933,16 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
 
 
+    fn not_bitwise(self: Tensor[Float64]) -> Tensor[Int]: return not_t(self)                                       
+    fn not_bitwise(self: Tensor[Float32]) -> Tensor[Int]:return not_t(self)                                  
+    fn not_bitwise(self: Tensor[Int])     -> Tensor[Int]:return not_t(self)               
 
     # Logical boolean ops (mask-style; returns Bool)
     fn logical_not(self: Tensor[Float64]) -> Tensor[Bool]: return lnot_t(self) 
-    fn logical_not(self: Tensor[Float32]) -> Tensor[Bool]: return lnot_t(self)   
-    #fn logical_not(self: Tensor[Int]) -> Tensor[Bool]: return lnot_t(self)     
+    fn logical_not(self: Tensor[Float32]) -> Tensor[Bool]: return lnot_t(self)  
+    fn logical_not(self: Tensor[Int]) -> Tensor[Bool]: return lnot_t(self)        
     fn logical_not(self: Tensor[Bool]) -> Tensor[Bool]: return lnot_t(self)
-    #fn logical_not(self) -> Tensor[Bool]:    return lnot_t(self)
+     
     fn logical_and(self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return land_t(self, other)                                     # a(f64) & b(f64) ⇒ bool
   
     fn logical_or (self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return lor_t (self, other)                                     # a(f64) | b(f64) ⇒ bool
@@ -5205,6 +5212,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         if dim == 0: return scatter_add_dim0_f64(self, index, src)
         if dim == 1: return scatter_add_dim1_f64(self, index, src)
         return self.copy()
+
+    @always_inline
+    fn scatter(self,dim_in: Int,index: Tensor[Int],src: Tensor[T]) -> Tensor[T]:
+        return scatter(self,dim_in,index,src)
 
     fn contiguous(self: Tensor[Float64]) -> Tensor[Float64]:
         if is_row_major_contiguous(self._shape, self._strides):
@@ -5748,250 +5759,280 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn fill(mut self: Tensor[Float64], v: Float64) -> None:
         fill[Float64](self, v)
 
-    # -------------------------------------------------------------------
-    # clamp(): out-of-place, no assert (bounds are normalized if swapped)
-    # -------------------------------------------------------------------
-    # -----------------------------------------------------------------------------
-    # Int
-    # -----------------------------------------------------------------------------
-    @always_inline
-    fn clamp(mut self: Tensor[Int], min_opt: Optional[Int], max_opt: Optional[Int]) -> None:
-        var use_min = not (min_opt is None)
-        var use_max = not (max_opt is None)
-        if not use_min and not use_max:
-            return
-
-        var r = len(self._shape)
-
-        # Rank-0
-        if r == 0:
-            var a = self._data[self._offset]
-            if use_min and a < min_opt.value(): a = min_opt.value()
-            if use_max and a > max_opt.value(): a = max_opt.value()
-            self._data[self._offset] = a
-            return
-
-        # Contiguous fast path
-        var expect = compute_row_major_strides(self._shape)
-        var is_contig = True
-        var i = 0
-        while i < r:
-            if self._strides[i] != expect[i]:
-                is_contig = False
-                break
-            i += 1
-
-        if is_contig:
-            var total = 1
-            i = 0
-            while i < r:
-                total = total * self._shape[i]
-                i += 1
-            var base = self._offset
-            var k = 0
-            while k < total:
-                var a = self._data[base + k]
-                if use_min and a < min_opt.value(): a = min_opt.value()
-                if use_max and a > max_opt.value(): a = max_opt.value()
-                self._data[base + k] = a
-                k += 1
-            return
-
-        # General ND path
-        var idx = List[Int]()
-        idx.reserve(r)
-        i = 0
-        while i < r:
-            idx.append(0)
-            i += 1
-
-        var done = False
-        while True:
-            var lin = self._offset
-            i = 0
-            while i < r:
-                lin = lin + idx[i] * self._strides[i]
-                i += 1
-
-            var a = self._data[lin]
-            if use_min and a < min_opt.value(): a = min_opt.value()
-            if use_max and a > max_opt.value(): a = max_opt.value()
-            self._data[lin] = a
-
-            # increment multi-index
-            i = r - 1
-            while True:
-                if i < 0:
-                    done = True
-                    break
-                idx[i] = idx[i] + 1
-                if idx[i] < self._shape[i]:
-                    break
-                idx[i] = 0
-                i = i - 1
-            if done:
-                break
-
-
-    # -----------------------------------------------------------------------------
-    # Float32
-    # -----------------------------------------------------------------------------
-    @always_inline
-    fn clamp(mut self: Tensor[Float32], min_opt: Optional[Float32], max_opt: Optional[Float32]) -> None:
-        var use_min = not (min_opt is None)
-        var use_max = not (max_opt is None)
-        if not use_min and not use_max:
-            return
-
-        var r = len(self._shape)
-
-        if r == 0:
-            var a = self._data[self._offset]
-            if use_min and a < min_opt.value(): a = min_opt.value()
-            if use_max and a > max_opt.value(): a = max_opt.value()
-            self._data[self._offset] = a
-            return
-
-        var expect = compute_row_major_strides(self._shape)
-        var is_contig = True
-        var i = 0
-        while i < r:
-            if self._strides[i] != expect[i]:
-                is_contig = False
-                break
-            i += 1
-
-        if is_contig:
-            var total = 1
-            i = 0
-            while i < r:
-                total = total * self._shape[i]
-                i += 1
-            var base = self._offset
-            var k = 0
-            while k < total:
-                var a = self._data[base + k]
-                if use_min and a < min_opt.value(): a = min_opt.value()
-                if use_max and a > max_opt.value(): a = max_opt.value()
-                self._data[base + k] = a
-                k += 1
-            return
-
-        var idx = List[Int]()
-        idx.reserve(r)
-        i = 0
-        while i < r:
-            idx.append(0)
-            i += 1
-
-        var done = False
-        while True:
-            var lin = self._offset
-            i = 0
-            while i < r:
-                lin = lin + idx[i] * self._strides[i]
-                i += 1
-
-            var a = self._data[lin]
-            if use_min and a < min_opt.value(): a = min_opt.value()
-            if use_max and a > max_opt.value(): a = max_opt.value()
-            self._data[lin] = a
-
-            i = r - 1
-            while True:
-                if i < 0:
-                    done = True
-                    break
-                idx[i] = idx[i] + 1
-                if idx[i] < self._shape[i]:
-                    break
-                idx[i] = 0
-                i = i - 1
-            if done:
-                break
-
-
-    # -----------------------------------------------------------------------------
-    # Float64
-    # -----------------------------------------------------------------------------
-    @always_inline
-    fn clamp(mut self: Tensor[Float64], min_opt: Optional[Float64], max_opt: Optional[Float64]) -> None:
-        var use_min = not (min_opt is None)
-        var use_max = not (max_opt is None)
-        if not use_min and not use_max:
-            return
-
-        var r = len(self._shape)
-
-        if r == 0:
-            var a = self._data[self._offset]
-            if use_min and a < min_opt.value(): a = min_opt.value()
-            if use_max and a > max_opt.value(): a = max_opt.value()
-            self._data[self._offset] = a
-            return
-
-        var expect = compute_row_major_strides(self._shape)
-        var is_contig = True
-        var i = 0
-        while i < r:
-            if self._strides[i] != expect[i]:
-                is_contig = False
-                break
-            i += 1
-
-        if is_contig:
-            var total = 1
-            i = 0
-            while i < r:
-                total = total * self._shape[i]
-                i += 1
-            var base = self._offset
-            var k = 0
-            while k < total:
-                var a = self._data[base + k]
-                if use_min and a < min_opt.value(): a = min_opt.value()
-                if use_max and a > max_opt.value(): a = max_opt.value()
-                self._data[base + k] = a
-                k += 1
-            return
-
-        var idx = List[Int]()
-        idx.reserve(r)
-        i = 0
-        while i < r:
-            idx.append(0)
-            i += 1
-
-        var done = False
-        while True:
-            var lin = self._offset
-            i = 0
-            while i < r:
-                lin = lin + idx[i] * self._strides[i]
-                i += 1
-
-            var a = self._data[lin]
-            if use_min and a < min_opt.value(): a = min_opt.value()
-            if use_max and a > max_opt.value(): a = max_opt.value()
-            self._data[lin] = a
-
-            i = r - 1
-            while True:
-                if i < 0:
-                    done = True
-                    break
-                idx[i] = idx[i] + 1
-                if idx[i] < self._shape[i]:
-                    break
-                idx[i] = 0
-                i = i - 1
-            if done:
-                break
+   
 
     fn masked_select(self, mask: Tensor[Int]) -> Tensor[T]:
         return masked_select(self, mask)
 
 
+    fn masked_fill(mut self, mask: Tensor[Int],value: T):
+        masked_fill(self, mask,value)
+ 
+    @always_inline
+    fn boolean_select(
+        self: Tensor[T], mask: Tensor[Int]
+    ) -> Tensor[T]:
+        # scalar mask
+        if len(mask._shape) == 0:
+            var out_data = List[T]()
+            if mask._data[mask._offset] != 0:
+                # select all elements, flattened
+                var n = 1
+                var i = 0
+                while i < len(self._shape):
+                    n = n * self._shape[i]
+                    i += 1
+                out_data.reserve(n)
+                if n > 0:
+                    var rm_x = _row_major_multipliers(self._shape)
+                    var k = 0
+                    while k < n:
+                        var offx = _offset_from_linear(self._shape, self._strides, self._offset, rm_x, k)
+                        out_data.append(self._data[offx])
+                        k += 1
+            var shp = List[Int](); shp.append(len(out_data))
+            var strd = compute_row_major_strides(shp)
+            return Tensor[T](out_data, shp, strd, 0)
+
+        # same-shape mask
+        var r = len(self._shape)
+        var r_m = len(mask._shape)
+
+        # fast return on empty
+        var nself = 1
+        var i = 0
+        while i < r:
+            nself = nself * self._shape[i]
+            i += 1
+        if nself == 0:
+            var empty = List[T]()
+            var shp0 = List[Int](); shp0.append(0)
+            var str0 = compute_row_major_strides(shp0)
+            return Tensor[T](empty, shp0, str0, 0)
+
+        # rows-major linear walks
+        var rm_x = _row_major_multipliers(self._shape)
+        var rm_m = _row_major_multipliers(mask._shape)
+
+        var out_data = List[T]()
+        out_data.reserve(nself)
+
+        var lin = 0
+        while lin < nself:
+            var offx = _offset_from_linear(self._shape, self._strides, self._offset, rm_x, lin)
+
+            var offm = 0
+            if r_m == r:
+                offm = _offset_from_linear(mask._shape, mask._strides, mask._offset, rm_m, lin)
+            else:
+                # fallback: treat non-matching mask as scalar false
+                offm = mask._offset
+
+            if mask._data[offm] != 0:
+                out_data.append(self._data[offx])
+
+            lin += 1
+
+        var shp = List[Int](); shp.append(len(out_data))
+        var strd = compute_row_major_strides(shp)
+        return Tensor[T](out_data, shp, strd, 0)
+
+
+    # In Tensor[T] impl block:
+
+    @always_inline
+    fn clamp(mut self: Tensor[Int], min_opt: Optional[Int], max_opt: Optional[Int]) -> None:
+        clamp(self, min_opt, max_opt)
+        return
+
+    @always_inline
+    fn clamp(mut self: Tensor[Float32], min_opt: Optional[Float32], max_opt: Optional[Float32]) -> None:
+        clamp(self, min_opt, max_opt)
+        return
+
+    @always_inline
+    fn clamp(mut self: Tensor[Float64], min_opt: Optional[Float64], max_opt: Optional[Float64]) -> None:
+        clamp(self, min_opt, max_opt)
+        return
+
+ 
+    # Int -> Int
+    @always_inline
+    fn clamped(self: Tensor[Int], mn: Int, mx: Int) -> Tensor[Int]:
+        var out = self.copy()
+        out.clamp(some_i(mn), some_i(mx))
+        return out.copy()
+
+    # Int -> Float64 (promotion)
+    @always_inline
+    fn clamped(self: Tensor[Int], mn: Float64, mx: Float64) -> Tensor[Float64]:
+        var yf64 = to_float64(self)
+        yf64.clamp(some_f64(mn), some_f64(mx))
+        return yf64.copy()
+
+    # Float32 -> Float32
+    @always_inline
+    fn clamped(self: Tensor[Float32], mn: Float32, mx: Float32) -> Tensor[Float32]:
+        var out = self.copy()
+        out.clamp(some_f32(mn), some_f32(mx))
+        return out.copy()
+
+    # Float64 -> Float64
+    @always_inline
+    fn clamped(self: Tensor[Float64], mn: Float64, mx: Float64) -> Tensor[Float64]:
+        var out = self.copy()
+        out.clamp(some_f64(mn), some_f64(mx))
+        return out.copy() 
+
+
+    @always_inline
+    fn solve(self: Tensor[Float64], b: Tensor[Float64]) -> Tensor[Float64]:
+        # Promote to Float64, solve, then cast back to Float32.
+        var Af64 = to_float64(self)
+        var bf64 = to_float64(b)
+        var xf64 = solve(Af64,bf64)
+        return  xf64.copy() 
+
+    @always_inline
+    fn solve(self: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
+        # Promote to Float64, solve, then cast back to Float32.
+        var Af64 = to_float64(self)
+        var bf64 = to_float64(b)
+        var xf64 = solve(Af64,bf64)
+        return to_float32(xf64)
+
+    @always_inline
+    fn solve(self: Tensor[Int], b: Tensor[Int]) -> Tensor[Float64]:
+        # Promote to Float64 and solve in Float64; return Float64 for numerical safety.
+        var Af64 = to_float64(self)
+        var bf64 = to_float64(b)
+        return solve(Af64,bf64)
+
+    # Mixed-type overloads (common in demos)
+
+    @always_inline
+    fn solve(self: Tensor[Float64], b: Tensor[Int]) -> Tensor[Float64]:
+        return solve(self,to_float64(b))
+
+    @always_inline
+    fn solve(self: Tensor[Float64], b: Tensor[Float32]) -> Tensor[Float64]:
+        return solve(self,to_float64(b))
+    @always_inline
+    fn solve(self: Tensor[Float32], b: Tensor[Int]) -> Tensor[Float64]:
+        return solve(to_float64(self),to_float64(b))
+
+    @always_inline
+    fn solve(self: Tensor[Float32], b: Tensor[Float64]) -> Tensor[Float64]:
+        return solve(to_float64(self),b)
+
+    @always_inline
+    fn solve(self: Tensor[Int], b: Tensor[Float64]) -> Tensor[Float64]:
+        return solve(to_float64(self),b)
+
+    @always_inline
+    fn solve(self: Tensor[Int], b: Tensor[Float32]) -> Tensor[Float64]:
+        return solve(to_float64(self),to_float64(b))
+    
+
+    # Promotion overloads
+    @always_inline
+    fn inv(self: Tensor[Float32]) -> Tensor[Float64]:
+        return inv(to_float64(self))
+    @always_inline
+    fn inv(self: Tensor[Float64]) -> Tensor[Float64]:
+        return inv((self))
+
+    @always_inline
+    fn inv(self: Tensor[Int]) -> Tensor[Float64]:
+        return inv(to_float64(self))
+
+    # Promotion overloads
+    @always_inline
+    fn qr(self: Tensor[Float32]) -> (Tensor[Float64], Tensor[Float64]):
+        return qr(to_float64(self))
+
+    @always_inline
+    fn qr(self: Tensor[Int]) -> (Tensor[Float64], Tensor[Float64]):
+        return qr(to_float64(self))
+    @always_inline
+    fn qr(self: Tensor[Float64]) -> (Tensor[Float64], Tensor[Float64]):
+        return qr((self))
+
+    # Promotions
+    @always_inline
+    fn svd(self: Tensor[Float32]) -> (Tensor[Float64], Tensor[Float64], Tensor[Float64]):
+        return svd(to_float64(self))
+
+    @always_inline
+    fn svd(self: Tensor[Int]) -> (Tensor[Float64], Tensor[Float64], Tensor[Float64]):
+        return svd(to_float64(self))
+    # Promotions
+    @always_inline
+    fn svd(self: Tensor[Float64]) -> (Tensor[Float64], Tensor[Float64], Tensor[Float64]):
+        return svd((self))
+
+
+    # Promotions
+    @always_inline
+    fn cholesky(self: Tensor[Float32]) -> Tensor[Float64]:
+        return cholesky(to_float64(self))
+
+    @always_inline
+    fn cholesky(self: Tensor[Int]) -> Tensor[Float64]:
+        return cholesky(to_float64(self))
+    @always_inline
+    fn cholesky(self: Tensor[Float64]) -> Tensor[Float64]:
+        return  cholesky(self)
+
+
+    @staticmethod
+    @always_inline
+    fn cat(self: List[Tensor[T]], dim: Int) -> Tensor[T]:
+        return cat(self, dim)
+ 
+
+    @always_inline
+    fn split_sizes(self: Tensor[T], sizes: List[Int], dim: Int) -> List[Tensor[T]]:
+        return split_sizes(self, sizes, dim)
+
+    @always_inline
+    fn chunk(self: Tensor[T], chunks: Int, dim: Int) -> List[Tensor[T]]:
+        return chunk(self, chunks, dim)
+
+    @always_inline
+    fn unbind(self: Tensor[T], dim: Int) -> List[Tensor[T]]:
+        return unbind(self, dim)
+
+    
+    @always_inline
+    fn row(self: Tensor[T], i: Int) -> Tensor[T]:
+        return row(self, i)
+
+    fn numel(self) -> Int:
+        return numel(self._shape)
+
+    fn reshape(self, new_shape: List[Int]) -> Tensor[T]:
+        return reshape(self, new_shape)
+
+    fn reshape_infer(self, new_shape: List[Int]) -> Tensor[T]:
+        return reshape_infer(self, new_shape)
+
+    fn reshape_like(self, other: Tensor[T]) -> Tensor[T]:
+        return reshape_like(self, other)
+        
+    # Expand/truncate selector list to exactly ndim, fill full-axis as needed
+    @always_inline
+    fn pad_full_axes(self, sels: List[IndexSel]) -> List[IndexSel]:
+        var out = List[IndexSel]()
+        var d = len(self._shape)
+        var i = 0
+        while i < len(sels) and i < d:
+            out.append(clone_sel(sels[i])) 
+            i = i + 1
+        while i < d:
+            out.append(self.all_axis())     
+            i = i + 1
+        return out.copy()
 
 
 
@@ -6120,3 +6161,34 @@ fn _fmt_bool(x: Bool) -> String:
 @always_inline
 fn _fmt_str(x: String) -> String:
     return x
+@always_inline
+fn _row_major_multipliers(shape: List[Int]) -> List[Int]:
+    var r = len(shape)
+    var rm = List[Int]()
+    rm.reserve(r)
+    var i = 0
+    while i < r:
+        rm.append(0)
+        i += 1
+    var acc = 1
+    var k = r - 1
+    while k >= 0:
+        rm[k] = acc
+        acc = acc * shape[k]
+        k -= 1
+    return rm.copy()
+
+@always_inline
+fn _offset_from_linear(
+    shape: List[Int], strides: List[Int], off: Int, rm: List[Int], lin: Int
+) -> Int:
+    var r = len(shape)
+    var o = off
+    var d = 0
+    while d < r:
+        var s = 0
+        if shape[d] != 0 and rm[d] != 0:
+            s = (lin // rm[d]) % shape[d]
+        o = o + s * strides[d]
+        d += 1
+    return o
