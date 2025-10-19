@@ -29,9 +29,12 @@ from momijo.tensor.helpers import (
     copy_list,
     compute_row_major_strides,
 )
+from momijo.tensor.broadcast import clamp_axis,clamp_int
 
 from momijo.tensor.creation import empty_tensor_with,zero_scalar_of
 from momijo.tensor.cast import *
+
+from momijo.tensor.tensor import Tensor   
 # ============================================================================
 #                          Boundary index maps for padding
 # ============================================================================
@@ -769,18 +772,7 @@ fn upsample_nearest[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], sc
         out_idx += 1
     return out.copy()
 
-@always_inline
-fn clamp_int(x0: Int, lo: Int, hi: Int) -> Int:
-    var x = x0
-    if x < lo: x = lo
-    if x > hi: x = hi
-    return x
-@always_inline
-fn clamp_f64(x: Float64, lo: Float64, hi: Float64) -> Float64:
-    var v = x
-    if v < lo: v = lo
-    if v > hi: v = hi
-    return v
+
 
 fn _to_f64_buffer[T: ImplicitlyCopyable & Copyable & Movable](src: List[T]) -> List[Float64]:
     var n = len(src)
@@ -1765,14 +1757,6 @@ fn tensor_permute[T: Copyable & Movable](x: Tensor[T], axes: List[Int]) -> Tenso
 
 
 @always_inline
-fn clamp_axis(ax: Int, rank: Int) -> Int:
-    var v = ax
-    if v < 0: v = v + rank
-    if v < 0: v = 0
-    if v >= rank: v = rank - 1
-    return v
-
-@always_inline
 fn is_identity_perm(clean: List[Int]) -> Bool:
     var i = 0
     var n = len(clean)
@@ -2151,3 +2135,545 @@ fn flatten[T: ImplicitlyCopyable & Copyable & Movable](
         k += 1
 
     return x.reshape(new_shape)
+
+
+# -----------------------------------------------------------------------------
+# stack (fast + general, no asserts) : Float64
+# -----------------------------------------------------------------------------
+@always_inline
+fn stack(xs: List[Tensor[Float64]], axis: Int = 0) -> Tensor[Float64]:
+    var n = len(xs)
+    if n == 0:
+        return tensor.from_list_float64(List[Float64]())
+
+    # -------- derive base_r and common shape (safe if shapes differ) --------
+    var r = len(xs[0]._shape)
+    var same_rank = True
+    var min_rank = r
+    var i = 1
+    while i < n:
+        var ri = len(xs[i]._shape)
+        if ri != r:
+            same_rank = False
+        if ri < min_rank:
+            min_rank = ri
+        i += 1
+
+    var base_r = min_rank
+    if same_rank:
+        base_r = r
+
+    var common = List[Int]()
+    common.reserve(base_r)
+    var d = 0
+    while d < base_r:
+        var mn = xs[0]._shape[d]
+        var k = 1
+        while k < n:
+            var v = 1
+            if d < len(xs[k]._shape):
+                v = xs[k]._shape[d]
+            if v < mn:
+                mn = v
+            k += 1
+        common.append(mn)
+        d += 1
+
+    # ------------------------ normalize axis & out shape ---------------------
+    var ax = clamp_axis(axis, base_r + 1)
+
+    var out_shape = List[Int]()
+    out_shape.reserve(base_r + 1)
+    var p = 0
+    while p < ax:
+        out_shape.append(common[p])
+        p += 1
+    out_shape.append(n)
+    while p < base_r:
+        out_shape.append(common[p])
+        p += 1
+
+    # ----------------------------- scalar fast path --------------------------
+    if base_r == 0:
+        var vals0 = List[Float64]()
+        vals0.reserve(n)
+        var t0 = 0
+        while t0 < n:
+            vals0.append(xs[t0]._data[xs[t0]._offset])
+            t0 += 1
+        return tensor.from_list_float64(vals0).reshape(out_shape)
+
+    # ------------------------- all-contiguous & ax==0 fast path --------------
+    var expect = compute_row_major_strides(common)
+    var all_contig = True
+    i = 0
+    while i < n and all_contig:
+        if len(xs[i]._shape) < base_r:
+            all_contig = False
+        var j = 0
+        while j < base_r and all_contig:
+            if j >= len(xs[i]._strides):
+                all_contig = False
+                break
+            if xs[i]._strides[j] != expect[j]:
+                all_contig = False
+                break
+            j += 1
+        i += 1
+
+    if all_contig and ax == 0:
+        var elems_per = 1
+        var e = 0
+        while e < base_r:
+            elems_per = elems_per * common[e]
+            e += 1
+
+        var vals = List[Float64]()
+        vals.reserve(n * elems_per)
+
+        var kk = 0
+        while kk < n:
+            var src = xs[kk].copy()
+            var base = src._offset
+            var m = 0
+            while m < elems_per:
+                vals.append(src._data[base + m])
+                m += 1
+            kk += 1
+        return tensor.from_list_float64(vals).reshape(out_shape)
+
+    # ------------------------------- general path ----------------------------
+    # Use linear index over out_shape: idx[d] = (t / out_strides[d]) % out_shape[d]
+    var total = 1
+    var q = 0
+    while q < (base_r + 1):
+        total = total * out_shape[q]
+        q += 1
+
+    # compute out_strides (row-major)
+    var out_strides = compute_row_major_strides(out_shape)
+
+    var vals2 = List[Float64]()
+    vals2.reserve(total)
+
+    var t = 0
+    while t < total:
+        # decode out_idx
+        var out_idx_d = List[Int]()
+        out_idx_d.reserve(base_r + 1)
+        var dd = 0
+        while dd < (base_r + 1):
+            var stride_d = out_strides[dd]
+            var idx_d = (t // stride_d) % out_shape[dd]
+            out_idx_d.append(idx_d)
+            dd += 1
+
+        # pick source and build src_idx by removing axis
+        var ksel = out_idx_d[ax]
+        var src = xs[ksel].copy()
+
+        var src_idx = List[Int]()
+        src_idx.reserve(base_r)
+        var d3 = 0
+        while d3 < (base_r + 1):
+            if d3 != ax:
+                var v = out_idx_d[d3]
+                if len(src_idx) < len(src._shape):
+                    var dim = src._shape[len(src_idx)]
+                    if v >= dim:
+                        v = dim - 1   # clamp to avoid OOB when shapes differ
+                src_idx.append(v)
+            d3 += 1
+
+        # compute linear address in src
+        var lin = src._offset
+        var rr2 = len(src._shape)
+        var u = 0
+        while u < rr2 and u < len(src_idx):
+            lin = lin + src_idx[u] * src._strides[u]
+            u += 1
+
+        vals2.append(src._data[lin])
+        t += 1
+    return tensor.from_list_float64(vals2).reshape(out_shape)
+
+ 
+ 
+@always_inline
+fn _alloc_list[T: ImplicitlyCopyable & Copyable & Movable](n: Int) -> List[T]:
+    var out = List[T]()
+    var i = 0 
+    var z = default(T)
+    while i < n:
+        out.append(z)
+        i += 1
+    return out
+
+ 
+# -----------------------------------------------------------------------------
+# Small helpers (kept local; do not export)
+# -----------------------------------------------------------------------------
+@always_inline
+fn _is_contiguous(shp: List[Int], strides: List[Int]) -> Bool:
+    if len(shp) != len(strides):
+        return False
+    var expect = compute_row_major_strides(shp)
+    var r = len(shp)
+    var i = 0
+    while i < r:
+        if strides[i] != expect[i]:
+            return False
+        i += 1
+    return True
+
+@always_inline
+fn _to_contiguous_impl[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
+    # Fast path: already contiguous or scalar
+    var r = len(x._shape)
+    if r == 0 or _is_contiguous(x._shape, x._strides):
+        return x.copy()
+
+    # Allocate contiguous output and copy via index odometer
+    var out = _make_empty_like(x, x._shape)
+
+    var total = 1
+    var i = 0
+    while i < r:
+        total = total * x._shape[i]
+        i += 1
+
+    # Multi-index vector (fill with zeros via append; no resize)
+    var idx = List[Int]()
+    var t = 0
+    while t < r:
+        idx.append(0)
+        t += 1
+
+    var out_pos = 0
+    while out_pos < total:
+        # Compute input linear index
+        var lin = x._offset
+        var k = 0
+        while k < r:
+            lin = lin + idx[k] * x._strides[k]
+            k += 1
+        out._data[out_pos] = x._data[lin]
+
+        # Increment odometer
+        k = r - 1
+        while True:
+            idx[k] = idx[k] + 1
+            if idx[k] < x._shape[k]:
+                break
+            idx[k] = 0
+            if k == 0:
+                break
+            k = k - 1
+
+        out_pos = out_pos + 1
+
+    return out.copy()
+
+@always_inline
+fn _prod(shp: List[Int], a: Int, b: Int) -> Int:
+    # Multiply dims in [a, b) with basic bounds clamping.
+    var r = len(shp)
+    var i = a
+    var j = b
+    if i < 0: i = 0
+    if j > r: j = r
+    var out = 1
+    var k = i
+    while k < j:
+        out = out * shp[k]
+        k += 1
+    return out
+
+@always_inline
+fn _same_except_dim(shp0: List[Int], shp1: List[Int], dim: Int) -> Bool:
+    var r0 = len(shp0)
+    var r1 = len(shp1)
+    if r0 != r1: return False
+    var r = r0
+    var d = clamp_axis(dim, r)
+    var k = 0
+    while k < r:
+        if k != d and shp0[k] != shp1[k]:
+            return False
+        k += 1
+    return True
+
+@always_inline
+fn _make_empty_like[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], new_shape: List[Int]
+) -> Tensor[T]:
+    # Fresh, row-major contiguous output with given shape; same dtype as x.
+    var out = x.copy()                 # reuse dtype/storage type; we'll replace metadata + data
+    out._shape   = new_shape.copy()
+    out._strides = compute_row_major_strides(new_shape)
+    out._offset  = 0
+
+    # Compute number of elements
+    var n = 1
+    var i = 0
+    var r = len(new_shape)
+    while i < r:
+        n = n * new_shape[i]
+        i += 1
+
+    # Allocate storage to exactly n elements without using resize()
+    # Use a seed value from x (it will be overwritten later).
+    out._data = List[T]()
+    if n > 0:
+        var seed = x._data[x._offset]      # safe: source tensor has a valid element when n>0
+        var j = 0
+        while j < n:
+            out._data.append(seed)
+            j += 1
+
+    return out.copy()
+
+
+@always_inline
+fn _narrow_view[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: Int, start: Int, length: Int) -> Tensor[T]:
+    # Pure view: adjust shape and offset; no data move.
+    var r = len(x._shape)
+    if r == 0:
+        return x.copy()
+    var d = clamp_axis(dim, r)
+    var out = x.copy()    # copy metadata; data list is shared by design in Tensor.copy() for views
+    out._shape = x._shape.copy()
+    out._shape[d] = length
+    out._offset = x._offset + start * x._strides[d]
+    # strides unchanged
+    return out.copy()
+
+@always_inline
+fn _squeeze_dim[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: Int) -> Tensor[T]:
+    var r = len(x._shape)
+    if r == 0: return x.copy()
+    var d = clamp_axis(dim, r)
+    var out = x.copy()
+    var new_shape = List[Int]()
+    var new_strides = List[Int]()
+    var i = 0
+    while i < r:
+        if i != d:
+            new_shape.append(x._shape[i])
+            new_strides.append(x._strides[i])
+        i += 1
+    out._shape = new_shape.copy()
+    out._strides = new_strides.copy()
+    return out.copy()
+
+# -----------------------------------------------------------------------------
+# cat: concatenate tensors along a given dimension (fast block copy)
+# -----------------------------------------------------------------------------
+@always_inline
+fn _cat_impl[T: ImplicitlyCopyable & Copyable & Movable](
+    xs: List[Tensor[T]], dim: Int
+) -> Tensor[T]:
+    var nxs = len(xs) 
+ 
+    var base = xs[0].copy()
+    var r = len(base._shape)
+    var d = clamp_axis(dim, r if r > 0 else 1)
+
+    var out_shape = base._shape.copy()
+    var total_d = 0
+    var i = 0
+    while i < nxs:
+        var xi = xs[i].copy()
+        if len(xi._shape) != r and not (r == 0 and len(xi._shape) == 0):
+            return base.copy()                
+        if r == 0:
+            total_d = total_d + 1              
+        else:
+            if not _same_except_dim(base._shape, xi._shape, d):
+                return base.copy()
+            total_d = total_d + xi._shape[d]
+        i += 1
+
+    if r == 0:
+        # الحاق اسکالرها → 1بعدی [nxs]
+        out_shape = List[Int]()
+        out_shape.append(nxs)
+        r = 1
+        d = 0
+    else:
+        out_shape[d] = total_d
+
+    var out = _make_empty_like(base, out_shape)
+
+    # هندسه‌ی کپی: outer | dim | inner
+    var outer = _prod(out_shape, 0, d)
+    var inner = _prod(out_shape, d + 1, r)
+ 
+    var srcs = List[Tensor[T]]()
+    var blocks = List[Int]()
+    var kk = 0
+    while kk < nxs:
+        var s0 = xs[kk].copy()
+        var ld = 1 if r == 0 else s0._shape[d]
+        srcs.append(_to_contiguous_impl(s0))
+        blocks.append(ld * inner)
+        kk += 1
+ 
+    var write_cursor = 0
+    var o = 0
+    while o < outer:
+        var k = 0
+        while k < nxs:
+            var block = blocks[k]
+            var read_base = o * block
+            var j = 0
+            while j < block:
+                out._data[write_cursor + j] = srcs[k]._data[read_base + j]
+                j += 1
+            write_cursor = write_cursor + block
+            k += 1
+        o += 1
+
+    return out.copy()
+
+
+
+# -----------------------------------------------------------------------------
+# split_sizes: split along dim using explicit sizes, returning views (no copy)
+# -----------------------------------------------------------------------------
+@always_inline
+fn _split_sizes_impl[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], sizes_own: List[Int], dim: Int) -> List[Tensor[T]]:
+    var sizes= sizes_own.copy()
+    var out = List[Tensor[T]]()
+    var r = len(x._shape)
+    if r == 0:
+        # Scalar cannot be split; return single element copy.
+        out.append(x.copy())
+        return out.copy()
+    var d = clamp_axis(dim, r)
+    var tot = 0
+    var i = 0
+    while i < len(sizes):
+        var v = sizes[i]
+        if v < 0: v = 0
+        tot = tot + v
+        i += 1
+    if tot > x._shape[d]:
+        # Clamp last piece to fit.
+        var over = tot - x._shape[d]
+        if len(sizes) > 0:
+            var last = sizes[len(sizes) - 1]
+            var fixed = last - over
+            if fixed < 0: fixed = 0
+            sizes[len(sizes) - 1] = fixed
+            tot = tot - over
+        else:
+            out.append(x.copy())
+            return out.copy()
+    var start = 0
+    var s = 0
+    while s < len(sizes):
+        var ln = sizes[s]
+        if ln > 0:
+            out.append(_narrow_view(x, d, start, ln))
+        start = start + ln
+        s += 1
+    # If sizes cover less than full length, ignore the tail by design
+    return out.copy()
+# -----------------------------------------------------------------------------
+# chunk: split into `chunks` nearly equal parts along dim (views, no copy)
+# - Distributes the remainder to the first chunks (sizes differ by at most 1)
+# -----------------------------------------------------------------------------
+@always_inline
+fn _chunk_impl[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], chunks: Int, dim: Int
+) -> List[Tensor[T]]:
+    var out = List[Tensor[T]]()
+
+    if chunks <= 0:
+        out.append(x.copy())
+        return out.copy()
+
+    var r = len(x._shape)
+    if r == 0:
+        out.append(x.copy())
+        return out.copy()
+
+    var d = clamp_axis(dim, r)
+    var n = x._shape[d]
+
+    if n == 0:
+        var j = 0
+        while j < chunks:
+            out.append(_narrow_view(x, d, 0, 0))
+            j += 1
+        return out.copy()
+
+    if chunks == 1:
+        out.append(x.copy())
+        return out.copy()
+
+    var base = n // chunks
+    var rem  = n - base * chunks 
+
+    var start = 0
+    var i = 0
+    while i < chunks:
+        var ln = base
+        if i < rem:
+            ln = ln + 1
+        if ln > 0:
+            out.append(_narrow_view(x, d, start, ln))
+            start = start + ln
+        else:
+            out.append(_narrow_view(x, d, start, 0))
+        i += 1
+
+    return out.copy()
+
+
+# -----------------------------------------------------------------------------
+# unbind: slice out every index along dim and drop that dimension (views)
+# -----------------------------------------------------------------------------
+@always_inline
+fn _unbind_impl[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: Int) -> List[Tensor[T]]:
+    var out = List[Tensor[T]]()
+    var r = len(x._shape)
+    if r == 0:
+        # Scalar → single element list
+        out.append(x.copy())
+        return out.copy()
+    var d = clamp_axis(dim, r)
+    var n = x._shape[d]
+    var i = 0
+    while i < n:
+        var vi = _narrow_view(x, d, i, 1)
+        out.append(_squeeze_dim(vi, d))
+        i += 1
+    return out.copy()
+
+# -----------------------------------------------------------------------------
+# Public façade in `tensor` namespace (imported as `from momijo.tensor import tensor`)
+# - Provide thin forwarders so user code can call tensor.cat/split_sizes/chunk/unbind
+# - And instance methods on Tensor[T] so `x.split_sizes(...)` / `x.chunk(...)` / `x.unbind(...)` work
+# -----------------------------------------------------------------------------
+  
+@always_inline
+fn cat[T: ImplicitlyCopyable & Copyable & Movable](xs: List[Tensor[T]], dim: Int) -> Tensor[T]:
+    return _cat_impl(xs, dim)
+ 
+@always_inline
+fn split_sizes[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], sizes: List[Int], dim: Int) -> List[Tensor[T]]:
+    return _split_sizes_impl(x, sizes, dim)
+ 
+@always_inline
+fn chunk[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], chunks: Int, dim: Int) -> List[Tensor[T]]:
+    return _chunk_impl(x, chunks, dim)
+ 
+@always_inline
+fn unbind[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: Int) -> List[Tensor[T]]:
+    return _unbind_impl(x, dim)
+
+ 
+
+ 
