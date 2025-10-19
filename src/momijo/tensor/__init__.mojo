@@ -44,8 +44,11 @@ from momijo.tensor.creation import scalar_f64,scalar_f32,scalar_int
 
 # Random helpers (Float64) 
 from momijo.tensor.creation import from_list_float64,from_list_float32,from_list_int ,from_list_int32 ,from_list_int16,from_list_bool 
+from momijo.tensor.creation import from_2d_list_float64,from_2d_list_float32,from_2d_list_int ,from_2d_list_int32 ,from_2d_list_int16,from_2d_list_bool 
+from momijo.tensor.creation import from_3d_list_float64,from_3d_list_float32,from_3d_list_int ,from_3d_list_int32 ,from_3d_list_int16,from_3d_list_bool 
+
 from momijo.tensor.creation import randn,rand,randn_int,randn_f64,randn_f32
-from momijo.tensor.creation import zeros_like,normal
+from momijo.tensor.creation import zeros_like,normal,full_like
 from momijo.tensor.creation import arange_f64 as arange
 
 # ----------------------------- Axis operations --------------------------------
@@ -118,3 +121,4 @@ from momijo.tensor.broadcast import broadcast_to
 
 
 from momijo.tensor.transform import reshape,reshape_infer,resize_like_with_pad,reshape_like
+from momijo.tensor.transform import stack,cat
