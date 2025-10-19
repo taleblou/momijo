@@ -1192,6 +1192,155 @@ fn from_list_bool(data: List[Bool]) -> Tensor[Bool]:
     return Tensor[Bool](data.copy(), shape, strides, 0)
 
 
+# -----------------------------------------------------------------------------
+# Generic 2D & 3D builders from nested lists (row-major, safe, no asserts)
+# -----------------------------------------------------------------------------
+
+@always_inline
+fn from_2d_list[T: ImplicitlyCopyable & Copyable & Movable](
+    rows: List[List[T]]
+) -> Tensor[T]:
+    # Determine shape [r, c] with safe min-length across rows
+    var r = len(rows)
+    var c = 0
+    if r > 0:
+        c = len(rows[0])
+        var i = 1
+        while i < r:
+            var li = len(rows[i])
+            if li < c:
+                c = li
+            i += 1
+
+    # Flatten row-major
+    var flat = List[T]()
+    var i = 0
+    while i < r:
+        var j = 0
+        while j < c:
+            flat.append(rows[i][j])
+            j += 1
+        i += 1
+
+    # Shape & strides
+    var shape = List[Int]()
+    shape.append(r)
+    shape.append(c)
+    var strides = compute_row_major_strides(shape)
+    return Tensor[T](flat, shape, strides, 0)
+
+
+@always_inline
+fn from_3d_list[T: ImplicitlyCopyable & Copyable & Movable](
+    blocks: List[List[List[T]]]
+) -> Tensor[T]:
+    # Determine shape [a, b, c] with safe min-lengths
+    var a = len(blocks)
+    var b = 0
+    var c = 0
+
+    if a > 0:
+        b = len(blocks[0])
+        var i = 1
+        while i < a:
+            var lb = len(blocks[i])
+            if lb < b:
+                b = lb
+            i += 1
+
+        if b > 0:
+            c = len(blocks[0][0])
+            var ii = 0
+            while ii < a:
+                var jj = 0
+                while jj < len(blocks[ii]):
+                    var lc = len(blocks[ii][jj])
+                    if lc < c:
+                        c = lc
+                    jj += 1
+                ii += 1
+
+    # Flatten row-major: iterate a, then b, then c
+    var flat = List[T]()
+    var i = 0
+    while i < a:
+        var j = 0
+        while j < b:
+            var k = 0
+            while k < c:
+                flat.append(blocks[i][j][k])
+                k += 1
+            j += 1
+        i += 1
+
+    # Shape & strides
+    var shape = List[Int]()
+    shape.append(a)
+    shape.append(b)
+    shape.append(c)
+    var strides = compute_row_major_strides(shape)
+    return Tensor[T](flat, shape, strides, 0)
+
+
+# -----------------------------------------------------------------------------
+# Type-specific thin wrappers (match your existing API naming style)
+# -----------------------------------------------------------------------------
+
+# Float64
+@always_inline
+fn from_2d_list_float64(rows: List[List[Float64]]) -> Tensor[Float64]:
+    return from_2d_list[Float64](rows)
+
+@always_inline
+fn from_3d_list_float64(blocks: List[List[List[Float64]]]) -> Tensor[Float64]:
+    return from_3d_list[Float64](blocks)
+
+# Float32
+@always_inline
+fn from_2d_list_float32(rows: List[List[Float32]]) -> Tensor[Float32]:
+    return from_2d_list[Float32](rows)
+
+@always_inline
+fn from_3d_list_float32(blocks: List[List[List[Float32]]]) -> Tensor[Float32]:
+    return from_3d_list[Float32](blocks)
+
+# Int
+@always_inline
+fn from_2d_list_int(rows: List[List[Int]]) -> Tensor[Int]:
+    return from_2d_list[Int](rows)
+
+@always_inline
+fn from_3d_list_int(blocks: List[List[List[Int]]]) -> Tensor[Int]:
+    return from_3d_list[Int](blocks)
+
+# Int32
+@always_inline
+fn from_2d_list_int32(rows: List[List[Int32]]) -> Tensor[Int32]:
+    return from_2d_list[Int32](rows)
+
+@always_inline
+fn from_3d_list_int32(blocks: List[List[List[Int32]]]) -> Tensor[Int32]:
+    return from_3d_list[Int32](blocks)
+
+# Int16
+@always_inline
+fn from_2d_list_int16(rows: List[List[Int16]]) -> Tensor[Int16]:
+    return from_2d_list[Int16](rows)
+
+@always_inline
+fn from_3d_list_int16(blocks: List[List[List[Int16]]]) -> Tensor[Int16]:
+    return from_3d_list[Int16](blocks)
+
+# Bool
+@always_inline
+fn from_2d_list_bool(rows: List[List[Bool]]) -> Tensor[Bool]:
+    return from_2d_list[Bool](rows)
+
+@always_inline
+fn from_3d_list_bool(blocks: List[List[List[Bool]]]) -> Tensor[Bool]:
+    return from_3d_list[Bool](blocks)
+
+
 @always_inline
 fn scalar_zero_tensor[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T
