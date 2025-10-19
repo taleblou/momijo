@@ -153,7 +153,7 @@ fn _alloc_fill_f64_cpu(shape: List[Int], val: Float64) -> Tensor[Float64]:
         data.append(val)
         j += 1
     var strides = compute_row_major_strides(shape)
-    return Tensor[Float64](data, shape, strides)
+    return Tensor[Float64](data, shape, strides,0)
 
 fn _alloc_fill_f32_cpu(shape: List[Int], val: Float32) -> Tensor[Float32]:
     var n = _numel(shape)
@@ -171,7 +171,7 @@ fn _alloc_fill_f32_cpu(shape: List[Int], val: Float32) -> Tensor[Float32]:
         data.append(val)
         j += 1
     var strides = compute_row_major_strides(shape)
-    return Tensor[Float32](data, shape, strides)
+    return Tensor[Float32](data, shape, strides,0)
 
 fn _alloc_fill_i_cpu(shape: List[Int], val: Int) -> Tensor[Int]:
     var n = _numel(shape)
@@ -189,7 +189,7 @@ fn _alloc_fill_i_cpu(shape: List[Int], val: Int) -> Tensor[Int]:
         data.append(val)
         j += 1
     var strides = compute_row_major_strides(shape)
-    return Tensor[Int](data, shape, strides)
+    return Tensor[Int](data, shape, strides,0)
 
 
 # =============================================================================
@@ -223,7 +223,7 @@ fn _alloc_fill_f32_gpu(shape: List[Int], val: Float32) raises -> Tensor[Float32]
     while i < n:
         out.append(hb[i]); i += 1
     var strides = compute_row_major_strides(shape)
-    return Tensor[Float32](out, shape, strides)
+    return Tensor[Float32](out, shape, strides,0)
 
 fn _alloc_fill_f64_gpu(shape: List[Int], val: Float64) raises -> Tensor[Float64]:
     from gpu.host import DeviceContext
@@ -253,7 +253,7 @@ fn _alloc_fill_f64_gpu(shape: List[Int], val: Float64) raises -> Tensor[Float64]
     while i < n:
         out.append(hb[i]); i += 1
     var strides = compute_row_major_strides(shape)
-    return Tensor[Float64](out, shape, strides)
+    return Tensor[Float64](out, shape, strides,0)
 
 fn _to_device_f32_gpu(x: Tensor[Float32]) raises -> Tensor[Float32]:
     from gpu.host import DeviceContext
@@ -276,7 +276,7 @@ fn _to_device_f32_gpu(x: Tensor[Float32]) raises -> Tensor[Float32]:
     var j = 0
     while j < n:
         out.append(hb[j]); j += 1
-    return Tensor[Float32](out, x._shape.copy(), x._strides.copy())
+    return Tensor[Float32](out, x._shape.copy(), x._strides.copy(),x._offset)
 
 fn _to_device_f64_gpu(x: Tensor[Float64]) raises -> Tensor[Float64]:
     from gpu.host import DeviceContext
@@ -299,7 +299,7 @@ fn _to_device_f64_gpu(x: Tensor[Float64]) raises -> Tensor[Float64]:
     var j = 0
     while j < n:
         out.append(hb[j]); j += 1
-    return Tensor[Float64](out, x._shape.copy(), x._strides.copy())
+    return Tensor[Float64](out, x._shape.copy(), x._strides.copy(),x._offset)
 
 
 # =============================================================================
@@ -362,7 +362,7 @@ fn to_device(x: Tensor[Float32], target: Device) -> Tensor[Float32]:
             return _to_device_f32_gpu(x)
         except e:
             pass
-    return Tensor[Float32](x._data.copy(), x._shape.copy(), x._strides.copy())
+    return Tensor[Float32](x._data.copy(), x._shape.copy(), x._strides.copy(),x._offset)
 
 fn to_device(x: Tensor[Float64], target: Device) -> Tensor[Float64]:
     if target.is_gpu() and has_accelerator():
@@ -370,11 +370,11 @@ fn to_device(x: Tensor[Float64], target: Device) -> Tensor[Float64]:
             return _to_device_f64_gpu(x)
         except e:
             pass
-    return Tensor[Float64](x._data.copy(), x._shape.copy(), x._strides.copy())
+    return Tensor[Float64](x._data.copy(), x._shape.copy(), x._strides.copy(),x._offset)
 
 fn to_device[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], target: Device) -> Tensor[T]:
     var _ = target
-    return Tensor[T](x._data.copy(), x._shape.copy(), x._strides.copy())
+    return Tensor[T](x._data.copy(), x._shape.copy(), x._strides.copy(),x._offset)
 
 
 # =============================================================================
