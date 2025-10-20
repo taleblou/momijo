@@ -8,9 +8,6 @@
 #   Demonstrates a common broadcasting pitfall and the correct fix using
 #   rank alignment (unsqueeze/reshape). Example: (3,1) ⊕ (2,) fails unless
 #   we first align ranks to (3,1) ⊕ (1,2) → (3,2).
-#   - English-only comments
-#   - Explicit imports (no wildcards)
-#   - Var-only, no asserts
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
