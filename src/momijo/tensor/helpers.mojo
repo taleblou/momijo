@@ -77,6 +77,36 @@ struct IndexSel(ImplicitlyCopyable, Copyable, Movable):
     fn fancy(js_in: List[Int]) -> IndexSel:
         return IndexSel(2, 0, 0, 0, 1, js_in.copy())
 
+    @always_inline
+    fn __str__(self) -> String:
+        # tag: 0=index, 1=slice, 2=fancy
+        if self.tag == Int8(0):
+            return "IndexSel(index=" + self.i.__str__() + ")"
+
+        if self.tag == Int8(1):
+            var core = self.start.__str__() + ":" + self.stop.__str__()
+            # only show step if it's not 1
+            if self.step != 1:
+                core = core + ":" + self.step.__str__()
+            return "IndexSel(slice=" + core + ")"
+
+        if self.tag == Int8(2):
+            # stringify idxs: [a, b, c]
+            var buf = String("[")
+            var n = len(self.idxs)
+            var k = 0
+            while k < n:
+                if k > 0:
+                    buf = buf + ", "
+                buf = buf + self.idxs[k].__str__()
+                k += 1
+            buf = buf + "]"
+            return "IndexSel(fancy=" + buf + ")"
+
+        # Fallback for unexpected tag values
+        return "IndexSel(<invalid tag=" + Int(self.tag).__str__() + ">)"
+
+
 
 # ============================== Core list utils ==============================
 
