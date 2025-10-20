@@ -6,9 +6,6 @@
 #
 # Description:
 #   Demo for Tensor creation utilities and basic factory functions.
-#   - English-only comments
-#   - Explicit imports (no wildcards)
-#   - Var-only, no asserts
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
