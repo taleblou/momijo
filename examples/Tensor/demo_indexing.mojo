@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_indexing.mojo
+# File:         examples/Tensor/demo_indexing.mojo
 #
 # Description:
 #   Demo for indexing: basic, slicing, boolean masks, gather/scatter, take/put.
