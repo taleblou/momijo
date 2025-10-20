@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_broadcast_trap.mojo
+# File:         examples/Tensor/demo_broadcast_trap.mojo
 #
 # Description:
 #   Demonstrates a common broadcasting pitfall and the correct fix using
