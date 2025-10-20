@@ -7,9 +7,6 @@
 # Description:
 #   Autograd basics (placeholder) — demonstrates a simple forward computation
 #   and the corresponding analytic gradient, without requiring a gradient engine.
-#   - English-only comments
-#   - Explicit imports (no wildcards)
-#   - Var-only, no asserts
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
