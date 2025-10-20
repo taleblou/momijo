@@ -38,7 +38,7 @@ from momijo.tensor.helpers import *
 from momijo.tensor.nanops import nanmean,nansum,nanmin
  
  
-from momijo.tensor.transform import reshape,transpose,unsqueeze,squeeze_all,repeat
+from momijo.tensor.transform import reshape,transpose,unsqueeze,squeeze_all,repeat,squeeze_axis
 from momijo.tensor.broadcast import broadcast_shapes,can_broadcast_shapes,clamp
 from momijo.tensor.broadcast import matmul_core_vec,clamp_int
  
@@ -2665,6 +2665,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return squeeze_all(self)
 
 
+    fn squeeze(self,axis_in: Int) -> Tensor[T]:
+        return squeeze_axis(self, axis_in) 
+
     fn permute(self, axes: List[Int]) -> Tensor[T]:
         return permute(self, axes) 
 
@@ -3209,6 +3212,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn sum_all(self: Tensor[Float32]) -> Float32:
         return sum1d_unrolled(self) 
+ 
 
     fn std(self: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return std(self, axis, keepdims)
@@ -3689,7 +3693,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return tensor_bincount_int(self)
 
     @always_inline
-    fn histogram(self: Tensor[Int], bins: List[Int]) -> UniqueResult:
+    fn histogram(self: Tensor[Int], bins: List[Int]) -> UniqueResult[Int]:
         return tensor_histogram_int(self, bins)
 
     @always_inline
@@ -4737,8 +4741,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn divide(self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return div_t(self, to_float32(other))     # a / b (f32,int→f32)
 
     fn mod   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), other)     # a % b (f32,f64→f64)
-    fn mod   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return mod_t(self, other)                 # a % b (f32,f32→f32)
-    fn mod   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float32]: return mod_t(self, to_float32(other))     # a % b (f32,int→f32)
+    fn mod   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float64]: return mod_t(self, other)                 # a % b (f32,f32→f32)
+    fn mod   (self: Tensor[Float32], other: Tensor[Int])     -> Tensor[Float64]: return mod_t(self, to_float32(other))     # a % b (f32,int→f32)
 
     fn pow   (self: Tensor[Float32], other: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), other)     # a ** b (f32,f64→f64)
     fn pow   (self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]: return pow_t(self, other)                 # a ** b (f32,f32→f32)
@@ -4763,11 +4767,11 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn mul   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]:     return mul_t(self, other)                     # a * b (int,int→int)
 
     fn divide(self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), other)         # a / b (int,f64→f64)
-    fn divide(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return div_t(to_float32(self), other)         # a / b (int,f32→f32)
+    fn divide(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return div_t(to_float32(self), other)         # a / b (int,f32→f32)
     fn divide(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return div_t(self, other)                     # a / b (int,int→int)
 
     fn mod   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), other)         # a % b (int,f64→f64)
-    fn mod   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float32]: return mod_t(to_float32(self), other)         # a % b (int,f32→f32)
+    fn mod   (self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Float64]: return mod_t(to_float32(self), other)         # a % b (int,f32→f32)
     fn mod   (self: Tensor[Int], other: Tensor[Int])     -> Tensor[Float64]:     return mod_t(self, other)                     # a % b (int,int→int)
 
     fn pow   (self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Float64]: return pow_t(to_float64(self), other)         # a ** b (int,f64→f64)
@@ -6031,6 +6035,14 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             out.append(self.all_axis())     
             i = i + 1
         return out.copy()
+
+    fn equal(self: Tensor[Int], other: Tensor[Int]) -> Tensor[Int]:
+      return self.__eq__(other)
+    fn equal(self: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Int]:
+      return self.__eq__(other)
+    fn equal(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Int]:
+      return self.__eq__(other)
+   
 
 
 
