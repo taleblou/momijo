@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_seeds_and_determinism.mojo
+# File:         examples/Tensor/demo_seeds_and_determinism.mojo
 #
 # Description:
 #   Demo for seeds and determinism (placeholder). Shows reproducible draws
