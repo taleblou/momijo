@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_masks_fill_clamp.mojo
+# File:         examples/Tensor/demo_masks_fill_clamp.mojo
 #
 # Description:
 #   Demo for masked_select, masked_fill, and clamp on small tensors.
