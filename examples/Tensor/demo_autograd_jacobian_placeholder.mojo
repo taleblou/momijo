@@ -7,9 +7,6 @@
 # Description:
 #   Jacobian (placeholder) — compare numerical finite-difference and analytic
 #   Jacobians for a simple elementwise function f(x) = x^2 + 2x.
-#   - English-only comments
-#   - Explicit imports (no wildcards)
-#   - Var-only, no asserts
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
