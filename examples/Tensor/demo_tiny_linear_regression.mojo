@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_tiny_linear_regression.mojo
+# File:         examples/Tensor/demo_tiny_linear_regression.mojo
 #
 # Description:
 #   Tiny linear regression with gradient descent (no autograd).
