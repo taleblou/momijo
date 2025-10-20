@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_reductions_stats.mojo
+# File:         examples/Tensor/demo_reductions_stats.mojo
 #
 # Description:
 #   Demo for reductions and basic statistics:
