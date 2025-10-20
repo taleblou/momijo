@@ -7,9 +7,6 @@
 # Description:
 #   Demo for broadcast alignment using unsqueeze/reshape to add a per-channel
 #   bias to a 4D tensor (N, C, H, W).
-#   - English-only comments
-#   - Explicit imports (no wildcards)
-#   - Var-only, no asserts
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
