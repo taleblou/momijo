@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_creation.mojo
+# File:         examples/Tensor/demo_creation.mojo
 #
 # Description:
 #   Demo for Tensor creation utilities and basic factory functions.
