@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_types_bool_complex.mojo
+# File:         examples/Tensor/demo_types_bool_complex.mojo
 #
 # Description:
 #   Demo for:
