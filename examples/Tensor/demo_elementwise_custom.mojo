@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_elementwise_custom.mojo
+# File:         examples/Tensor/demo_elementwise_custom.mojo
 #
 # Description:
 #   Demo for elementwise custom ops (map-style). Implements the swish
