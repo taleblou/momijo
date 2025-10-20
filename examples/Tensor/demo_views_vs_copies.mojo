@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_views_vs_copies.mojo
+# File:         examples/Tensor/demo_views_vs_copies.mojo
 #
 # Description:
 #   Demo for views vs. copies:
