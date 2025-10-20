@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_autograd_placeholder.mojo
+# File:         examples/Tensor/demo_autograd_placeholder.mojo
 #
 # Description:
 #   Autograd basics (placeholder) — demonstrates a simple forward computation
