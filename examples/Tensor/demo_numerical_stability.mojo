@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_numerical_stability.mojo
+# File:         examples/Tensor/demo_numerical_stability.mojo
 #
 # Description:
 #   Demo for numerical stability tricks:
