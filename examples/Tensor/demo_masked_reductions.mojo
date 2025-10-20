@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_masked_reductions.mojo
+# File:         examples/Tensor/demo_masked_reductions.mojo
 #
 # Description:
 #   Demo for masked reductions (per-class means using boolean masks).
