@@ -7,9 +7,6 @@
 # Description:
 #   Demo for dtypes, runtime device switching (CPU/GPU), casting, contiguity,
 #   and strides.
-#   - English-only comments
-#   - Explicit imports (no wildcards)
-#   - Var-only, no asserts
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
