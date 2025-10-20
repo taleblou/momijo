@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_one_hot_scatter.mojo
+# File:         examples/Tensor/demo_one_hot_scatter.mojo
 #
 # Description:
 #   Demo for one-hot encoding and scatter_add reductions:
