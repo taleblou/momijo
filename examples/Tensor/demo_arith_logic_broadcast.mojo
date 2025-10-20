@@ -6,9 +6,6 @@
 #
 # Description:
 #   Demo for arithmetic, comparisons, logical/bitwise ops, and broadcasting.
-#   - Explicit imports (no wildcards)
-#   - English-only comments
-#   - Var-only, no asserts
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
