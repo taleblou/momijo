@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_join_split.mojo
+# File:         examples/Tensor/demo_join_split.mojo
 #
 # Description:
 #   Demo for joining (cat/stack) and splitting (chunk/split_sizes/unbind).
