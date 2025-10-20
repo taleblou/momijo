@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_linalg.mojo
+# File:         examples/Tensor/demo_linalg.mojo
 #
 # Description:
 #   Demo for linear algebra: matmul (mv/mm), solve, inv, QR, SVD, and Cholesky.
