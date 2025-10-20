@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_inplace_notes.mojo
+# File:         examples/Tensor/demo_inplace_notes.mojo
 #
 # Description:
 #   In-place ops & grad safety notes — views vs. copies, and out-of-place
