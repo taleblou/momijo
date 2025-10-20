@@ -1,11 +1,16 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project: momijo.tensor
-# File: tests/tensor/demo_setitem_numpy_parity.mojo
-# Description: Parity demo for __setitem__ (writing with indices/slices) vs. NumPy-style,
-#              covering 1D..5D with native and string-spec selectors.
+# Project:      momijo.tensor
+# Module:       examples.Tensor
+# File:         examples/Tensor/demo_setitem_numpy_parity.mojo
+#
+# Description:
+#   Parity demo for __setitem__ (writing with indices/slices) vs. NumPy-style,
+#   covering 1D..5D with native and string-spec selectors. 
+#   - Consistent RHS tensor shapes for scalar/broadcast writes
 
 from momijo.tensor import tensor
+from collections.list import List
 
 # -----------------------------------------------------------------------------
 # Small banner printer
@@ -13,7 +18,9 @@ from momijo.tensor import tensor
 fn banner(title: String) -> None:
     print("\n=== " + title + " ===")
 
-# Print helper to ensure only String/scalars get printed safely
+# -----------------------------------------------------------------------------
+# Print helper (typed overload for Int tensors)
+# -----------------------------------------------------------------------------
 fn show_tensor(label: String, x: tensor.Tensor[Int]) -> None:
     print(label + ":\n" + x.__str__())
 
@@ -27,11 +34,11 @@ fn demo_setitem_1d() -> None:
     var a = tensor.arange_int(10, 50, 10)
     show_tensor("start a", a)
 
-    # Single index
-    a[1] = tensor.from_list_int([999])                # set scalar
+    # Single index (scalar write)
+    a[1] = tensor.from_list_int([999])
     show_tensor("a[1] = 999", a)
 
-    a[-1] = tensor.from_list_int([-7])  
+    a[-1] = tensor.from_list_int([-7])
     show_tensor("a[-1] = -7", a)
 
     # Slice: exact-shape assignment
@@ -44,12 +51,12 @@ fn demo_setitem_1d() -> None:
     show_tensor("a[:] = 5", a)
 
     # Strided slice: length-matched tensor
-    var s2 = tensor.from_list_int([8, 9])
-    a[::2] = s2                  # positions 0,2
+    var s2 = tensor.from_list_int([8, 9])   # positions 0,2
+    a[::2] = s2
     show_tensor("a[::2] = [8,9]", a)
 
-    # Reversed slice: scalar broadcast
-    a[3:0:-1] = tensor.from_list_int([1])                # indices 3,2,1
+    # Reversed slice: scalar broadcast (indices 3,2,1)
+    a[3:0:-1] = tensor.from_list_int([1])
     show_tensor("a[3:0:-1] = 1", a)
 
     # -------- String-spec mirrors --------
@@ -100,16 +107,16 @@ fn demo_setitem_2d() -> None:
     m[0:2, 0:2] = w
     show_tensor("m[0:2,0:2] = [[1,2],[3,4]]", m)
 
-    m[1:, 1:] = tensor.from_list_int([9,8,7,6]).reshape([2,2])
-    show_tensor("[1:, 1:]=[9,8,7,6]", m)
+    m[1:, 1:] = tensor.from_list_int([9, 8, 7, 6]).reshape([2, 2])
+    show_tensor("m[1:,1:] = [[9,8],[7,6]]", m)
 
     # Stride + tail with broadcast
     m[::2, 1:] = tensor.from_list_int([7])
     show_tensor("m[::2,1:] = 7", m)
 
-    # Reverse both axes
-    m[1:  , 1:  ] = tensor.from_list_int([9,8,7,6]).reshape([2,2])
-    show_tensor("m[1:  , 1:  ] = [[9,8],[7,6]] (bottom-right 2x2)", m)
+    # Reverse both axes bottom-right overwrite
+    m[1:, 1:] = tensor.from_list_int([9, 8, 7, 6]).reshape([2, 2])
+    show_tensor("m[1:,1:] = [[9,8],[7,6]] (bottom-right 2x2)", m)
 
     # -------- String-spec mirrors --------
     var s = tensor.arange_int(1, 10, 1).reshape([3, 3])
@@ -127,7 +134,7 @@ fn demo_setitem_2d() -> None:
     s["::2,1:"] = tensor.from_list_int([12])
     show_tensor("""s["::2,1:"] = 12""", s)
 
-    s["::-1,::-1"] = tensor.from_list_int([4,3,2,1]).reshape([2,2])
+    s["::-1,::-1"] = tensor.from_list_int([4, 3, 2, 1]).reshape([2, 2])
     show_tensor("""s["::-1,::-1"] = [[4,3],[2,1]]""", s)
 
 # -----------------------------------------------------------------------------
@@ -140,19 +147,19 @@ fn demo_setitem_3d() -> None:
     var t = tensor.arange_int(0, 24, 1).reshape([2, 3, 4])
     show_tensor("start t", t)
 
-    # Block write (broadcast scalar over a 2D slice)
-    t[0] = tensor.from_list_int([-1])                  # t[0,:,:] = -1
+    # Block write (broadcast scalar over 2D slice)
+    t[0] = tensor.from_list_int([-1])                # t[0,:,:] = -1
     show_tensor("t[0] = -1", t)
 
     # Row in block (exact-shape)
     t[1, 2] = tensor.from_list_int([7, 7, 7, 7])
     show_tensor("t[1,2] = [7,7,7,7]", t)
 
-    # Column in all blocks via slice
+    # Column in all blocks via slice (scalar broadcast)
     t[:, 1, :] = tensor.from_list_int([3])
     show_tensor("t[:,1,:] = 3", t)
 
-    # Single column across depth
+    # First column across depth (exact shape per (2,3))
     t[:, :, 0] = tensor.from_list_int([1, 2, 3, 4, 5, 6]).reshape([2, 3])
     show_tensor("t[:,:,0] = [[1,2,3],[4,5,6]]", t)
 
@@ -188,10 +195,10 @@ fn demo_setitem_3d() -> None:
     q["0,:,1"] = tensor.from_list_int([4, 5, 6])
     show_tensor("""q["0,:,1"] = [4,5,6]""", q)
 
-    q[":"] = q.copy()          # copy self to self (no-op but tests path)
+    q[":"] = q.copy()
     show_tensor("""q[":"] = q.copy()""", q)
 
-    q[":,:," "::2"] = tensor.from_list_int([7 ])       # note: in your sample there was a space, keep "::2"
+    q[":,:,::2"] = tensor.from_list_int([7])
     show_tensor("""q[":,:,::2"] = 7""", q)
 
 # -----------------------------------------------------------------------------
@@ -204,28 +211,24 @@ fn demo_setitem_4d() -> None:
     var x4 = tensor.arange_int(0, 48, 1).reshape([2, 2, 3, 4])
     show_tensor("start x4", x4)
 
-    x4[:,:,:,0] = tensor.from_list_int([-1])
-    show_tensor("x4[:,:,:,0] = -1]", x4)
+    # Last channel for all => broadcast scalar
+    x4[:, :, :, 0] = tensor.from_list_int([-1])
+    show_tensor("x4[:,:,:,0] = -1", x4)
 
     # Scalar at full index (sanity)
     x4[0, 1, 2, 3] = tensor.from_list_int([999])
     show_tensor("x4[0,1,2,3] = 999", x4)
 
-    # Last channel for all => broadcast
-    x4[:, :, :, 0] = tensor.from_list_int([-1])
-    show_tensor("x4[:,:,:,0] = -1", x4)
-
-    # Middle feature plane for all => exact-shape
-    var plane = tensor.from_list_int([5, 6, 7, 8]).reshape([1, 1, 1, 4])
-    x4[:, :, 1, :] = tensor.from_list_int([2, 2, 1, 4])  # if you have broadcast_to
-    show_tensor("x4[:,:,1,:] = broadcasted [5..8]", x4)
+    # Middle feature plane for all => broadcast 1x1x1x4 row across
+    x4[:, :, 1, :] = tensor.from_list_int([2, 2, 1, 4]).reshape([1, 1, 1, 4])
+    show_tensor("x4[:,:,1,:] = [2,2,1,4] (broadcast)", x4)
 
     # Full copy
     var y4 = tensor.arange_int(1000, 1048, 1).reshape([2, 2, 3, 4])
     x4[:] = y4
     show_tensor("x4[:] = y4", x4)
 
-    # Mixed window with strides
+    # Mixed window with strides (broadcast scalar)
     x4[:, 1:, 1:, :2] = tensor.from_list_int([42])
     show_tensor("x4[:,1:,1:,:2] = 42", x4)
 
@@ -248,7 +251,7 @@ fn demo_setitem_4d() -> None:
     z4["...,0"] = tensor.from_list_int([0])
     show_tensor("""z4["...,0"] = 0""", z4)
 
-    z4["::2,..."] = tensor.from_list_int([77])      # every other on axis 0
+    z4["::2,..."] = tensor.from_list_int([77])
     show_tensor("""z4["::2,..."] = 77""", z4)
 
 # -----------------------------------------------------------------------------
@@ -273,11 +276,11 @@ fn demo_setitem_5d() -> None:
     v5[::2, :, :, :, 0] = tensor.from_list_int([44])
     show_tensor("v5[::2,:,:,:,0] = 44", v5)
 
-    # Window tail with exact-shape on last axis slice
-    v5[:, 1, :, :, 1:3] = tensor.from_list_int([7, 8]).reshape([1, 1, 1, 1, 2])#.broadcast_to([2, 1, 2, 2, 2])
-    show_tensor("v5[:,1,:,:,1:3] = broadcasted [7,8]", v5)
+    # Window tail with broadcasted last-axis pair
+    v5[:, 1, :, :, 1:3] = tensor.from_list_int([7, 8]).reshape([1, 1, 1, 1, 2])
+    show_tensor("v5[:,1,:,:,1:3] = [7,8] (broadcast)", v5)
 
-    # Reverse one axis with broadcast
+    # Reverse one axis with broadcast scalar
     v5[:, :, :, ::-1, :] = tensor.from_list_int([0])
     show_tensor("v5[:,:,:,::-1,:] = 0", v5)
 
@@ -288,17 +291,14 @@ fn demo_setitem_5d() -> None:
     w5["1,1,1,1,2"] = tensor.from_list_int([3030])
     show_tensor("""w5["1,1,1,1,2"] = 3030""", w5)
 
-    v5[:,1,:,:,1:3] = tensor.from_list_int([7,8]).reshape([1,1,1,1,2])   
-    show_tensor("""w5[":,1,:,:,1:3"] = [7,8]""", w5)
-
     w5[":,:,1,:,:"] = tensor.from_list_int([5])
     show_tensor("""w5[":,:,1,:,:"] = 5""", w5)
 
     w5["::2,:,:,:,0"] = tensor.from_list_int([-3])
     show_tensor("""w5["::2,:,:,:,0"] = -3""", w5)
 
-    w5[":,1,:,:,1:3"] = tensor.from_list_int([1, 2]).reshape([1, 1, 1, 1, 2])#.broadcast_to([2, 1, 2, 2, 2])
-    show_tensor("""w5[":,1,:,:,1:3"] = broadcasted [1,2]""", w5)
+    w5[":,1,:,:,1:3"] = tensor.from_list_int([1, 2]).reshape([1, 1, 1, 1, 2])
+    show_tensor("""w5[":,1,:,:,1:3"] = [1,2] (broadcast)""", w5)
 
     w5[":,:,:,::-1,:"] = tensor.from_list_int([6])
     show_tensor("""w5[":,:,:,::-1,:"] = 6""", w5)
@@ -308,7 +308,7 @@ fn demo_setitem_5d() -> None:
 # -----------------------------------------------------------------------------
 fn main() -> None:
     demo_setitem_1d()
-    #demo_setitem_2d()
-    #demo_setitem_3d()
-    #demo_setitem_4d()
-    #demo_setitem_5d()
+    demo_setitem_2d()
+    demo_setitem_3d()
+    demo_setitem_4d()
+    demo_setitem_5d()
