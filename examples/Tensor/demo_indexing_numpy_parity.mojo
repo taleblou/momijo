@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_indexing_numpy_parity.mojo
+# File:         examples/Tensor/demo_indexing_numpy_parity.mojo
 #
 # Description:
 #   Parity demo for indexing/slicing vs. NumPy examples (1D..5D), showing both
