@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_broadcast_align.mojo
+# File:         examples/Tensor/demo_broadcast_align.mojo
 #
 # Description:
 #   Demo for broadcast alignment using unsqueeze/reshape to add a per-channel
