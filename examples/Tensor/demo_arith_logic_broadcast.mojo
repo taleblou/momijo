@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_arith_logic_broadcast.mojo
+# File:         examples/Tensor/demo_arith_logic_broadcast.mojo
 #
 # Description:
 #   Demo for arithmetic, comparisons, logical/bitwise ops, and broadcasting.
