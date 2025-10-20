@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_autograd_jacobian_placeholder.mojo
+# File:         examples/Tensor/demo_autograd_jacobian_placeholder.mojo
 #
 # Description:
 #   Jacobian (placeholder) — compare numerical finite-difference and analytic
