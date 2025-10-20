@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_dtypes_devices_strides.mojo
+# File:         examples/Tensor/demo_dtypes_devices_strides.mojo
 #
 # Description:
 #   Demo for dtypes, runtime device switching (CPU/GPU), casting, contiguity,
