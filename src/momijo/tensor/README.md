@@ -38,7 +38,7 @@ examples/
   tensor/             # Runnable demos covering features end-to-end
 ```
 
-The package follows strict, documented coding standards for Mojo (imports, constructors, traits, mutability, row‑major stride invariants, etc.). Headers are MIT and comments are English‑only.
+Source files include MIT headers.
 
 ---
 
@@ -71,35 +71,75 @@ mojo run -I src examples/tensor/demo_indexing.mojo
 
 > The library is under active development. Please pin to a known Mojo toolchain if examples fail due to Mojo breaking changes.
 
+### 1) Create, reshape, basic indexing
 ```mojo
 from momijo.tensor import tensor
 
 fn main():
-    # Create and reshape
     var x = tensor.arange_f64(0, 6, 1).reshape([2, 3])
+    print("x:\n" + x.__str__())          # [[0,1,2],[3,4,5]]
+    print("x[1,2]: " + x[1,2].__str__())  # 5
+```
 
-    # Basic/boolean indexing
-    var slice = x.slice(1, 0, 2)        # x[:, 0:2]
-    var mask  = x.gt_scalar(0.0)
+### 2) Boolean mask + masked_fill
+```mojo
+from momijo.tensor import tensor
 
-    # Mask utilities
-    var sel = x.masked_select(mask)     # flatten selection
+fn main():
+    var x = tensor.arange_int( -3, 3, 1)
+    var m = x.lt_scalar(0)             # negatives
     var y = x.copy()
-    y.masked_fill(mask.not_bitwise(), 0)
+    y.masked_fill(m, 0)                # clamp negatives to 0
+    print(y.__str__())                 # [0,0,0,0,1,2]
+```
 
-    # Join/split
-    var z = tensor.arange_f64(100, 106, 1).reshape([2, 3])
-    var cat0 = tensor.cat([x.copy(), z.copy()], 0)
-    var st1  = tensor.stack([x.copy(), z.copy()], 0)  # shape [2,2,3]
+### 3) Join (cat/stack) and split
+```mojo
+from momijo.tensor import tensor
 
-    # Linear algebra
-    var b = tensor.randn_f64([3], 123)
-    var Ab = x.reshape([3,2]).transpose([1,0]) @ b     # mv
+fn main():
+    var a = tensor.arange_f64(0, 6, 1).reshape([2,3])
+    var b = tensor.arange_f64(100,106,1).reshape([2,3])
+    print(tensor.cat([a.copy(), b.copy()], 0).__str__())  # cat rows
+    print(tensor.stack([a.copy(), b.copy()], 0).shape().__str__())  # [2,2,3]
+```
 
-    print("x:\n" + x.__str__())
-    print("sel (>0):\n" + sel.__str__())
-    print("cat dim=0:\n" + cat0.__str__())
-    print("A@b (mv): " + Ab.__str__())
+### 4) Advanced indexing: take / put
+```mojo
+from momijo.tensor import tensor
+
+fn main():
+    var x = tensor.arange_int(0, 12, 1).reshape([3,4]).flatten()
+    var idx = tensor.from_list_int([0, 5, 9, 11])
+    var picked = x.take(idx)
+    print(picked.__str__())            # [0,5,9,11]
+
+    var y = tensor.zeros_like(x).flatten()
+    y = y.put(idx, tensor.full_like(y, 9))
+    print(y.__str__())                 # positions 0,5,9,11 set to 9
+```
+
+### 5) Small linear solve
+```mojo
+from momijo.tensor import tensor
+
+fn main():
+    var A = tensor.from_list_float64([1.0,2.0,3.0, 0.0,1.0,4.0, 5.0,6.0,0.0]).reshape([3,3])
+    var b = tensor.from_list_float64([7.0, 4.0, 3.0])
+    var x = tensor.solve(A, b)
+    print(x.__str__())
+```
+
+### 6) Seeded randomness (deterministic)
+```mojo
+from momijo.tensor import tensor
+
+fn main():
+    var a1 = tensor.randn_f64([3], 123)
+    var a2 = tensor.randn_f64([3], 123)
+    var a3 = tensor.randn_f64([3], 3)
+    print((a1.__str__() == a2.__str__()).__str__())  # true-ish textual check
+    print(a3.__str__())
 ```
 
 ---
@@ -190,7 +230,7 @@ fn main():
 - **Row‑major, safe strides** with zero‑copy slices when possible.
 - **Views vs copies**: in‑place ops are available when safe; examples show aliasing caveats.
 - **Promotion rules** are explicit: `Int → Float32 → Float64` for mixed‑type math.
-- **Traits & Generics**: `Tensor[T]` bounds (`ImplicitlyCopyable & Copyable & Movable`) are used consistently.
+- **Traits & Generics**: `Tensor[T]` bounds are used consistently.
 - **Printing**: only scalars/strings or types with `__str__` to keep examples robust.
 
 ---
@@ -208,28 +248,20 @@ fn main():
 
 We’re building `momijo.tensor` in the open and **actively welcoming contributors** of all experience levels.
 
+### Reporting bugs / requesting features
+- If you found a **bug** or have a **feature idea**, please **open an Issue** with a clear title, minimal repro (if possible), and expected vs actual behavior.
+- For larger proposals, feel free to sketch an API or a short design note—early feedback is encouraged.
+
 ### How to contribute
 1. **Fork** the repo and create a feature branch (`feat/<topic>` or `fix/<topic>`).
-2. **Follow the coding standards** (Mojo‑specific) used in this project:
-   - *Var‑only; no globals;* constructors as `fn __init__(out self, ...)`
-   - No wildcard imports; import exact submodules
-   - Traits/generics bounds respected (`ImplicitlyCopyable & Copyable & Movable`)
-   - Row‑major strides, zero‑copy slices where possible
-   - English‑only comments; MIT short header on every source file
-3. **Add a runnable example** under `examples/tensor/` when adding a new user‑facing feature.
-4. **Run lint & smoke tests** (see CI config or `tools/mojo_lint.py`; smoke: `mojo run -I src tests/smoke.mojo`).
-5. Open a **PR** with a concise description, perf notes (if any), and checkboxes for:
-   - [ ] API documented in README / example updated
-   - [ ] No wildcard imports / correct module paths
-   - [ ] Constructors follow `out self` rule
-   - [ ] Views/copies semantics tested (if touching indexing/shape)
-   - [ ] Printability (`__str__`) maintained for demo output
+2. **Add a runnable example** under `examples/tensor/` when adding a new user‑facing feature.
+3. **Run lint & smoke tests** (see CI config; smoke: `mojo run -I src tests/smoke.mojo`).
+4. Open a **PR** with a concise description, perf notes (if any), and a short checklist:\n   - [ ] API documented in README / example updated\n   - [ ] Views/copies semantics tested (if touching indexing/shape)\n   - [ ] Printability (`__str__`) maintained for demo output
 
 ### Code Review Guidelines
-- Prefer **clear, small diffs** and **deduplicated** implementations (especially for dtype combos).
-- Keep **promotion rules** explicit (`Int → Float32 → Float64`).
-- Avoid pointer/unsafe patterns unless necessary; document invariants if used.
-- Ensure **contiguous and non‑contiguous** paths are covered where performance matters.
+- Prefer **clear, small diffs** and **deduplicated** implementations where feasible.
+- Keep behavior consistent for **contiguous vs non‑contiguous** views.
+- Include **performance notes** if you optimized a hot path.
 
 > **WIP**: Docs and examples are being expanded. If you see gaps, open an issue or PR—your feedback drives the roadmap.
 
