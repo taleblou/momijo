@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_random.mojo
+# File:         examples/Tensor/demo_random.mojo
 #
 # Description:
 #   Demo for random generators:
