@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Project:      momijo.tensor
 # Module:       tests.tensor
-# File:         tests/tensor/demo_shape_ops.mojo
+# File:         examples/Tensor/demo_shape_ops.mojo
 #
 # Description:
 #   Demo for common shape transforms:
