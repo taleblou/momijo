@@ -122,3 +122,19 @@ from momijo.tensor.broadcast import broadcast_to
 
 from momijo.tensor.transform import reshape,reshape_infer,resize_like_with_pad,reshape_like
 from momijo.tensor.transform import stack,cat
+
+from momijo.tensor.io import (
+    # CSV
+    write_csv_f64, read_csv_f64,
+    write_csv_f32, read_csv_f32,
+    write_csv_int, read_csv_int,
+    CsvOptions,
+    # JSON
+    write_json_f64, read_json_f64,
+    write_json_f32, read_json_f32,
+    write_json_int, read_json_int,
+    # XML
+    write_xml_f64, read_xml_f64,
+    write_xml_f32, read_xml_f32,
+    write_xml_int, read_xml_int,
+)
