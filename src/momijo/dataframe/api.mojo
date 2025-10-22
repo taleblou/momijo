@@ -41,6 +41,7 @@ from momijo.dataframe.series_bool import SeriesBool as SeriesBoolT
 from momijo.dataframe.series_str import SeriesStr as SeriesStrT
 from momijo.dataframe.series_f64 import SeriesF64 as SeriesF64T
 from momijo.dataframe.series_i64 import SeriesI64 as SeriesI64T
+from collections.dictionary import Dictionary
  
 # Type aliases
 #alias ColPair = (String, List[String])
@@ -305,105 +306,13 @@ fn parse_f64_or_nan(s: String) -> Float64:
 # Single generic facade: covers Bool, Int, Float64, String (and similar),
 # and returns List[String] to feed your existing DataFrame(columns, data, index, ...) 
 
-# MIT License
-# SPDX-License-Identifier: MIT
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/series_factories.mojo
-# Description: Minimal Series constructors returning string-backed buffers.
-
-
-# Optional helper: upgrade dtype to nullable if needed (no-throw)
-fn _make_nullable_if_needed(d: DType, need_nullable: Bool) -> DType:
-    if need_nullable and not d.nullable:
-        return d.with_nullable(True)
-    return d
-
 # ---------------- Int (no nulls) ----------------
 fn Series(values: List[Int], dtype: DType) -> List[String]:
     var out = List[String]()
-    out.reserve(len(values))
     var i = 0
     var n = len(values)
     while i < n:
         out.append(String(values[i]))
-        i += 1
-    # dtype may be nullable or not; both fine when no nulls exist
-    return out.copy()
-
-# ---------------- Int (nullable) ----------------
-fn Series(values: List[Optional[Int]], dtype: DType) -> List[String]:
-    var d = _make_nullable_if_needed(dtype, True)
-    var out = List[String]()
-    out.reserve(len(values))
-    var i = 0
-    var n = len(values)
-    while i < n:
-        var v = values[i]
-        if v is None:
-            out.append(String(""))      # represent null
-        else:
-            out.append(String(v.value()))
-        i += 1
-    return out.copy()
-
-# ---------------- Float64 (no nulls) ----------------
-fn Series(values: List[Float64], dtype: DType) -> List[String]:
-    var out = List[String]()
-    out.reserve(len(values))
-    var i = 0
-    var n = len(values)
-    while i < n:
-        out.append(String(values[i]))
-        i += 1
-    return out.copy()
-
-# ---------------- Float64 (nullable) ----------------
-fn Series(values: List[Optional[Float64]], dtype: DType) -> List[String]:
-    var d = _make_nullable_if_needed(dtype, True)
-    var out = List[String]()
-    out.reserve(len(values))
-    var i = 0
-    var n = len(values)
-    while i < n:
-        var v = values[i]
-        if v is None:
-            out.append(String(""))
-        else:
-            out.append(String(v.value()))
-        i += 1
-    return out.copy()
-
-# ---------------- Bool (no nulls) ----------------
-fn Series(values: List[Bool], dtype: DType) -> List[String]:
-    var out = List[String]()
-    out.reserve(len(values))
-    var i = 0
-    var n = len(values)
-    while i < n:
-        # Ensure canonical "True"/"False" or "1"/"0" as you prefer
-        if values[i]:
-            out.append(String("True"))
-        else:
-            out.append(String("False"))
-        i += 1
-    return out.copy()
-
-# ---------------- Bool (nullable) ----------------
-fn Series(values: List[Optional[Bool]], dtype: DType) -> List[String]:
-    var d = _make_nullable_if_needed(dtype, True)
-    var out = List[String]()
-    out.reserve(len(values))
-    var i = 0
-    var n = len(values)
-    while i < n:
-        var v = values[i]
-        if v is None:
-            out.append(String(""))
-        else:
-            if v.value():
-                out.append(String("True"))
-            else:
-                out.append(String("False"))
         i += 1
     return out.copy()
 
@@ -411,81 +320,152 @@ fn Series(values: List[Optional[Bool]], dtype: DType) -> List[String]:
 fn Series(values: List[String], dtype: DType) -> List[String]:
     return values.copy()
 
-# ---------------- String (nullable) ----------------
-fn Series(values: List[Optional[String]], dtype: DType) -> List[String]:
-    var d = _make_nullable_if_needed(dtype, True)
-    var out = List[String]()
-    out.reserve(len(values))
-    var i = 0
-    var n = len(values)
-    while i < n:
-        var s = values[i]
-        if s is None:
-            out.append(String(""))
-        else:
-            out.append(s.value())
-        i += 1
-    return out.copy()
+# ===== Float64, Bool, and nullable variants use distinct names =====
+
+# # ---------------- Float64 (no nulls) ----------------
+# fn Series(values: List[Float64], dtype: DType) -> List[String]:
+#     var out = List[String]()
+#     var i = 0
+#     var n = len(values)
+#     while i < n:
+#         out.append(String(values[i]))
+#         i += 1
+#     return out.copy()
+
+# # ---------------- Float64 (nullable) ----------------
+# fn Series(values: List[Optional[Float64]], dtype: DType) -> List[String]:
+#     var out = List[String]()
+#     var i = 0
+#     var n = len(values)
+#     while i < n:
+#         var v = values[i]
+#         if v is None:
+#             out.append(String(""))
+#         else:
+#             out.append(String(v.value()))
+#         i += 1
+#     return out.copy()
+
+# # ---------------- Bool (no nulls) ----------------
+# fn Series(values: List[Bool], dtype: DType) -> List[String]:
+#     var out = List[String]()
+#     var i = 0
+#     var n = len(values)
+#     while i < n:
+#         if values[i]:
+#             out.append(String("True"))
+#         else:
+#             out.append(String("False"))
+#         i += 1
+#     return out.copy()
+
+# # ---------------- Bool (nullable) ----------------
+# fn Series(values: List[Optional[Bool]], dtype: DType) -> List[String]:
+#     var out = List[String]()
+#     var i = 0
+#     var n = len(values)
+#     while i < n:
+#         var v = values[i]
+#         if v is None:
+#             out.append(String(""))
+#         else:
+#             if v.value():
+#                 out.append(String("True"))
+#             else:
+#                 out.append(String("False"))
+#         i += 1
+#     return out.copy()
+
+# # ---------------- String (nullable) ----------------
+# fn Series(values: List[Optional[String]], dtype: DType) -> List[String]:
+#     var out = List[String]()
+#     var i = 0
+#     var n = len(values)
+#     while i < n:
+#         var s = values[i]
+#         if s is None:
+#             out.append(String(""))
+#         else:
+#             out.append(s.value())
+#         i += 1
+#     return out.copy()
 
 
  
 
 
-# ------- Core form: mapping + explicit index -------
+# -------------------- Index & DataFrame facades --------------------
 fn ToDataFrame(mapping: Dict[String, List[String]], index: List[String]) -> DataFrame:
-    # Collect column names (note: Dict order may not be stable; if you need
-    # stable order, pass an explicit List of names instead).
     var names = List[String]()
     for k in mapping.keys():
         names.append(String(k))
 
-    # Build data matrix in the same order as names
     var data = List[List[String]]()
     var i = 0
     while i < len(names):
         var name = names[i]
-        var opt_vals = mapping.get(name)          # Optional[List[String]]
+        var opt_vals = mapping.get(name)
         if opt_vals is not None:
-            # one copy is enough; DataFrame ctor can copy again if it needs to
-            var vals = opt_vals.value()
+            var vals = opt_vals.value().copy()     # Optional.value() per your project
             data.append(vals.copy())
-        else:
-            # Column name present in names but not in mapping (shouldn't happen)
-            data.append(List[String]())
         i += 1
 
-    # Delegate to your existing ctor: DataFrame(columns, data, index, index_name="")
+    # delegate to your existing ctor: DataFrame(columns, data, index, index_name="")
     return DataFrame(names, data, index, String(""))
 
-# ------- Convenience overload: mapping only (auto range index) -------
+ 
+
+
+# ---------- helpers: convert typed lists to List[String] ----------
+fn to_string_list_i(xs: List[Int]) -> List[String]:
+    var out = List[String]()
+    var i = 0
+    while i < len(xs):
+        out.append(String(xs[i]))
+        i += 1
+    return out
+
+fn to_string_list_f(xs: List[Float64]) -> List[String]:
+    var out = List[String]()
+    var i = 0
+    while i < len(xs):
+        out.append(String(xs[i]))
+        i += 1
+    return out
+
+fn to_string_list_s(xs: List[String]) -> List[String]:
+    return xs.copy()
+
+ 
+
+# ---------- ToDataFrame without index (auto 0..n-1) ----------
 fn ToDataFrame(mapping: Dict[String, List[String]]) -> DataFrame:
-    # Derive names first
+    # Collect names first
     var names = List[String]()
     for k in mapping.keys():
         names.append(String(k))
 
-    # Guard: empty mapping
-    if len(names) == 0:
-        # Construct an empty DataFrame with empty index
-        return DataFrame(List[String](), List[List[String]](), List[String](), String(""))
-
-    # Find row count from first column
-    var first_col_opt = mapping.get(names[0])
+    # Determine nrows from the first present column
     var nrows = 0
-    if first_col_opt is not None:
-        nrows = len(first_col_opt.value())
-    # Build default index "0","1",...,"n-1"
+    var j = 0
+    while j < len(names):
+        var opt_vals = mapping.get(names[j])
+        if opt_vals is not None:
+            nrows = len(opt_vals.value())
+            break
+        j += 1
+
+    # Build default string index: "0","1",...,"nrows-1"
     var index = List[String]()
-    index.reserve(nrows)
     var r = 0
     while r < nrows:
         index.append(String(r))
         r += 1
 
-    # Reuse the core overload
+    # Reuse the explicit-index builder
     return ToDataFrame(mapping, index)
 
- 
+
 fn Index(labels: List[String]) -> List[String]:
     return labels.copy()
 
@@ -2244,6 +2224,61 @@ fn _copy_list_bool(src: List[Bool]) -> List[Bool]:
     return src.copy()
 
 
+# Flexible assign: accept Dict[String, Any] — not supported in Mojo yet.
+# Keep a stub to avoid accidental usage.
+fn assign_flex(df: DataFrame, newcols_any: Dict[String, Any]) -> DataFrame:
+    # Not implemented: Mojo lacks a stable 'Any'-based reflection for lists here.
+    # Prefer using typed overloads: assign(... List[String]/Float64/Int64/Bool ...)
+    return df.copy()
+
+
+# Typed helpers that convert to string columns and delegate to the main assign()
+
+fn assign_numeric(df: DataFrame, newcols: Dict[String, List[Float64]]) -> DataFrame:
+    var strmap = Dict[String, List[String]]()
+    for k in newcols.keys():
+        var ls = List[String]()
+        var opt_src = newcols.get(k)
+        if opt_src is not None:
+            var src = _copy_list_f64(opt_src.value())
+            var i = 0
+            while i < len(src):
+                ls.append(String(src[i]))
+                i += 1
+        strmap[k] = ls.copy()
+    return assign(df, strmap)
+
+fn assign_int(df: DataFrame, newcols: Dict[String, List[Int64]]) -> DataFrame:
+    var strmap = Dict[String, List[String]]()
+    for k in newcols.keys():
+        var ls = List[String]()
+        var opt_src = newcols.get(k)
+        if opt_src is not None:
+            var src = _copy_list_i64(opt_src.value())
+            var i = 0
+            while i < len(src):
+                ls.append(String(src[i]))
+                i += 1
+        strmap[k] = ls.copy()
+    return assign(df, strmap)
+
+fn assign_bool(df: DataFrame, newcols: Dict[String, List[Bool]]) -> DataFrame:
+    var strmap = Dict[String, List[String]]()
+    for k in newcols.keys():
+        var ls = List[String]()
+        var opt_src = newcols.get(k)
+        if opt_src is not None:
+            var src = _copy_list_bool(opt_src.value())
+            var i = 0
+            while i < len(src):
+                ls.append(String(src[i]))
+                i += 1
+        strmap[k] = ls.copy()
+    return assign(df, strmap)
+
+
+
+
 # Add/replace columns from a mapping: name -> values (as List[String])
 fn assign(df: DataFrame, newcols: Dict[String, List[String]]) -> DataFrame:
     var out = df.copy()
@@ -2303,59 +2338,6 @@ fn assign(df: DataFrame, newcols: Dict[String, List[String]]) -> DataFrame:
         i += 1
 
     return out.copy()
-
-
-# Flexible assign: accept Dict[String, Any] — not supported in Mojo yet.
-# Keep a stub to avoid accidental usage.
-fn assign_flex(df: DataFrame, newcols_any: Dict[String, Any]) -> DataFrame:
-    # Not implemented: Mojo lacks a stable 'Any'-based reflection for lists here.
-    # Prefer using typed overloads: assign(... List[String]/Float64/Int64/Bool ...)
-    return df.copy()
-
-
-# Typed helpers that convert to string columns and delegate to the main assign()
-
-fn assign_numeric(df: DataFrame, newcols: Dict[String, List[Float64]]) -> DataFrame:
-    var strmap = Dict[String, List[String]]()
-    for k in newcols.keys():
-        var ls = List[String]()
-        var opt_src = newcols.get(k)
-        if opt_src is not None:
-            var src = _copy_list_f64(opt_src.value())
-            var i = 0
-            while i < len(src):
-                ls.append(String(src[i]))
-                i += 1
-        strmap[k] = ls.copy()
-    return assign(df, strmap)
-
-fn assign_int(df: DataFrame, newcols: Dict[String, List[Int64]]) -> DataFrame:
-    var strmap = Dict[String, List[String]]()
-    for k in newcols.keys():
-        var ls = List[String]()
-        var opt_src = newcols.get(k)
-        if opt_src is not None:
-            var src = _copy_list_i64(opt_src.value())
-            var i = 0
-            while i < len(src):
-                ls.append(String(src[i]))
-                i += 1
-        strmap[k] = ls.copy()
-    return assign(df, strmap)
-
-fn assign_bool(df: DataFrame, newcols: Dict[String, List[Bool]]) -> DataFrame:
-    var strmap = Dict[String, List[String]]()
-    for k in newcols.keys():
-        var ls = List[String]()
-        var opt_src = newcols.get(k)
-        if opt_src is not None:
-            var src = _copy_list_bool(opt_src.value())
-            var i = 0
-            while i < len(src):
-                ls.append(String(src[i]))
-                i += 1
-        strmap[k] = ls.copy()
-    return assign(df, strmap)
 
 
 # Overloads: allow direct typed dicts; route to the string-assign via conversion
@@ -2512,3 +2494,74 @@ fn col_i64(name: String, data: List[Int], valid: Bitmap) -> Column:
     c.from_i64(s)
     return c.copy()
 
+
+    # ---------------------------------------------------------------
+# Construct a numeric range as a string-backed Series.
+# stop is exclusive; step may be negative. No assert used.
+# ---------------------------------------------------------------
+fn range(start: Int, stop: Int, step: Int = 1, dtype: DType = DType.INT32()) -> List[Int]:
+    var eff_step = step
+    if eff_step == 0:
+        if start <= stop:
+            eff_step = 1
+        else:
+            eff_step = -1
+
+    var out = List[Int]()
+    if eff_step > 0:
+        var v = start
+        while v < stop:
+            out.append(v)
+            v += eff_step
+    else:
+        var v = start
+        while v > stop:
+            out.append(v)
+            v += eff_step
+
+    return out
+
+# -----------------------------------------------------------------------------
+# If you also need float or string ranges, add these helpers:
+# -----------------------------------------------------------------------------
+fn range_f64(start: Int, stop: Int, step: Int = 1) -> List[Float64]:
+    var eff_step = step
+    if eff_step == 0:
+        if start <= stop:
+            eff_step = 1
+        else:
+            eff_step = -1
+
+    var out = List[Float64]()
+    if eff_step > 0:
+        var v = start
+        while v < stop:
+            out.append(Float64(v))
+            v += eff_step
+    else:
+        var v = start
+        while v > stop:
+            out.append(Float64(v))
+            v += eff_step
+    return out
+
+fn range_str(start: Int, stop: Int, step: Int = 1) -> List[String]:
+    var eff_step = step
+    if eff_step == 0:
+        if start <= stop:
+            eff_step = 1
+        else:
+            eff_step = -1
+
+    var out = List[String]()
+    if eff_step > 0:
+        var v = start
+        while v < stop:
+            out.append(String(v))
+            v += eff_step
+    else:
+        var v = start
+        while v > stop:
+            out.append(String(v))
+            v += eff_step
+    return out
