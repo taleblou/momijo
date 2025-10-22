@@ -19,7 +19,7 @@
 #   - Key functions: values, index, to_string, series_from_list, series_values, series_index,
 #                    resample_sum_min.
 #   - Static methods present: N/A.
-
+ 
 from momijo.dataframe.series_bool import append
 struct Series(Copyable, Movable):
     var name: String
@@ -71,6 +71,8 @@ struct Series(Copyable, Movable):
         if n > show:
             s = s + "…\n"
         return s
+
+   
 
 # Build a Series from a string index and integer values.
 # NOTE: explicit return type is important.
