@@ -41,7 +41,7 @@ from momijo.dataframe.api import df_from_columns as df_from_columns
 from momijo.dataframe.api import df_shape as df_shape
 from momijo.dataframe.api import df_dtypes as df_dtypes
 from momijo.dataframe.api import DType,int32,int64,bool,float32,float64,string
-from momijo.dataframe.api import Series,Index,ToDataFrame
+from momijo.dataframe.api import Series,Index,ToDataFrame,df_describe,range
 
 # from momijo.dataframe.api import to_category
 
