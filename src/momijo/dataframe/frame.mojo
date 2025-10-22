@@ -860,7 +860,143 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         return c.copy()   
 
 
-        
+
+
+    # Return the column as a (string-backed) Series facade by name.
+     fn col_values(self, name: String) -> List[String]:
+        var idx = 0
+        while idx < len(self.col_names):
+            if self.col_names[idx] == name: 
+ 
+                return self.cols[idx].as_strings()   
+
+            idx += 1
+        # not found → empty
+        return List[String]()
+     # ------------------------------------------------------------------
+    # Pipe: apply an arbitrary transformation and return its result.
+    # Usage: df.pipe(fn(d: DataFrame) -> DataFrame: /* ... */)
+    # ------------------------------------------------------------------ 
+    fn pipe(self, f: fn (DataFrame) -> DataFrame) -> DataFrame:
+        var tmp = self.copy()
+        return f(tmp)
+    # ------------------------------------------------------------------
+    # Assign (callable version): name -> fn(DataFrame) -> Series 
+    # ------------------------------------------------------------------
+ 
+
+    fn assign(self, mapping: Dictionary[String, fn (DataFrame) -> List[String]]) -> DataFrame:
+        var out = self.copy()
+
+        # name -> idx
+        var name_to_idx = Dictionary[String, Int]()
+        var i = 0
+        while i < len(out.col_names):
+            name_to_idx[out.col_names[i]] = i
+            i += 1
+
+        # gather & sort keys (selection sort)
+        var keys = List[String]()
+        for k in mapping.keys():
+            keys.append(String(k))
+        i = 0
+        while i + 1 < len(keys):
+            var j = i + 1
+            while j < len(keys):
+                if keys[j] < keys[i]:
+                    var t = keys[i]; keys[i] = keys[j]; keys[j] = t
+                j += 1
+            i += 1
+
+        # apply
+        i = 0
+        while i < len(keys):
+            var name = keys[i]
+            var opt_f = mapping.get(name)
+            if opt_f is not None:
+                var f = opt_f.value()
+                var vals = f(out)                 # List[String]
+
+                # build a string Series/Column
+                var s = SeriesStr()
+                s.set_name(name)
+                s.data = vals.copy()
+
+                var col = Column()
+                col.from_str(s)
+
+                var opt_idx = name_to_idx.get(name)
+                if opt_idx is not None:
+                    var idx = opt_idx.value()
+                    out.cols[idx] = col.copy()
+                    out.col_names[idx] = name
+                else:
+                    name_to_idx[name] = len(out.col_names)
+                    out.cols.append(col.copy())
+                    out.col_names.append(name)
+            i += 1
+
+        return out.copy()
+
+     # --------------------------------------------------------------
+    # Build this Column from a generic facade Series.
+    # Dispatches by dtype/tag and deep-copies buffers.
+    # --------------------------------------------------------------
+    fn from_series(mut self, src: Series) -> None:
+        # Prefer dtype() if available; fall back to tag if needed.
+        var dt = src.dtype()
+
+        if dt.is_string():
+            var ss = SeriesStr()
+            ss.set_name(src.get_name())
+            ss.data = src.values_as_string().copy()   # expect List[String]
+            self.from_str(ss)
+            return
+
+        if dt.is_int64():
+            var si = SeriesI64()
+            si.set_name(src.get_name())
+            si.data = src.values_as_i64().copy()      # expect List[Int64]
+            # copy validity/bitmap if API exposes it; otherwise default "all valid"
+            self.from_i64(si)
+            return
+
+        if dt.is_float64():
+            var sf = SeriesF64()
+            sf.set_name(src.get_name())
+            sf.data = src.values_as_f64().copy()      # expect List[Float64]
+            self.from_f64(sf)
+            return
+
+        if dt.is_bool():
+            var sb = SeriesBool()
+            sb.set_name(src.get_name())
+            sb.data = src.values_as_bool().copy()     # expect List[Bool]
+            self.from_bool(sb)
+            return
+
+        # Fallback: treat as strings
+        var s2 = SeriesStr()
+        s2.set_name(src.get_name())
+        s2.data = src.values_as_string().copy()
+        self.from_str(s2)
+
+
+    #Return the column index by name, or -1 if not found.
+    fn _col_index(self, name: String) -> Int:
+        var i = 0
+        while i < len(self.col_names):
+            if self.col_names[i] == name:
+                return i
+            i += 1
+        return -1
+
+    # Return column values as List[String] by column name.
+    fn col_values(self, name: String) -> List[String]:
+        var idx = self._col_index(name)
+        if idx < 0:
+            return List[String]()  # not found -> empty 
+        return self.cols[idx].as_strings()
 
 
 
