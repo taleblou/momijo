@@ -21,7 +21,8 @@
 
 from momijo.dataframe.api import df_make as _df_make
 from momijo.dataframe.column import Column as Column
-from momijo.dataframe.column import Value
+from momijo.dataframe.column import Value,set_col_strings,col_from_list_with_tag
+from momijo.dataframe.column import make_broadcast_col_by_name,make_broadcast_col_by_pos
 
 from momijo.dataframe.utils import compute_stats as _compute_stats
 
@@ -41,7 +42,7 @@ from momijo.dataframe.api import df_from_columns as df_from_columns
 from momijo.dataframe.api import df_shape as df_shape
 from momijo.dataframe.api import df_dtypes as df_dtypes
 from momijo.dataframe.api import DType,int32,int64,bool,float32,float64,string
-from momijo.dataframe.api import Series,Index,ToDataFrame,df_describe,range
+from momijo.dataframe.api import Series,Index,ToDataFrame,df_describe,range,date_range
 
 # from momijo.dataframe.api import to_category
 
@@ -67,6 +68,7 @@ from momijo.dataframe.selection import col_isin as col_isin
 from momijo.dataframe.selection import mask_and as mask_and
 from momijo.dataframe.selection import filter as filter
 from momijo.dataframe.selection import slice_labels,slice_rows,slice_cols
+from momijo.dataframe.selection import rows_all,cols_all,rows,pslice
 # Print-friendly variant of head
 from momijo.dataframe.frame import set_index as set_index
 from momijo.dataframe.frame import reset_index as reset_index
