@@ -46,6 +46,9 @@ from momijo.dataframe.api import *
 from collections.list import List
 
 
+
+
+
 # Assuming Column, SeriesStr and their APIs are available in scope:
 # - Column(): default ctor
 # - Column.get_name() -> String
@@ -61,9 +64,9 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     var index_name: String
     var index_vals: List[String]
 
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     # Constructors
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     fn __init__(out self):
         self.col_names  = List[String]()
         self.names      = List[String]()
@@ -71,41 +74,29 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         self.index_name = String("")
         self.index_vals = List[String]()
 
-    # Build from column names + column-major string data + optional index.
-    fn __init__(out self,
-                columns: List[String],
-                data: List[List[String]],
-                index: List[String],
-                index_name: String = ""):
+    # Build from column names + column-major string data + optional index
+    fn __init__(out self, columns: List[String], data: List[List[String]], index: List[String], index_name: String = ""):
         var ncols = len(columns)
         var dcols = len(data)
         var use_cols = ncols
-        if dcols < use_cols:
-            use_cols = dcols
+        if dcols < use_cols: use_cols = dcols
 
-        # Compute min row length across used columns
         var min_len = 0
         if use_cols > 0:
             min_len = len(data[0])
             var c = 1
             while c < use_cols:
                 var h = len(data[c])
-                if h < min_len:
-                    min_len = h
+                if h < min_len: min_len = h
                 c += 1
 
-        # Init fields
-        self.col_names  = List[String]()
-        self.col_names.reserve(use_cols)
-        self.names      = List[String]()
-        self.names.reserve(use_cols)
-        self.cols       = List[Column]()
-        self.cols.reserve(use_cols)
+        self.col_names  = List[String](); self.col_names.reserve(use_cols)
+        self.names      = List[String](); self.names.reserve(use_cols)
+        self.cols       = List[Column](); self.cols.reserve(use_cols)
         self.index_name = String(index_name)
-        self.index_vals = List[String]()
-        self.index_vals.reserve(min_len)
+        self.index_vals = List[String](); self.index_vals.reserve(min_len)
 
-        # Copy column names
+        # column names
         var i = 0
         while i < use_cols:
             var cname = columns[i]
@@ -113,26 +104,19 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             self.names.append(cname)
             i += 1
 
-        # Build columns (string-backed)
+        # build columns via col_from_list (type will be inferred per list)
         i = 0
         while i < use_cols:
-            var vals = List[String]()
-            vals.reserve(min_len)
+            var vals = List[String](); vals.reserve(min_len)
             var r = 0
             while r < min_len:
                 vals.append(data[i][r])
                 r += 1
-
-            var s = SeriesStr()
-            s.name = self.col_names[i]
-            s.data = vals.copy()     # OK: List[String] نه implicitly-copyable
-
-            var col = Column()
-            col.from_str(s)
-            self.cols.append(col.copy())  # copy-on-append; no extra .copy() needed
+            var col = col_from_list(vals, self.col_names[i])
+            self.cols.append(col.copy())
             i += 1
 
-        # Build index: use provided if matching length; else 0..min_len-1
+        # index
         var ilen = len(index)
         if ilen == min_len and min_len > 0:
             var j = 0
@@ -145,86 +129,67 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
                 self.index_vals.append(String(j))
                 j += 1
 
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     # Copying
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     @always_inline
     fn __copyinit__(out self, other: DataFrame):
         self.col_names  = other.col_names.copy()
         self.names      = other.names.copy()
         self.index_name = String(other.index_name)
         self.index_vals = other.index_vals.copy()
-
         var n = len(other.cols)
-        self.cols = List[Column]()
-        self.cols.reserve(n)
+        self.cols = List[Column](); self.cols.reserve(n)
         var i = 0
         while i < n:
             self.cols.append(other.cols[i].copy())
             i += 1
 
-    @always_inline
-    fn copy(self) -> DataFrame:
-        var out = self   # invokes __copyinit__(out out, other=self) under the hood
-        return out         # safe: DataFrame is ImplicitlyCopyable
+    @always_inline 
+    fn copy(self) -> DataFrame: var out = self; return out
+    @always_inline 
+    fn clone(self) -> DataFrame: return self.copy()
 
-    @always_inline
-    fn clone(self) -> DataFrame:
-        return self.copy()
-
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     # Introspection
-    # -------------------------------------------------------------------------
-    @always_inline
-    fn ncols(self) -> Int:
-        return len(self.col_names)
-
-    @always_inline
+    # ---------------------------------------------------------------------
+    @always_inline 
+    fn ncols(self) -> Int: return len(self.col_names)
+    @always_inline 
     fn nrows(self) -> Int:
-        if len(self.cols) == 0:
-            return 0
+        if len(self.cols) == 0: return 0
         return self.cols[0].len()
-
-    @always_inline
-    fn width(self) -> Int:
-        return self.ncols()
-
-    @always_inline
-    fn height(self) -> Int:
-        return self.nrows()
-
-    @always_inline
+    @always_inline 
+    fn width(self) -> Int: return self.ncols()
+    @always_inline 
+    fn height(self) -> Int: return self.nrows()
+    @always_inline 
     fn shape_str(self) -> String:
         return "(" + String(self.nrows()) + ", " + String(self.ncols()) + ")"
 
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     # Column lookup / access
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     fn find_col(self, name: String) -> Int:
         var i = 0
         var n = len(self.col_names)
         while i < n:
-            if self.col_names[i] == name:
-                return i
+            if self.col_names[i] == name: return i
             i += 1
         return -1
 
     fn get_column(self, name: String) -> Column:
         var idx = self.find_col(name)
         if idx < 0 or idx >= self.ncols():
-            var s = SeriesStr()
-            s.name = name
-            s.data = List[String]()
-            var c = Column()
-            c.from_str(s)
-            return c.copy()
+            # return an empty string-typed column with the requested name
+            var empty = List[String]()
+            return col_from_list_with_tag(empty, name, 4).copy()   # 4 == STR tag in ColumnTag
         return self.cols[idx].copy()
 
-    @always_inline
+    @always_inline 
     fn get_column_by_name(self, name: String) -> Column:
         return self.get_column(name)
 
-    # Set or replace a column by its .get_name()
     fn set_column(mut self, col: Column):
         var nm = col.get_name()
         var idx = self.find_col(nm)
@@ -237,36 +202,17 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             self.col_names[idx] = nm
             self.names[idx]     = nm
 
-
     fn set_column(mut self, idx: Int, src: Column) -> None:
-        # bounds guard
-        if idx < 0:
-            return
-        if idx >= self.ncols():
-            return
-
-        # rectangular shape guard
+        if idx < 0 or idx >= self.ncols(): return
         if self.nrows() > 0:
-            if src.len() != self.nrows():
-                return
+            if src.len() != self.nrows(): return
         else:
-            # if frame has no rows yet, allow only empty column to keep rectangular shape
-            if src.len() != 0:
-                return
-
-        # replace the storage (explicit copy to avoid implicit-copy errors)
+            if src.len() != 0: return
         self.cols[idx] = src.copy()
-
-        # sync the column name if available
         if idx < len(self.col_names):
-            # adjust this accessor if your Column API differs
             var new_name = src.get_name()
             self.col_names[idx] = new_name
 
-        # ------------------------------------------------------------------
-    # Replace an existing column by name (delegates to index-based version).
-    # Silently returns if the name is not found or shape check fails.
-    # ------------------------------------------------------------------
     fn set_column(mut self, name: String, src: Column) -> None:
         var found = -1
         var i = 0
@@ -275,15 +221,506 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
                 found = i
                 break
             i += 1
-        if found < 0:
-            return
+        if found < 0: return
         self.set_column(found, src)
 
 
-    @always_inline
-    fn add_column(mut self, col: Column):
-        self.set_column(col)
+    @always_inline 
+    fn add_column(mut self, col: Column): self.set_column(col)
 
+    # ---------------------------------------------------------------------
+    # __getitem__ overloads (pandas-like where feasible)
+    # ---------------------------------------------------------------------
+
+    # df['col'] -> Column
+    @always_inline 
+    fn __getitem__(self, name: String) -> Column:
+        return self.get_column(name)
+
+    # df[idx] -> Column by position (0-based)
+    @always_inline 
+    fn __getitem__(self, idx: Int) -> Column:
+        if idx >= 0 and idx < self.ncols(): return self.cols[idx].copy()
+        # out-of-range: return empty string column with synthetic name
+        var empty = List[String]()
+        return col_from_list_with_tag(empty, String(idx), 4).copy()  # 4 == STR tag
+
+    # df[['c1','c2',...]] -> DataFrame by names
+    fn __getitem__(self, names: List[String]) -> DataFrame:
+        var out = DataFrame()
+        out.index_name = String(self.index_name)
+        out.index_vals = self.index_vals.copy()
+        var i = 0
+        var k = len(names)
+        while i < k:
+            var nm = names[i]
+            var pos = self.find_col(nm)
+            if pos >= 0: out.set_column(self.cols[pos].copy())
+            i += 1
+        return out
+
+    # df[[i1, i2, ...]] -> DataFrame by integer column indices
+    fn __getitem__(self, indices: List[Int]) -> DataFrame:
+        var out = DataFrame()
+        out.index_name = String(self.index_name)
+        out.index_vals = self.index_vals.copy()
+        var i = 0
+        var k = len(indices)
+        while i < k:
+            var idx = indices[i]
+            if idx >= 0 and idx < self.ncols(): out.set_column(self.cols[idx].copy())
+            i += 1
+        return out
+
+    # df[mask] -> row filter (boolean indexing)
+    fn __getitem__(self, mask: List[Bool]) -> DataFrame:
+        return self._select_rows_by_mask(mask)
+
+    # ---------------------------------------------------------------------
+    # Row/col selection helpers (all rebuild columns via col_from_list_with_tag)
+    # ---------------------------------------------------------------------
+    fn _frame_like_empty(self) -> DataFrame:
+        var out = DataFrame()
+        out.index_name = String(self.index_name)
+        out.index_vals = List[String]()
+        var c = 0
+        while c < self.ncols():
+            var empty = List[String]()
+            var col = col_from_list_with_tag(empty, self.col_names[c], self.cols[c].tag)
+            out.set_column(col.copy())
+            c += 1
+        return out
+
+    fn _select_rows_by_positions(self, pos: List[Int]) -> DataFrame:
+        var n = self.nrows()
+        # filter valid row indices first
+        var kept = List[Int]()
+        kept.reserve(len(pos))
+        var i = 0
+        var k = len(pos)
+        while i < k:
+            var r = pos[i]
+            if r >= 0 and r < n: kept.append(r)
+            i += 1
+
+        var out = DataFrame()
+        out.index_name = String(self.index_name)
+        out.index_vals = List[String](); out.index_vals.reserve(len(kept))
+        var t = 0
+        var kr = len(kept)
+        while t < kr:
+            out.index_vals.append(self.index_vals[kept[t]])
+            t += 1
+
+        var c = 0
+        while c < self.ncols():
+            var xs = List[String](); xs.reserve(len(kept))
+            var j = 0
+            while j < len(kept):
+                xs.append(self.cols[c].get_string(kept[j]))
+                j += 1
+            var col = col_from_list_with_tag(xs, self.col_names[c], self.cols[c].tag)
+            out.set_column(col.copy())
+            c += 1
+
+        return out
+
+    fn _select_rows_by_mask(self, mask: List[Bool]) -> DataFrame:
+        var n = self.nrows()
+        if len(mask) != n:
+            return self._frame_like_empty()
+
+        var kept = List[Int]()
+        kept.reserve(n)
+        var r = 0
+        while r < n:
+            if mask[r]: kept.append(r)
+            r += 1
+
+        return self._select_rows_by_positions(kept)
+
+    fn _select_rows_by_label_slice(self, s: LabelSlice) -> DataFrame:
+        var n = self.nrows()
+        var a = 0
+        while a < n and self.index_vals[a] < s.start: a += 1
+        var b = a
+        while b < n and (self.index_vals[b] < s.end or (s.inclusive and self.index_vals[b] == s.end)): b += 1
+
+        var kept = List[Int]()
+        kept.reserve(b - a)
+        var r = a
+        while r < b:
+            kept.append(r)
+            r += 1
+
+        return self._select_rows_by_positions(kept)
+
+    fn _select_rows_by_pos_slice(self, s: PosSlice) -> DataFrame:
+        var n = self.nrows()
+        var a = s.start
+        if a < 0: a = 0
+        var b = s.stop
+        if b > n: b = n
+        if b < a: b = a
+
+        var kept = List[Int]()
+        kept.reserve(b - a)
+        var r = a
+        while r < b:
+            kept.append(r)
+            r += 1
+
+        return self._select_rows_by_positions(kept)
+
+    fn _select_cols_by_names(self, names: List[String]) -> DataFrame:
+        var out = DataFrame()
+        out.index_name = String(self.index_name)
+        out.index_vals = self.index_vals.copy()
+        var i = 0
+        var k = len(names)
+        while i < k:
+            var nm = names[i]
+            var pos = self.find_col(nm)
+            if pos >= 0: out.set_column(self.cols[pos].copy())
+            i += 1
+        return out
+
+    fn _select_cols_by_positions(self, pos: List[Int]) -> DataFrame:
+        var out = DataFrame()
+        out.index_name = String(self.index_name)
+        out.index_vals = self.index_vals.copy()
+        var i = 0
+        var k = len(pos)
+        while i < k:
+            var c = pos[i]
+            if c >= 0 and c < self.ncols(): out.set_column(self.cols[c].copy())
+            i += 1
+        return out
+
+    fn _select_col_single_by_name(self, name: String) -> Column:
+        return self.get_column(name)
+
+    # ---------------------------------------------------------------------
+    # loc(rows, cols)
+    # ---------------------------------------------------------------------
+    @always_inline 
+    fn loc(self, rows: RowAll, cols: ColAll) -> DataFrame: return self.copy()
+    fn loc(self, rows: RowAll, cols: List[String]) -> DataFrame: return self._select_cols_by_names(cols)
+    fn loc(self, rows: RowAll, cols: List[Int])    -> DataFrame: return self._select_cols_by_positions(cols)
+    @always_inline
+    fn loc(self, rows: RowAll, cols: String) -> Column: return self._select_col_single_by_name(cols)
+
+    fn loc(self, rows: RowPos, cols: ColAll) -> DataFrame: return self._select_rows_by_positions(rows.indices)
+    fn loc(self, rows: RowPos, cols: List[String]) -> DataFrame: return self._select_rows_by_positions(rows.indices)._select_cols_by_names(cols)
+    fn loc(self, rows: RowPos, cols: List[Int])    -> DataFrame: return self._select_rows_by_positions(rows.indices)._select_cols_by_positions(cols)
+    fn loc(self, rows: RowPos, cols: String) -> Column: return self._select_rows_by_positions(rows.indices)._select_col_single_by_name(cols)
+
+    fn loc(self, rows: RowMask, cols: ColAll) -> DataFrame: return self._select_rows_by_mask(rows.mask)
+    fn loc(self, rows: RowMask, cols: List[String]) -> DataFrame: return self._select_rows_by_mask(rows.mask)._select_cols_by_names(cols)
+    fn loc(self, rows: RowMask, cols: List[Int])    -> DataFrame: return self._select_rows_by_mask(rows.mask)._select_cols_by_positions(cols)
+    fn loc(self, rows: RowMask, cols: String) -> Column: return self._select_rows_by_mask(rows.mask)._select_col_single_by_name(cols)
+
+    fn loc(self, rows: LabelSlice, cols: ColAll) -> DataFrame: return self._select_rows_by_label_slice(rows)
+    fn loc(self, rows: LabelSlice, cols: List[String]) -> DataFrame: return self._select_rows_by_label_slice(rows)._select_cols_by_names(cols)
+    fn loc(self, rows: LabelSlice, cols: List[Int])    -> DataFrame: return self._select_rows_by_label_slice(rows)._select_cols_by_positions(cols)
+    fn loc(self, rows: LabelSlice, cols: String) -> Column: return self._select_rows_by_label_slice(rows)._select_col_single_by_name(cols)
+
+    # ---------------------------------------------------------------------
+    # iloc(rows, cols) -- strictly positional
+    # ---------------------------------------------------------------------
+    @always_inline 
+    fn iloc(self, rows: RowAll, cols: ColAll) -> DataFrame: return self.copy()
+    fn iloc(self, rows: RowAll, cols: List[Int]) -> DataFrame: return self._select_cols_by_positions(cols)
+    @always_inline 
+    fn iloc(self, rows: RowAll, cols: Int) -> Column:
+        if cols >= 0 and cols < self.ncols(): return self.cols[cols].copy()
+        var empty = List[String]()
+        return col_from_list_with_tag(empty, String(cols), 4).copy()
+
+    fn iloc(self, rows: RowPos, cols: ColAll) -> DataFrame: return self._select_rows_by_positions(rows.indices)
+    fn iloc(self, rows: RowPos, cols: List[Int]) -> DataFrame: return self._select_rows_by_positions(rows.indices)._select_cols_by_positions(cols)
+    fn iloc(self, rows: RowPos, cols: Int) -> Column:
+        var tmp = self._select_rows_by_positions(rows.indices)
+        if cols >= 0 and cols < tmp.ncols(): return tmp.cols[cols].copy()
+        var empty = List[String]()
+        return col_from_list_with_tag(empty, String(cols), 4).copy()
+
+    fn iloc(self, rows: PosSlice, cols: ColAll) -> DataFrame: return self._select_rows_by_pos_slice(rows)
+    fn iloc(self, rows: PosSlice, cols: List[Int]) -> DataFrame: return self._select_rows_by_pos_slice(rows)._select_cols_by_positions(cols)
+    fn iloc(self, rows: PosSlice, cols: Int) -> Column:
+        var tmp = self._select_rows_by_pos_slice(rows)
+        if cols >= 0 and cols < tmp.ncols(): return tmp.cols[cols].copy()
+        var empty = List[String]()
+        return col_from_list_with_tag(empty, String(cols), 4).copy()
+
+
+
+
+
+    # ---------- helpers: build columns from strings / broadcast ----------
+    @always_inline
+    fn _make_col_from_strings(self, name: String, vals: List[String]) -> Column:
+        # Preserve tag if a column with this name already exists; else use string tag (4).
+        var pos = self.find_col(name)
+        if pos >= 0:
+            return col_from_list_with_tag(vals, name, self.cols[pos].tag).copy()
+        # 4 == string tag in your ColumnTag
+        return col_from_list_with_tag(vals, name, 4).copy()
+
+    # Broadcast a scalar string to the frame height using the tag of an
+    # existing column with the same name if any, otherwise string tag (4).
+    fn _broadcast_scalar(self, name: String, value: String) -> Column:
+        var n = self.nrows()
+        var vals = List[String]()
+        vals.reserve(n)
+        var i = 0
+        while i < n:
+            vals.append(value)
+            i += 1
+        return self._make_col_from_strings(name, vals)
+
+    # Broadcast helper that enforces a specific target tag (useful for positional set).
+    fn _broadcast_scalar_with_tag(self, name: String, value: String, tag: Int) -> Column:
+        var n = self.nrows()
+        var vals = List[String]()
+        vals.reserve(n)
+        var i = 0
+        while i < n:
+            vals.append(value)
+            i += 1
+        return col_from_list_with_tag(vals, name, tag).copy()
+
+    # ---------- __setitem__ (scalar/name/pos) – ambiguity-free core ----------
+    # Enable: frame[cols_by_name(["c1","c2"])] = rhs_df  -> delegates to set_columns_by_names
+    fn __setitem__(mut self, key: ColNameList, rhs: DataFrame) -> None:
+        self.set_columns(key.names, rhs)
+
+    # df["col"] = Column
+    fn __setitem__(mut self, name: String, src: Column) -> None:
+        if self.nrows() > 0:
+            if src.len() != self.nrows():
+                return
+        else:
+            if src.len() != 0:
+                return
+        self.set_column(name, src)
+
+    # df["col"] = List[String]
+    fn __setitem__(mut self, name: String, values: List[String]) -> None:
+        if len(values) != self.nrows():
+            return
+        var col = self._make_col_from_strings(name, values)
+        self.set_column(name, col)
+
+    # df["col"] = "const"  (broadcast)
+    fn __setitem__(mut self, name: String, scalar: String) -> None:
+        var col = self._broadcast_scalar(name, scalar)
+        self.set_column(name, col)
+
+    # df[idx] = Column
+    fn __setitem__(mut self, idx: Int, src: Column) -> None:
+        if idx < 0 or idx >= self.ncols():
+            return
+        if self.nrows() > 0:
+            if src.len() != self.nrows():
+                return
+        else:
+            if src.len() != 0:
+                return
+        self.set_column(idx, src)
+
+    # df[idx] = List[String]  (preserve target tag)
+    fn __setitem__(mut self, idx: Int, values: List[String]) -> None:
+        if idx < 0 or idx >= self.ncols():
+            return
+        if len(values) != self.nrows():
+            return
+        var name = self.col_names[idx]
+        var col  = col_from_list_with_tag(values, name, self.cols[idx].tag)
+        self.set_column(idx, col)
+
+    # df[idx] = "const"  (preserve target tag)
+    fn __setitem__(mut self, idx: Int, scalar: String) -> None:
+        if idx < 0 or idx >= self.ncols():
+            return
+        var name = self.col_names[idx]
+        var tag  = self.cols[idx].tag
+        var col  = self._broadcast_scalar_with_tag(name, scalar, tag)
+        self.set_column(idx, col)
+
+ 
+
+        # ---------- single-column from frame (explicit; replaces name+DataFrame overload) ----------
+    # Replace/insert a column by name using data from a rhs DataFrame.
+    # If rhs has a same-name column, use it; else if rhs has exactly 1 column, reuse it.
+    # Shape (nrows) must match.
+    fn set_column(mut self, name: String, rhs: DataFrame) -> None:
+        if rhs.nrows() != self.nrows():
+            return
+        var use_col = -1
+        var pos_same = rhs.find_col(name)
+        if pos_same >= 0:
+            use_col = pos_same
+        elif rhs.ncols() == 1:
+            use_col = 0
+        else:
+            return
+        var col = rhs.cols[use_col].copy()
+        col.rename(name)
+        self.set_column(name, col)
+
+    # Replace a column by positional index from a string list (preserve target tag).
+    fn set_column(mut self, idx: Int, values: List[String]) -> None:
+        if idx < 0 or idx >= self.ncols():
+            return
+        if len(values) != self.nrows():
+            return
+        var name = self.col_names[idx]
+        var tag  = self.cols[idx].tag
+        var col  = col_from_list_with_tag(values, name, tag)
+        self.set_column(idx, col)
+
+    # Replace a column by positional index with a scalar (broadcast, preserve target tag).
+    fn set_column(mut self, idx: Int, scalar: String) -> None:
+        if idx < 0 or idx >= self.ncols():
+            return
+        var n    = self.nrows()
+        var vals = List[String]()
+        vals.reserve(n)
+        var i = 0
+        while i < n:
+            vals.append(scalar)
+            i += 1
+        var name = self.col_names[idx]
+        var tag  = self.cols[idx].tag
+        var col  = col_from_list_with_tag(vals, name, tag)
+        self.set_column(idx, col)
+
+    # ---------- explicit multi-column helpers (replace list-based __setitem__) ----------
+    # Set multiple columns by names from rhs frame.
+    # If rhs has exactly one column, reuse it for all names; otherwise match by name.
+    fn set_columns(mut self, names: List[String], rhs: DataFrame) -> None:
+        if rhs.nrows() != self.nrows():
+            return
+        var single_col = (rhs.ncols() == 1)
+        var i = 0
+        var k = len(names)
+        while i < k:
+            var nm = names[i]
+            if single_col:
+                var src = rhs.cols[0].copy()
+                src.rename(nm)
+                self.set_column(nm, src)
+            else:
+                var pos = rhs.find_col(nm)
+                if pos >= 0:
+                    self.set_column(nm, rhs.cols[pos].copy())
+            i += 1
+
+    # Set multiple columns by positions from rhs frame.
+    # If rhs has exactly one column, reuse it across all indices; else match by position.
+    fn set_columns(mut self, indices: List[Int], rhs: DataFrame) -> None:
+        if rhs.nrows() != self.nrows():
+            return
+        var one = (rhs.ncols() == 1)
+        var i = 0
+        var k = len(indices)
+        while i < k:
+            var idx = indices[i]
+            if idx >= 0 and idx < self.ncols():
+                var target_name = self.col_names[idx]
+                var src_col = Column()
+                if one:
+                    src_col = rhs.cols[0].copy()
+                elif idx < rhs.ncols():
+                    src_col = rhs.cols[idx].copy()
+                else:
+                    i += 1
+                    continue
+                src_col.rename(target_name)
+                self.set_column(idx, src_col)
+            i += 1
+
+    # ---------- explicit masked row assignment (replace mask-based __setitem__) ----------
+    # Set all cells in rows where mask[r] is True to a scalar string (broadcast across all columns).
+    fn set_rows(mut self, mask: List[Bool], scalar: String) -> None:
+        var n = self.nrows()
+        if len(mask) != n:
+            return
+        var c = 0
+        while c < self.ncols():
+            var vals = List[String]()
+            vals.reserve(n)
+            var r = 0
+            while r < n:
+                if mask[r]:
+                    vals.append(scalar)
+                else:
+                    vals.append(self.cols[c].get_string(r))
+                r += 1
+            var col = col_from_list_with_tag(vals, self.col_names[c], self.cols[c].tag)
+            self.set_column(c, col)
+            c += 1
+
+    # Row-wise masked assignment from another frame.
+    # Accepts rhs with ncols == self.ncols (per-position) OR ncols == 1 (broadcast single column).
+    fn set_rows(mut self, mask: List[Bool], rhs: DataFrame) -> None:
+        var n = self.nrows()
+        if len(mask) != n:
+            return
+        if rhs.nrows() != n:
+            return
+        var mode = 0
+        if rhs.ncols() == self.ncols():
+            mode = 1   # per-position
+        elif rhs.ncols() == 1:
+            mode = 2   # broadcast single column
+        else:
+            return
+
+        var c = 0
+        while c < self.ncols():
+            var vals = List[String]()
+            vals.reserve(n)
+            var r = 0
+            while r < n:
+                if mask[r]:
+                    if mode == 1:
+                        vals.append(rhs.cols[c].get_string(r))
+                    else:
+                        vals.append(rhs.cols[0].get_string(r))
+                else:
+                    vals.append(self.cols[c].get_string(r))
+                r += 1
+            var col = col_from_list_with_tag(vals, self.col_names[c], self.cols[c].tag)
+            self.set_column(c, col)
+            c += 1
+
+    # Row-wise masked assignment from a 1D row (length must equal ncols()).
+    # Each True row gets the same row_values applied across all columns.
+    fn set_rows(mut self, mask: List[Bool], row_values: List[String]) -> None:
+        var n = self.nrows()
+        if len(mask) != n:
+            return
+        if len(row_values) != self.ncols():
+            return
+
+        var c = 0
+        while c < self.ncols():
+            var vals = List[String]()
+            vals.reserve(n)
+            var r = 0
+            while r < n:
+                if mask[r]:
+                    vals.append(row_values[c])
+                else:
+                    vals.append(self.cols[c].get_string(r))
+                r += 1
+            var col = col_from_list_with_tag(vals, self.col_names[c], self.cols[c].tag)
+            self.set_column(c, col)
+            c += 1
+ 
+ 
     # -------------------------------------------------------------------------
     # String rendering
     # -------------------------------------------------------------------------
@@ -605,81 +1042,81 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     fn loc(self, rows: RowRange, cols: List[String]) -> DataFrame:
         return loc_impl_range(self, rows, cols)
 
-    # 2) Label-range
-    fn loc(self, rows: LabelSlice, cols: List[String]) -> DataFrame:
-        var rr = labels_to_row_range(self.index_vals, rows)
-        return loc_impl_range(self, rr, cols)
+    # # 2) Label-range
+    # fn loc(self, rows: LabelSlice, cols: List[String]) -> DataFrame:
+    #     var rr = labels_to_row_range(self.index_vals, rows)
+    #     return loc_impl_range(self, rr, cols)
 
-    # 3) Explicit label list (e.g., rows=["w","y"])
-    fn loc(self, rows: List[String], cols: List[String]) -> DataFrame:
-        var idxs = labels_to_indices(self.index_vals, rows)
-        return loc_impl_indices(self, idxs, cols)
+    # # 3) Explicit label list (e.g., rows=["w","y"])
+    # fn loc(self, rows: List[String], cols: List[String]) -> DataFrame:
+    #     var idxs = labels_to_indices(self.index_vals, rows)
+    #     return loc_impl_indices(self, idxs, cols)
 
-    # 4) Single-cell by (row, col) names
-    fn loc(self, row: String, col: String) -> String:
-        var r = find_first(self.index_vals, row)
-        if r < 0:
-            return String("")
-        var j = 0
-        var m = len(self.col_names)
-        while j < m and self.col_names[j] != col:
-            j += 1
-        if j >= m:
-            return String("")
-        return String(self.cols[j].get_string(r))
+    # # 4) Single-cell by (row, col) names
+    # fn loc(self, row: String, col: String) -> String:
+    #     var r = find_first(self.index_vals, row)
+    #     if r < 0:
+    #         return String("")
+    #     var j = 0
+    #     var m = len(self.col_names)
+    #     while j < m and self.col_names[j] != col:
+    #         j += 1
+    #     if j >= m:
+    #         return String("")
+    #     return String(self.cols[j].get_string(r))
         
      
-    fn iloc(self, row_indices: List[Int], col_range: ColRange) -> DataFrame:
-        return iloc(self, row_indices, col_range)
+    # fn iloc(self, row_indices: List[Int], col_range: ColRange) -> DataFrame:
+    #     return iloc(self, row_indices, col_range)
 
   
-    fn iloc(self, rows: ILocRowSlice, cols: ILocColSlice) -> DataFrame:
-        # clamp rows
-        var nr = self.nrows()
-        var r0 = clamp(rows.start, 0, nr)
-        var r1 = clamp(rows.stop,  0, nr)
-        if r1 < r0: r1 = r0
+    # fn iloc(self, rows: ILocRowSlice, cols: ILocColSlice) -> DataFrame:
+    #     # clamp rows
+    #     var nr = self.nrows()
+    #     var r0 = clamp(rows.start, 0, nr)
+    #     var r1 = clamp(rows.stop,  0, nr)
+    #     if r1 < r0: r1 = r0
 
-        # rows list
-        var row_idxs = List[Int]()
-        var r = r0
-        while r < r1:
-            row_idxs.append(r)
-            r += 1
+    #     # rows list
+    #     var row_idxs = List[Int]()
+    #     var r = r0
+    #     while r < r1:
+    #         row_idxs.append(r)
+    #         r += 1
 
-        # use the free function with a column ColRange
-        var cr = ColRange(cols.start, cols.stop)
-        return iloc(self, row_idxs, cr)
+    #     # use the free function with a column ColRange
+    #     var cr = ColRange(cols.start, cols.stop)
+    #     return iloc(self, row_idxs, cr)
 
-    # 3.3) rows = List[Int], cols = List[Int]
-    fn iloc(self, rows: List[Int], cols: List[Int]) -> DataFrame:
-        return iloc_impl_indices_cols(self, rows, cols)
+    # # 3.3) rows = List[Int], cols = List[Int]
+    # fn iloc(self, rows: List[Int], cols: List[Int]) -> DataFrame:
+    #     return iloc_impl_indices_cols(self, rows, cols)
 
-    # 3.4) rows = List[Int], cols = ILocColSlice
-    fn iloc(self, rows: List[Int], cols: ILocColSlice) -> DataFrame:
-        var cr = ColRange(cols.start, cols.stop)
-        return iloc(self, rows, cr)
+    # # 3.4) rows = List[Int], cols = ILocColSlice
+    # fn iloc(self, rows: List[Int], cols: ILocColSlice) -> DataFrame:
+    #     var cr = ColRange(cols.start, cols.stop)
+    #     return iloc(self, rows, cr)
 
-    # 3.5) rows = ILocRowSlice, cols = List[Int]
-    fn iloc(self, rows: ILocRowSlice, cols: List[Int]) -> DataFrame:
-        var nr = self.nrows()
-        var r0 = clamp(rows.start, 0, nr)
-        var r1 = clamp(rows.stop,  0, nr)
-        if r1 < r0: r1 = r0
+    # # 3.5) rows = ILocRowSlice, cols = List[Int]
+    # fn iloc(self, rows: ILocRowSlice, cols: List[Int]) -> DataFrame:
+    #     var nr = self.nrows()
+    #     var r0 = clamp(rows.start, 0, nr)
+    #     var r1 = clamp(rows.stop,  0, nr)
+    #     if r1 < r0: r1 = r0
 
-        var row_idxs = List[Int]()
-        var r = r0
-        while r < r1:
-            row_idxs.append(r)
-            r += 1
+    #     var row_idxs = List[Int]()
+    #     var r = r0
+    #     while r < r1:
+    #         row_idxs.append(r)
+    #         r += 1
 
-        return iloc_impl_indices_cols(self, row_idxs, cols)
+    #     return iloc_impl_indices_cols(self, row_idxs, cols)
 
-    # 3.6)  : row, col → String
-    fn iloc(self, row: Int, col: Int) -> String:
-        if not is_valid_cell(self, row, col):
-            return String("")
-        return String(self.cols[col].get_string(row))
+    # # 3.6)  : row, col → String
+    # fn iloc(self, row: Int, col: Int) -> String:
+    #     if not is_valid_cell(self, row, col):
+    #         return String("")
+    #     return String(self.cols[col].get_string(row))
 
 
 
@@ -991,12 +1428,23 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             i += 1
         return -1
 
-    # Return column values as List[String] by column name.
+    #Return column values as List[String] by column name.
     fn col_values(self, name: String) -> List[String]:
+        var out = List[String]()
         var idx = self._col_index(name)
         if idx < 0:
-            return List[String]()  # not found -> empty 
-        return self.cols[idx].as_strings()
+            return out.copy()   # not found -> empty
+
+        var col = self.cols[idx].copy()         # Column
+        var n = self.nrows()
+        out.reserve(n)
+
+        var r = 0
+        while r < n: 
+            out.append(col[r])
+            r += 1
+
+        return out.copy()
 
 
 
@@ -1800,3 +2248,48 @@ fn sort_values(df: DataFrame, by: List[String], ascending: List[Bool]) -> DataFr
     return out
 
 
+#   # ---------- Row slicing like df[start:stop] ----------
+#     struct RowSlice:
+#         var start: Int
+#         var stop:  Int
+#         fn __init__(out self, start: Int, stop: Int):
+#             self.start = start
+#             self.stop  = stop
+
+#     fn __getitem__(self, s: RowSlice) -> DataFrame:
+#         # pandas semantics: [start:stop) ; clamp to [0, nrows]
+#         var n = self.nrows()
+#         var a = s.start
+#         var b = s.stop
+#         if a < 0: a = 0
+#         if b > n: b = n
+#         if b < a: b = a
+
+#         var out = DataFrame()
+#         out.index_name = String(self.index_name)
+#         out.index_vals = List[String]()
+#         out.index_vals.reserve(b - a)
+
+#         # init dst columns
+#         var dst_cols = List[Column]()
+#         dst_cols.reserve(self.ncols())
+#         var c = 0
+#         while c < self.ncols():
+#             dst_cols.append(self.cols[c].empty_like())
+#             c += 1
+
+#         var r = a
+#         while r < b:
+#             out.index_vals.append(self.index_vals[r])
+#             var cc = 0
+#             while cc < self.ncols():
+#                 dst_cols[cc].append(self.cols[cc].get(r))
+#                 cc += 1
+#             r += 1
+
+#         var k = 0
+#         while k < self.ncols():
+#             out.set_column(dst_cols[k].copy())
+#             k += 1
+
+#         return out
