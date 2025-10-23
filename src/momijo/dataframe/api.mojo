@@ -40,8 +40,9 @@ from momijo.dataframe.bitmap import *
 from momijo.dataframe.series_bool import SeriesBool as SeriesBoolT
 from momijo.dataframe.series_str import SeriesStr as SeriesStrT
 from momijo.dataframe.series_f64 import SeriesF64 as SeriesF64T
-from momijo.dataframe.series_i64 import SeriesI64 as SeriesI64T
-from collections.dictionary import Dictionary
+from momijo.dataframe.series_i64 import SeriesI64 as SeriesI64T 
+
+from collections.dict import Dict
  
 # Type aliases
 #alias ColPair = (String, List[String])
@@ -68,41 +69,75 @@ struct DType:
         self.tag = tag
         self.nullable = nullable
 
+    # enable explicit copies (fixes: "cannot be implicitly copied")
+    fn __copyinit__(out self, other: Self):
+        self.tag = other.tag
+        self.nullable = other.nullable
+
     fn __eq__(self, other: Self) -> Bool:
-        # Equal only if both tag and nullability match
         return self.tag == other.tag and self.nullable == other.nullable
 
     fn __ne__(self, other: Self) -> Bool:
         return not (self == other)
 
-    # Optional helper: produce same tag with different nullability
     fn with_nullable(self, make_nullable: Bool) -> DType:
         return DType(self.tag, make_nullable)
+
+    # ---------- Tag constants (static) ----------
+    @always_inline 
+    @staticmethod
+    fn tag_bool() -> Int:    return 1
+    @always_inline 
+    @staticmethod
+    fn tag_int32() -> Int:   return 2
+    @always_inline 
+    @staticmethod
+    fn tag_int64() -> Int:   return 3
+    @always_inline 
+    @staticmethod
+    fn tag_f32() -> Int:     return 4
+    @always_inline 
+    @staticmethod
+    fn tag_f64() -> Int:     return 5
+    @always_inline 
+    @staticmethod
+    fn tag_string() -> Int:  return 6
+
+    # ---------- Predicates ----------
+    @always_inline
+    fn is_nullable(self) -> Bool: return self.nullable
+    @always_inline
+    fn is_bool(self) -> Bool:     return self.tag == DType.tag_bool()
+    @always_inline
+    fn is_int32(self) -> Bool:    return self.tag == DType.tag_int32()
+    @always_inline
+    fn is_int64(self) -> Bool:    return self.tag == DType.tag_int64()
+    @always_inline
+    fn is_float32(self) -> Bool:  return self.tag == DType.tag_f32()
+    @always_inline
+    fn is_float64(self) -> Bool:  return self.tag == DType.tag_f64()
+    @always_inline
+    fn is_string(self) -> Bool:   return self.tag == DType.tag_string()
 
     # ------- Static constructors (nullable-aware) -------
     @staticmethod
     fn BOOL(nullable: Bool = False) -> DType:
-        return DType(1, nullable)
-
+        return DType(DType.tag_bool(), nullable)
     @staticmethod
     fn INT32(nullable: Bool = False) -> DType:
-        return DType(2, nullable)
-
+        return DType(DType.tag_int32(), nullable)
     @staticmethod
     fn INT64(nullable: Bool = False) -> DType:
-        return DType(3, nullable)
-
+        return DType(DType.tag_int64(), nullable)
     @staticmethod
     fn FLOAT32(nullable: Bool = False) -> DType:
-        return DType(4, nullable)
-
+        return DType(DType.tag_f32(), nullable)
     @staticmethod
     fn FLOAT64(nullable: Bool = False) -> DType:
-        return DType(5, nullable)
-
+        return DType(DType.tag_f64(), nullable)
     @staticmethod
     fn STRING(nullable: Bool = False) -> DType:
-        return DType(6, nullable)
+        return DType(DType.tag_string(), nullable)
 
 
 fn tag_bool()    -> Int: return 1
@@ -306,24 +341,8 @@ fn parse_f64_or_nan(s: String) -> Float64:
 # Single generic facade: covers Bool, Int, Float64, String (and similar),
 # and returns List[String] to feed your existing DataFrame(columns, data, index, ...) 
 
-# ---------------- Int (no nulls) ----------------
-fn Series(values: List[Int], dtype: DType) -> List[String]:
-    var out = List[String]()
-    var i = 0
-    var n = len(values)
-    while i < n:
-        out.append(String(values[i]))
-        i += 1
-    return out.copy()
-
-# ---------------- String (no nulls) ----------------
-fn Series(values: List[String], dtype: DType) -> List[String]:
-    return values.copy()
-
-# ===== Float64, Bool, and nullable variants use distinct names =====
-
-# # ---------------- Float64 (no nulls) ----------------
-# fn Series(values: List[Float64], dtype: DType) -> List[String]:
+# # ---------------- Int (no nulls) ----------------
+# fn Series(values: List[Int], dtype: DType) -> List[String]:
 #     var out = List[String]()
 #     var i = 0
 #     var n = len(values)
@@ -332,64 +351,120 @@ fn Series(values: List[String], dtype: DType) -> List[String]:
 #         i += 1
 #     return out.copy()
 
-# # ---------------- Float64 (nullable) ----------------
-# fn Series(values: List[Optional[Float64]], dtype: DType) -> List[String]:
-#     var out = List[String]()
-#     var i = 0
-#     var n = len(values)
-#     while i < n:
-#         var v = values[i]
-#         if v is None:
-#             out.append(String(""))
-#         else:
-#             out.append(String(v.value()))
-#         i += 1
-#     return out.copy()
+# # ---------------- String (no nulls) ----------------
+# fn Series(values: List[String], dtype: DType) -> List[String]:
+#     return values.copy()
 
-# # ---------------- Bool (no nulls) ----------------
-# fn Series(values: List[Bool], dtype: DType) -> List[String]:
-#     var out = List[String]()
-#     var i = 0
-#     var n = len(values)
-#     while i < n:
-#         if values[i]:
-#             out.append(String("True"))
-#         else:
-#             out.append(String("False"))
-#         i += 1
-#     return out.copy()
+# ---------- helpers ----------
+@always_inline 
+fn _ensure_nullable(d: DType) -> DType:
+    # If dtype is already nullable, return an explicit copy; otherwise return a nullable twin.
+    if d.is_nullable():
+        return DType(d.tag, d.nullable)  # explicit copy (no implicit copy)
 
-# # ---------------- Bool (nullable) ----------------
-# fn Series(values: List[Optional[Bool]], dtype: DType) -> List[String]:
-#     var out = List[String]()
-#     var i = 0
-#     var n = len(values)
-#     while i < n:
-#         var v = values[i]
-#         if v is None:
-#             out.append(String(""))
-#         else:
-#             if v.value():
-#                 out.append(String("True"))
-#             else:
-#                 out.append(String("False"))
-#         i += 1
-#     return out.copy()
+    # Mirror the logical kind but set nullable = True
+    if d.is_int32():     return DType.INT32(nullable=True)
+    if d.is_int64():     return DType.INT64(nullable=True)
+    if d.is_float32():   return DType.FLOAT32(nullable=True)
+    if d.is_float64():   return DType.FLOAT64(nullable=True)
+    if d.is_bool():      return DType.BOOL(nullable=True)
+    if d.is_string():    return DType.STRING(nullable=True)
 
-# # ---------------- String (nullable) ----------------
-# fn Series(values: List[Optional[String]], dtype: DType) -> List[String]:
-#     var out = List[String]()
-#     var i = 0
-#     var n = len(values)
-#     while i < n:
-#         var s = values[i]
-#         if s is None:
-#             out.append(String(""))
-#         else:
-#             out.append(s.value())
-#         i += 1
-#     return out.copy()
+    # Fallback: keep same tag but force nullable
+    return DType(d.tag, True)
 
+
+@always_inline
+fn _null_str() -> String:
+    # Canonical string sentinel for nulls in this simplified string-backed Series.
+    return String("")
+
+# ---------------- Int32 (nullable) ----------------
+fn Series(values: List[Optional[Int]], dtype: DType) -> List[String]:
+    var _ = _ensure_nullable(dtype)              # force nullable dtype (ignored here, but consistent)
+    var out = List[String]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        var opt = values[i]
+        if opt is None:
+            out.append(_null_str())
+        else:
+            out.append(String(opt.value()))
+        i += 1
+    return out.copy()
+
+# ---------------- Int64 (nullable) ----------------
+# If your Int is 64-bit already, you can omit this and rely on the Int overload above.
+# Keep it if you’ve split Int32/Int64 separately in your API.
+fn Series(values: List[Optional[Int64]], dtype: DType) -> List[String]:
+    var _ = _ensure_nullable(dtype)
+    var out = List[String]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        var opt = values[i]
+        if opt is None:
+            out.append(_null_str())
+        else:
+            out.append(String(opt.value()))
+        i += 1
+    return out.copy()
+
+# ---------------- Float64 (nullable) ----------------
+fn Series(values: List[Optional[Float64]], dtype: DType) -> List[String]:
+    var _ = _ensure_nullable(dtype)
+    var out = List[String]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        var opt = values[i]
+        if opt is None:
+            out.append(_null_str())
+        else:
+            # Avoid scientific noise—String(Float64) is fine if your printer is stable.
+            out.append(String(opt.value()))
+        i += 1
+    return out.copy()
+
+# ---------------- Bool (nullable) ----------------
+fn Series(values: List[Optional[Bool]], dtype: DType) -> List[String]:
+    var _ = _ensure_nullable(dtype)
+    var out = List[String]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        var opt = values[i]
+        if opt is None:
+            out.append(_null_str())
+        else:
+            # Keep consistent text form across the project:
+            if opt.value():
+                out.append(String("True"))
+            else:
+                out.append(String("False"))
+        i += 1
+    return out.copy()
+
+# ---------------- String (nullable) ----------------
+fn Series(values: List[Optional[String]], dtype: DType) -> List[String]:
+    var _ = _ensure_nullable(dtype)
+    var out = List[String]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        var opt = values[i]
+        if opt is None:
+            out.append(_null_str())
+        else:
+            out.append(opt.value())
+        i += 1
+    return out.copy()
 
  
 
@@ -414,30 +489,6 @@ fn ToDataFrame(mapping: Dict[String, List[String]], index: List[String]) -> Data
     return DataFrame(names, data, index, String(""))
 
  
-
-
-# ---------- helpers: convert typed lists to List[String] ----------
-fn to_string_list_i(xs: List[Int]) -> List[String]:
-    var out = List[String]()
-    var i = 0
-    while i < len(xs):
-        out.append(String(xs[i]))
-        i += 1
-    return out
-
-fn to_string_list_f(xs: List[Float64]) -> List[String]:
-    var out = List[String]()
-    var i = 0
-    while i < len(xs):
-        out.append(String(xs[i]))
-        i += 1
-    return out
-
-fn to_string_list_s(xs: List[String]) -> List[String]:
-    return xs.copy()
-
- 
-
 # ---------- ToDataFrame without index (auto 0..n-1) ----------
 fn ToDataFrame(mapping: Dict[String, List[String]]) -> DataFrame:
     # Collect names first
@@ -464,6 +515,51 @@ fn ToDataFrame(mapping: Dict[String, List[String]]) -> DataFrame:
 
     # Reuse the explicit-index builder
     return ToDataFrame(mapping, index)
+
+ 
+# ---------- align helper ----------
+@always_inline
+fn _align_to_index_length(vals: List[String], nrows: Int) -> List[String]:
+    var out = List[String]()
+    out.reserve(nrows)
+    var i = 0
+    var cur = len(vals)
+    while i < nrows:
+        if i < cur:
+            out.append(vals[i])
+        else:
+            out.append(String(""))   # null sentinel
+        i += 1
+    return out.copy()
+
+ 
+ 
+
+ 
+ 
+
+# ---------- helpers: convert typed lists to List[String] ----------
+fn to_string_list_i(xs: List[Int]) -> List[String]:
+    var out = List[String]()
+    var i = 0
+    while i < len(xs):
+        out.append(String(xs[i]))
+        i += 1
+    return out
+
+fn to_string_list_f(xs: List[Float64]) -> List[String]:
+    var out = List[String]()
+    var i = 0
+    while i < len(xs):
+        out.append(String(xs[i]))
+        i += 1
+    return out
+
+fn to_string_list_s(xs: List[String]) -> List[String]:
+    return xs.copy()
+
+ 
+
 
 
 fn Index(labels: List[String]) -> List[String]:
@@ -2519,7 +2615,7 @@ fn range(start: Int, stop: Int, step: Int = 1, dtype: DType = DType.INT32()) -> 
             out.append(v)
             v += eff_step
 
-    return out
+    return out.copy()
 
 # -----------------------------------------------------------------------------
 # If you also need float or string ranges, add these helpers:
@@ -2565,3 +2661,201 @@ fn range_str(start: Int, stop: Int, step: Int = 1) -> List[String]:
             out.append(String(v))
             v += eff_step
     return out
+
+
+# MIT License
+# SPDX-License-Identifier: MIT
+# Project: momijo.dataframe
+# File: src/momijo/dataframe/date_range.mojo
+# Description: Minimal date_range implementation (ISO strings).
+
+from collections.list import List
+
+# ---------------------------- utils ----------------------------
+
+@always_inline
+fn _is_leap_year(y: Int) -> Bool:
+    # Gregorian leap rule
+    if (y % 400) == 0: return True
+    if (y % 100) == 0: return False
+    return (y % 4) == 0
+
+@always_inline
+fn _days_in_month(y: Int, m: Int) -> Int:
+    if m == 1 or m == 3 or m == 5 or m == 7 or m == 8 or m == 10 or m == 12:
+        return 31
+    if m == 4 or m == 6 or m == 9 or m == 11:
+        return 30
+    # February
+    if _is_leap_year(y): return 29
+    return 28
+
+@always_inline
+fn _atoi_unsigned(s: String) -> Int:
+    # Simple positive integer parse (assumes s is digits)
+    var n = 0
+    var i = 0
+    var L = len(s)
+    while i < L:
+        var c = s[i]
+        var d = Int(c) - Int('0')
+        if d < 0 or d > 9:
+            # Non-digit -> stop (best-effort)
+            break
+        n = n * 10 + d
+        i += 1
+    return n
+
+@always_inline
+fn _split_yyyy_mm_dd(s: String) -> (Int, Int, Int):
+    # Expect "YYYY-MM-DD"
+    var y_str = String("")
+    var m_str = String("")
+    var d_str = String("")
+    var part = 0
+    var i = 0
+    var L = len(s)
+    while i < L:
+        var c = s[i]
+        if c == '-':
+            part += 1
+        else:
+            if part == 0: y_str = y_str + String(c)
+            elif part == 1: m_str = m_str + String(c)
+            else: d_str = d_str + String(c)
+        i += 1
+    return (_atoi_unsigned(y_str), _atoi_unsigned(m_str), _atoi_unsigned(d_str))
+
+@always_inline
+fn _pad2(n: Int) -> String:
+    if n < 10 and n >= 0:
+        return String("0") + String(n)
+    return String(n)
+
+@always_inline
+fn _pad4(n: Int) -> String:
+    if n < 10 and n >= 0: return String("000") + String(n)
+    if n < 100:           return String("00")  + String(n)
+    if n < 1000:          return String("0")   + String(n)
+    return String(n)
+
+@always_inline
+fn _format_ymd(y: Int, m: Int, d: Int) -> String:
+    return _pad4(y) + String("-") + _pad2(m) + String("-") + _pad2(d)
+
+# Increment/decrement by one day (delta is +1 or -1)
+@always_inline
+fn _step_one_day(y_in: Int, m_in: Int, d_in: Int, delta: Int) -> (Int, Int, Int):
+    var y = y_in
+    var m = m_in
+    var d = d_in
+    if delta > 0:
+        d += 1
+        var dim = _days_in_month(y, m)
+        if d > dim:
+            d = 1
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+    else:
+        d -= 1
+        if d < 1:
+            m -= 1
+            if m < 1:
+                m = 12
+                y -= 1
+            d = _days_in_month(y, m)
+    return (y, m, d)
+
+# Add n days (n can be negative). O(|n|), adequate for small steps/few periods.
+fn _add_days(y_in: Int, m_in: Int, d_in: Int, n: Int) -> (Int, Int, Int):
+    var y = y_in
+    var m = m_in
+    var d = d_in
+    if n == 0:
+        return (y, m, d)
+    var step = 1
+    if n < 0: step = -1
+    var k = 0
+    var N = n
+    if N < 0: N = -N
+    while k < N:
+        (y, m, d) = _step_one_day(y, m, d, step)
+        k += 1
+    return (y, m, d)
+
+# Month increment with day clamp to month length; n can be negative.
+fn _add_months(y_in: Int, m_in: Int, d_in: Int, n: Int) -> (Int, Int, Int):
+    var y = y_in
+    var m = m_in
+    var d = d_in
+    var total = (y * 12) + (m - 1) + n
+    if total >= 0:
+        y = total // 12
+        m = (total % 12) + 1
+    else:
+        # Floor division for negatives
+        var q = (total + 1) // 12 - 1
+        y = q
+        m = (total - (q * 12)) + 1
+    var dim = _days_in_month(y, m)
+    if d > dim: d = dim
+    return (y, m, d)
+
+# Year increment with day clamp (e.g., Feb 29 -> Feb 28 on non-leap years).
+@always_inline
+fn _add_years(y_in: Int, m_in: Int, d_in: Int, n: Int) -> (Int, Int, Int):
+    var y = y_in + n
+    var m = m_in
+    var d = d_in
+    var dim = _days_in_month(y, m)
+    if d > dim: d = dim
+    return (y, m, d)
+
+@always_inline
+fn _freq_sign_and_code(freq: String) -> (Int, String):
+    # Returns (sign, code), sign in {+1, -1}
+    var sign = 1
+    if len(freq) > 0 and freq[0] == '-':
+        sign = -1
+        return (sign, freq.slice(1, len(freq)))
+    return (sign, freq)
+
+# ------------------------- public API --------------------------
+
+# date_range: start-only + periods + freq -> List[String] in ISO "YYYY-MM-DD"
+fn date_range(start: String, periods: Int, freq: String = "D") -> List[String]:
+    var out = List[String]()
+    if periods <= 0:
+        return out.copy()
+
+    var (y0, m0, d0) = _split_yyyy_mm_dd(start)
+    var (sgn, code) = _freq_sign_and_code(freq)
+
+    var y = y0
+    var m = m0
+    var d = d0
+
+    var i = 0
+    while i < periods:
+        out.append(_format_ymd(y, m, d))
+
+        if code == "D":
+            (y, m, d) = _add_days(y, m, d, 1 * sgn)
+        elif code == "W":
+            (y, m, d) = _add_days(y, m, d, 7 * sgn)
+        elif code == "M":
+            (y, m, d) = _add_months(y, m, d, 1 * sgn)
+        elif code == "Y":
+            (y, m, d) = _add_years(y, m, d, 1 * sgn)
+        else:
+            # Fallback: treat as daily
+            (y, m, d) = _add_days(y, m, d, 1 * sgn)
+
+        i += 1
+
+    return out.copy()
+
+
+
