@@ -539,6 +539,45 @@ struct Column(Copyable, Movable):
             out.__copyinit__(self)   # uses your custom deep-copy logic for all variants
             return out.copy()
 
+     # ------------------------------------------------------------------
+    # String rendering
+    # ------------------------------------------------------------------
+    @always_inline
+    fn _dtype_name(self) -> String:
+        # Map internal tag/predicates to a human-readable dtype name.
+        if self.is_bool(): return String("bool")
+        if self.is_i64():  return String("int")
+        if self.is_f64():  return String("float")
+        # default
+        return String("string")
+
+    fn to_string(self, show: Int = 10) -> String:
+        var s = String("Column(")
+        s += self.get_name()
+        s += String(": ")
+        s += self._dtype_name()
+        s += String(", len=") + String(self.len()) + String(")\n")
+
+        var n = self.len()
+        var take = n
+        if take > show:
+            take = show
+
+        var i = 0
+        while i < take:
+            s += self.get_string(i)
+            s += String("\n")
+            i += 1
+
+        if n > take:
+            s += String("...")  # indicate truncated preview
+
+        return s
+
+    @always_inline
+    fn __str__(self) -> String:
+        return self.to_string()
+
 
 
 fn from_list_int(list: List[Int], name: String) -> Column:
@@ -841,3 +880,49 @@ fn set_cell_preserve_type(mut df: DataFrame, r: Int, j: Int, v: Value) -> Bool:
         return True
 
     return False
+
+
+@always_inline
+fn set_col_strings(mut t: DataFrame, name: String, values: List[String]) -> None:
+    if t.nrows() != len(values): return
+    var tag = 4
+    var p = t.find_col(name)
+    if p >= 0: tag = t.cols[p].tag
+    var col = col_from_list_with_tag(values, name, tag)
+    t[name] = col
+
+# Build a Column by broadcasting a scalar over all rows of an existing frame column (by name).
+fn make_broadcast_col_by_name(frame: DataFrame, name: String, value: String) -> Column:
+    var n = frame.nrows()
+    var vals = List[String]()
+    vals.reserve(n)
+    var i = 0
+    while i < n:
+        vals.append(value)
+        i += 1
+
+    # preserve tag if target column exists; otherwise string tag = 4
+    var tag = 4
+    var pos = frame.find_col(name)
+    if pos >= 0:
+        tag = frame.cols[pos].tag
+    return col_from_list_with_tag(vals, name, tag)
+
+# Same as above but by positional column index.
+fn make_broadcast_col_by_pos(frame: DataFrame, idx: Int, value: String) -> (ok: Bool, col: Column):
+    if idx < 0 or idx >= frame.ncols():
+        return (False, col_from_list(List[String](), String(""), ))  # won't be used
+    var name = frame.col_names[idx]
+    var out = make_broadcast_col_by_name(frame, name, value)
+    # enforce target tag explicitly (just in case)
+    out = col_from_list_with_tag(out._data, name, frame.cols[idx].tag)
+    return (True, out)
+
+struct ColNameList(Copyable, Movable):
+    var names: List[String]
+    fn __init__(out self, names: List[String]): self.names = names.copy()
+    fn __copyinit__(out self, other: Self): self.names = other.names.copy()
+
+@always_inline
+fn cols_by_name(names: List[String]) -> ColNameList:
+    var k = ColNameList(names); return k
