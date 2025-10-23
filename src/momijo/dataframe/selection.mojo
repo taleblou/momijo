@@ -44,6 +44,10 @@ struct LabelSlice(Copyable, Movable):
         self.start = String("")
         self.end = String("")
         self.inclusive = True
+    fn __init__(out self, start: String, end: String, inclusive: Bool = True):
+        self.start = String(start)
+        self.end = String(end)
+        self.inclusive = inclusive
 
 struct ColRange:
     var start: Int
@@ -52,19 +56,50 @@ struct ColRange:
         self.start = start
         self.stop = stop
 
-# Copy basic index metadata from src into out_df (out parameter)
-fn _copy_meta(src: DataFrame, out out_df: DataFrame) -> None:
-    # copy index name
-    out_df.index_name = String(src.index_name)
 
-    # deep-copy index values to avoid aliasing
-    out_df.index_vals = List[String]()
-    var i = 0
-    var n = len(src.index_vals)
-    while i < n:
-        out_df.index_vals.append(String(src.index_vals[i]))
-        i += 1
-    return
+# ---------------- Indexer types & helpers ---------------- 
+# -------- Marker types need explicit empty ctors --------
+struct RowAll(Copyable, Movable):
+    fn __init__(out self):
+        pass
+    fn __copyinit__(out self, other: Self):
+        # nothing to copy
+        pass
+
+struct ColAll(Copyable, Movable):
+    fn __init__(out self):
+        pass
+    fn __copyinit__(out self, other: Self):
+        pass
+
+# -------- Row indexers with List fields: implement __copyinit__ --------
+struct RowPos(Copyable, Movable):
+    var indices: List[Int]
+
+    fn __init__(out self, indices: List[Int]):
+        self.indices = indices.copy()
+
+    fn __copyinit__(out self, other: Self):
+        self.indices = other.indices.copy()
+
+struct RowMask(Copyable, Movable):
+    var mask: List[Bool]
+
+    fn __init__(out self, mask: List[Bool]):
+        self.mask = mask.copy()
+
+    fn __copyinit__(out self, other: Self):
+        self.mask = other.mask.copy()
+ 
+
+# Positional half-open slice [start:stop) for iloc
+struct PosSlice(ImplicitlyCopyable, Copyable, Movable):
+    var start: Int
+    var stop: Int
+    fn __init__(out self, start: Int, stop: Int):
+        self.start = start
+        self.stop = stop
+
 
 struct ILocRowSlice:
     var start: Int
@@ -80,6 +115,21 @@ struct ILocColSlice:
         self.start = start
         self.stop  = stop
 
+
+
+# Copy basic index metadata from src into out_df (out parameter)
+fn _copy_meta(src: DataFrame, out out_df: DataFrame) -> None:
+    # copy index name
+    out_df.index_name = String(src.index_name)
+
+    # deep-copy index values to avoid aliasing
+    out_df.index_vals = List[String]()
+    var i = 0
+    var n = len(src.index_vals)
+    while i < n:
+        out_df.index_vals.append(String(src.index_vals[i]))
+        i += 1
+    return
 # Public facades
 fn slice_rows(start: Int, stop: Int) -> ILocRowSlice:
     return ILocRowSlice(start, stop)
@@ -653,12 +703,12 @@ struct ColumnBoolOps:
 # -----------------------------------------------------------------------------
 # If you already defined this elsewhere, keep your original.
 
-fn slice_labels(start: String, end: String, inclusive: Bool = True) -> LabelSlice:
-    var s = LabelSlice()
-    s.start = start
-    s.end = end
-    s.inclusive = inclusive
-    return s.copy()
+# fn slice_labels(start: String, end: String, inclusive: Bool = True) -> LabelSlice:
+#     var s = LabelSlice()
+#     s.start = start
+#     s.end = end
+#     s.inclusive = inclusive
+#     return s.copy()
 
 fn find_first(labels: List[String], target: String) -> Int:
     var i = 0
@@ -697,3 +747,24 @@ fn labels_to_row_range(index_vals: List[String], sel: LabelSlice) -> RowRange:
         rr.stop = -1
 
     return rr.copy()
+
+
+
+
+
+
+
+@always_inline 
+fn rows_all() -> RowAll: var r = RowAll(); return r.copy()
+@always_inline 
+fn cols_all() -> ColAll: var c = ColAll(); return c.copy()
+@always_inline 
+fn rows(indices: List[Int]) -> RowPos: var r = RowPos(indices); return r.copy()
+@always_inline 
+fn rows(mask: List[Bool]) -> RowMask: var r = RowMask(mask); return r.copy()
+@always_inline 
+fn slice_labels(start: String, end: String, inclusive: Bool = True) -> LabelSlice:
+    var s = LabelSlice(start, end, inclusive); return s.copy()
+@always_inline 
+fn pslice(start: Int, stop: Int) -> PosSlice:
+    var s = PosSlice(start, stop); return s.copy()
