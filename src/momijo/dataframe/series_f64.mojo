@@ -103,7 +103,7 @@ struct SeriesF64(Copyable, Movable):
             i += 1
         var out = SeriesF64(out_data, self.name)
         out.valid = Bitmap(len(out_data), True)
-        return out
+        return out.copy()
 
     fn append(mut self, value: Float64):
         self.data.append(value)
@@ -121,7 +121,7 @@ struct SeriesF64(Copyable, Movable):
             i += 1
         var out = SeriesF64(out_data, self.name)
         out.valid = Bitmap(len(out_data), True)
-        return out
+        return out.copy()
 
     fn gather(self, mask: Bitmap) -> SeriesF64:
         var out_data = List[Float64]()
@@ -132,7 +132,7 @@ struct SeriesF64(Copyable, Movable):
             i += 1
         var out = SeriesF64(out_data, self.name)
         out.valid = Bitmap(len(out_data), True)
-        return out
+        return out.copy()
 
     # Aggregations
     fn count_valid(self) -> Int:
