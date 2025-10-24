@@ -36,6 +36,7 @@ from momijo.dataframe.series_i64 import SeriesI64
 from momijo.dataframe.series_bool import SeriesBool
 from momijo.dataframe.bitmap import *
 
+from momijo.dataframe.datetime_ops import _clip_date_part
 
 from momijo.dataframe.series_bool import SeriesBool as SeriesBoolT
 from momijo.dataframe.series_str import SeriesStr as SeriesStrT
@@ -379,6 +380,16 @@ fn _null_str() -> String:
     # Canonical string sentinel for nulls in this simplified string-backed Series.
     return String("")
 
+fn Series_from_strings(values: List[String], dtype: DType) -> List[String]:
+    var out = List[String]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        out.append(String(values[i]))
+        i += 1
+    return out.copy()
+ 
 # ---------------- Int32 (nullable) ----------------
 fn Series(values: List[Optional[Int]], dtype: DType) -> List[String]:
     var _ = _ensure_nullable(dtype)              # force nullable dtype (ignored here, but consistent)
@@ -394,6 +405,10 @@ fn Series(values: List[Optional[Int]], dtype: DType) -> List[String]:
             out.append(String(opt.value()))
         i += 1
     return out.copy()
+
+
+ 
+ 
 
 # ---------------- Int64 (nullable) ----------------
 # If your Int is 64-bit already, you can omit this and rely on the Int overload above.
@@ -2283,17 +2298,7 @@ fn _to_ymd_checked(ys: String, ms: String, ds: String, mut y: Int, mut m: Int, m
 
 
  
-
-
-# Days in month with leap-year check.
-fn _days_in_month(y: Int, m: Int) -> Int:
-    if m == 1 or m == 3 or m == 5 or m == 7 or m == 8 or m == 10 or m == 12:
-        return 31
-    if m == 4 or m == 6 or m == 9 or m == 11:
-        return 30
-    # February
-    return 29 if _is_leap(y) else 28
-
+ 
 
 fn _is_leap(y: Int) -> Bool:
     if (y % 400) == 0: return True
@@ -2822,14 +2827,6 @@ fn range_str(start: Int, stop: Int, step: Int = 1) -> List[String]:
     return out.copy()
 
 
-# MIT License
-# SPDX-License-Identifier: MIT
-# Project: momijo.dataframe
-# File: src/momijo/dataframe/date_range.mojo
-# Description: Minimal date_range implementation (ISO strings).
-
-from collections.list import List
-
 # ---------------------------- utils ----------------------------
 
 @always_inline
@@ -2857,7 +2854,7 @@ fn _atoi_unsigned(s: String) -> Int:
     var L = len(s)
     while i < L:
         var c = s[i]
-        var d = Int(c) - Int('0')
+        var d = ord(c) - ord('0')
         if d < 0 or d > 9:
             # Non-digit -> stop (best-effort)
             break
@@ -2978,7 +2975,8 @@ fn _freq_sign_and_code(freq: String) -> (Int, String):
     var sign = 1
     if len(freq) > 0 and freq[0] == '-':
         sign = -1
-        return (sign, freq.slice(1, len(freq)))
+        var tail = _clip_date_part(freq, 1, len(freq) - 1)
+        return (sign, tail)
     return (sign, freq)
 
 # ------------------------- public API --------------------------
