@@ -468,6 +468,25 @@ fn Series(values: List[Optional[String]], dtype: DType) -> List[String]:
 
  
 
+fn _list_f64_to_str(xs: List[Float64]) -> List[String]:
+    var out = List[String]()
+    var i = 0
+    var n = len(xs)
+    while i < n:
+        out.append(String(xs[i]))
+        i += 1
+    return out.copy()
+
+fn _list_int_to_str(xs: List[Int]) -> List[String]:
+    var out = List[String]()
+    var i = 0
+    var n = len(xs)
+    while i < n:
+        out.append(String(xs[i]))
+        i += 1
+    return out.copy()
+
+
 
 # -------------------- Index & DataFrame facades --------------------
 fn ToDataFrame(mapping: Dict[String, List[String]], index: List[String]) -> DataFrame:
@@ -516,7 +535,164 @@ fn ToDataFrame(mapping: Dict[String, List[String]]) -> DataFrame:
     # Reuse the explicit-index builder
     return ToDataFrame(mapping, index)
 
+
+fn ToDataFrame(mapping: Dict[String, List[Float64]], index: List[String]) -> DataFrame:
+    var names = List[String]()
+    for k in mapping.keys():
+        names.append(String(k))
+
+    var data = List[List[String]]()
+    var i = 0
+    while i < len(names):
+        var name = names[i]
+        var opt_vals = mapping.get(name)
+        if opt_vals is not None:
+            var vals_f64 = opt_vals.value().copy()
+            data.append(_list_f64_to_str(vals_f64))
+        i += 1
+
+    return DataFrame(names, data, index, String(""))
+
  
+
+fn ToDataFrame(mapping: Dict[String, List[Int]], index: List[String]) -> DataFrame:
+    var names = List[String]()
+    for k in mapping.keys():
+        names.append(String(k))
+
+    var data = List[List[String]]()
+    var i = 0
+    while i < len(names):
+        var name = names[i]
+        var opt_vals = mapping.get(name)
+        if opt_vals is not None:
+            var vals_i = opt_vals.value().copy()
+            data.append(_list_int_to_str(vals_i))
+        i += 1
+
+    return DataFrame(names, data, index, String(""))
+
+fn ToDataFrame(mapping: Dict[String, List[Int]]) -> DataFrame:
+    var names = List[String]()
+    for k in mapping.keys():
+        names.append(String(k))
+
+    var nrows = 0
+    var j = 0
+    while j < len(names):
+        var opt_vals = mapping.get(names[j])
+        if opt_vals is not None:
+            nrows = len(opt_vals.value())
+            break
+        j += 1
+
+    var index = List[String]()
+    var r = 0
+    while r < nrows:
+        index.append(String(r))
+        r += 1
+
+    return ToDataFrame(mapping, index)
+
+
+# ---------- tiny helper: build default string index "0","1",... ----------
+fn _make_default_index(nrows: Int) -> List[String]:
+    var index = List[String]()
+    index.reserve(nrows)
+    var i = 0
+    while i < nrows:
+        index.append(String(i))
+        i += 1
+    return index.copy()
+
+# ---------- ToDataFrame (float64 columns; min-length across present cols) ----------
+fn ToDataFrame(mapping: Dict[String, List[Float64]]) -> DataFrame:
+    # 1) collect names in insertion order of keys()
+    var names = List[String]()
+    for k in mapping.keys():
+        names.append(String(k))
+
+    # 2) determine nrows as MIN length across present columns (per your comment)
+    var nrows = -1
+    var i = 0
+    while i < len(names):
+        var key = names[i]
+        var opt_vals = mapping.get(key)
+        if opt_vals is not None:
+            var L = len(opt_vals.value())
+            if nrows < 0 or L < nrows:
+                nrows = L
+        i += 1
+    if nrows < 0:
+        nrows = 0
+
+    # 3) build string-backed data matrix
+    var data = List[List[String]]()
+    data.reserve(len(names))
+    i = 0
+    while i < len(names):
+        var key = names[i]
+        var opt_vals = mapping.get(key)
+        var col = List[String]()
+        if opt_vals is not None:
+            var vals = opt_vals.value().copy()           # List[Float64]
+            var r = 0
+            while r < nrows:
+                col.append(String(vals[r]))
+                r += 1
+        data.append(col.copy())
+        i += 1
+
+    # 4) default string index + empty index_name
+    var index = _make_default_index(nrows)
+    return DataFrame(names, data, index, String(""))
+
+# ---------- ToDataFrameNullable (nullable float columns; min-length) ----------
+fn ToDataFrameNullable(mapping: Dict[String, List[Optional[Float64]]]) -> DataFrame:
+    # 1) collect names
+    var names = List[String]()
+    for k in mapping.keys():
+        names.append(String(k))
+
+    # 2) determine nrows as MIN length across present columns
+    var nrows = -1
+    var i = 0
+    while i < len(names):
+        var key = names[i]
+        var opt_vals = mapping.get(key)
+        if opt_vals is not None:
+            var L = len(opt_vals.value())
+            if nrows < 0 or L < nrows:
+                nrows = L
+        i += 1
+    if nrows < 0:
+        nrows = 0
+
+    # 3) build string-backed data matrix (null → empty string sentinel)
+    var data = List[List[String]]()
+    data.reserve(len(names))
+    i = 0
+    while i < len(names):
+        var key = names[i]
+        var opt_vals = mapping.get(key)
+        var col = List[String]()
+        if opt_vals is not None:
+            var vals = opt_vals.value().copy()         # List[Optional[Float64]]
+            var r = 0
+            while r < nrows:
+                var o = vals[r]
+                if o is None:
+                    col.append(String(""))
+                else:
+                    col.append(String(o.value()))
+                r += 1
+        data.append(col.copy())
+        i += 1
+
+    # 4) default string index + empty index_name
+    var index = _make_default_index(nrows)
+    return DataFrame(names, data, index, String(""))
+
 # ---------- align helper ----------
 @always_inline
 fn _align_to_index_length(vals: List[String], nrows: Int) -> List[String]:
@@ -1917,34 +2093,8 @@ fn copy(df0: DataFrame) -> DataFrame:
     return df0.copy()
 
 
-
-# ---- Value setter (stub) ----
-
-# [moved] set_value
-
-
-# Facade pivot_table with pandas-like signature (limited: 'mean' only; margins unsupported yet)
-fn pivot_table(
-    frame: DataFrame,
-    index: String,
-    columns: String,
-    values: String,
-    agg: String = "mean",
-    margins: Bool = False,
-    margins_name: String = "Total"
-) -> DataFrame:
-# Guard unsupported aggregations
-    if agg != String("mean"):
-        print("[WARN] pivot_table: only 'mean' is supported currently; got agg=", agg)
-    if margins:
-        print("[WARN] pivot_table: 'margins' not implemented yet; ignoring.")
-# Naive group-by implementation via compat/groupby if available
-# Here we expect a function groupby_mean(frame, by1, by2, value) -> DataFrame
-# We'll try to import a local helper; if missing, return frame unchanged as a fallback.
-    from momijo.dataframe.selection import RowRange  # dummy import to ensure module is reachable
-# Fallback: return input frame (no-op) to keep compilation
-    return frame
-
+ 
+ 
 # Map a single-character string "0".."9" to its int value without any raising.
 @always_inline 
 fn _digit(c: String, mut v: Int) -> Bool:
@@ -2620,6 +2770,7 @@ fn range(start: Int, stop: Int, step: Int = 1, dtype: DType = DType.INT32()) -> 
 # -----------------------------------------------------------------------------
 # If you also need float or string ranges, add these helpers:
 # -----------------------------------------------------------------------------
+@always_inline
 fn range_f64(start: Int, stop: Int, step: Int = 1) -> List[Float64]:
     var eff_step = step
     if eff_step == 0:
@@ -2629,6 +2780,12 @@ fn range_f64(start: Int, stop: Int, step: Int = 1) -> List[Float64]:
             eff_step = -1
 
     var out = List[Float64]()
+    # Optionally reserve an approximate capacity to reduce reallocations.
+    if eff_step > 0 and start < stop:
+        out.reserve((stop - start + eff_step - 1) // eff_step)
+    elif eff_step < 0 and start > stop:
+        out.reserve((start - stop + (-eff_step) - 1) // (-eff_step))
+
     if eff_step > 0:
         var v = start
         while v < stop:
@@ -2639,7 +2796,9 @@ fn range_f64(start: Int, stop: Int, step: Int = 1) -> List[Float64]:
         while v > stop:
             out.append(Float64(v))
             v += eff_step
-    return out
+
+    return out.copy()  # keep copy to avoid aliasing per your project rules
+
 
 fn range_str(start: Int, stop: Int, step: Int = 1) -> List[String]:
     var eff_step = step
@@ -2660,7 +2819,7 @@ fn range_str(start: Int, stop: Int, step: Int = 1) -> List[String]:
         while v > stop:
             out.append(String(v))
             v += eff_step
-    return out
+    return out.copy()
 
 
 # MIT License
