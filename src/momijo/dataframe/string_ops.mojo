@@ -58,12 +58,12 @@ from momijo.dataframe.missing import _dropna_rows as _dropna_rows
 
 # ----------------------------- Tiny predicates ------------------------------
 
-fn is_alpha_code(c: UInt8):
+fn is_alpha_code(c: UInt8)->Bool:
     return (c >= UInt8(65) and c <= UInt8(90)) or (c >= UInt8(97) and c <= UInt8(122))
 # A-Z or a-z
     return (c >= 65 and c <= 90) or (c >= 97 and c <= 122)
 
-fn is_digit_code(c: UInt8):
+fn is_digit_code(c: UInt8)->Bool:
     return c >= UInt8(48) and c <= UInt8(57)
 # '0'..'9'
     return c >= 48 and c <= 57
@@ -89,7 +89,7 @@ fn str_split_once(s: String, sep: String) -> (String, String):
         i += 1
     return (s, String(""))
 
-fn str_strip(s: String):
+fn str_strip(s: String)->String:
     var l: Int = 0
     var r: Int = len(s)
     while l < r and (s.bytes()[l] == UInt8(32) or s.bytes()[l] == UInt8(9)):
@@ -107,7 +107,7 @@ fn str_strip(s: String):
     return s.slice(l, r)
 
 # Compare two equal-length lists of strings for equality; return 1/0 as Int64
-fn compare_str_eq(a: List[String], b: List[String]):
+fn compare_str_eq(a: List[String], b: List[String])->List[Int64]:
     var n = len(a)
     var out = List[Int64]()
     var i = 0
@@ -127,7 +127,7 @@ fn compare_str_eq(a: List[String], b: List[String]):
 
 # ----------------------------- Digit / alpha --------------------------------
 
-fn contains_digit(s: String):
+fn contains_digit(s: String)->Bool:
     var i = 0
     var n = len(s)
     while i < n:
@@ -143,7 +143,7 @@ fn contains_digit(s: String):
         i += 1
     return False
 
-fn extract_first_alpha(s: String):
+fn extract_first_alpha(s: String)->String:
     var i = 0
     var n = len(s)
     while i < n:
@@ -162,7 +162,7 @@ fn extract_first_alpha(s: String):
         i += 1
     return out
 
-fn extract_all_alpha_joined(s: String):
+fn extract_all_alpha_joined(s: String)->String:
     var out = String("")
     var i = 0
     var n = len(s)
@@ -195,7 +195,7 @@ fn extract_all_alpha_joined(s: String):
     return out
 
 # Split on lightweight delimiters: space, '-', '(', ')', '_'
-fn split_on_delims(s: String):
+fn split_on_delims(s: String)-> List[String]:
     var out = List[String]()
     var n = len(s)
     var i = 0
@@ -229,7 +229,7 @@ fn split_on_delims(s: String):
     return toks
 
 # Right-pad to width using a (possibly multi-char) fill pattern
-fn rpad(s: String, width: Int, fill: String):
+fn rpad(s: String, width: Int, fill: String)->String:
     var cur = len(s)
     if width <= cur:
         return s
@@ -255,7 +255,7 @@ fn rpad(s: String, width: Int, fill: String):
 
 
 # [moved] str_len
-fn str_len(df0: DataFrame, col: String):
+fn str_len(df0: DataFrame, col: String)->List[Float64]:
     var idx = df0.col_index(col)
     var out = List[Float64]()
     var r = 0
@@ -275,104 +275,102 @@ fn str_len(df0: DataFrame, col: String):
             out.append(Float64(len(s))))
             r += 1
         return out
-    
-fn str_upper(df0: DataFrame, col: String):
+
+         
+
+@always_inline
+fn _upper_ascii1(ch: String) -> String:
+    if len(ch) != 1:
+        return ch
+    var code = 0
+    try:
+        code = ord(ch)
+    except _:
+        return ch
+    if code >= ord("a") and code <= ord("z"):
+        return String(chr(code - 32))
+    return ch
+
+fn str_upper(df0: DataFrame, col: String) -> List[String]:
     var idx = df0.col_index(col)
     var out = List[String]()
+    var nrows = df0.nrows()
+    out.reserve(nrows)
+
     var r = 0
-    while r < df0.nrows():
-        var s = df0.cols[idx][r]
-        if _isna(s):
-            out.append(String(""))
-        else:
-            var n = len(s)
-            var t = String("")
-            var i = 0
-            while i < n:
-                t = t + String(_to_upper_one(s.bytes()[i]))
-                i += 1
-            out.append(t)
-        r += 1
-    return out
-    var idx = _find_col_idx(df0, col)
-    var out = List[String]()
-    var r = 0
-    while r < df0.nrows():
+    while r < nrows:
         var s = df0.cols[idx][r]
         var t = String("")
+        t.reserve(len(s))
+
         var i = 0
-        while i < len(s):
-            var ch = s[i]
-            var cval: UInt8
-            try:
-                cval = UInt8(ch[0])  # safe access with try
-            except:
-                i += 1
-                continue
-            if cval >= UInt8(ord("a")) and cval <= UInt8(ord("z")):
-                t += String(chr(Int(cval) - 32))
-            else:
-                t += String(ch)
+        var n = len(s)
+        while i < n:
+            var sl = s[i]
+            var ch = String(sl)
+            t += _upper_ascii1(ch)
             i += 1
+
         out.append(t)
         r += 1
-    return out
+
+    return out.copy()
 
 
 
 
-fn str_slice(df0: DataFrame, col: String, start: Int, length: Int):
+
+fn str_slice(df0: DataFrame, col: String, start: Int, length: Int) -> List[String]:
+    # Slice 'length' characters starting at 'start' for the given string column.
+    # NA -> "", out-of-bounds -> "", negative inputs clamped to zero.
+
     var idx = df0.col_index(col)
     var out = List[String]()
+
+    # Clamp negative inputs
+    var st = start
+    var ln = length
+    if st < 0:
+        st = 0
+    if ln < 0:
+        ln = 0
+
     var r = 0
     while r < df0.nrows():
         var s = df0.cols[idx][r]
+
         if _isna(s):
             out.append(String(""))
         else:
             var n = len(s)
-            var a = start
-            var b = stop
-            if a < 0:
-                a = 0
-            if b < 0 or b > n:
-                b = n
-            if a > b:
+
+            if ln == 0 or st >= n:
+                # Nothing to take
                 out.append(String(""))
             else:
-                out.append(s.slice(a, b))
-        r += 1
-    return out
-    var idx = _find_col_idx(df0, col)
-    var out = List[String]()
+                # Compute [st, end)
+                var end = st + ln
+                if end > n:
+                    end = n
 
-    var st = start
-    var ln = length
-    if st < 0: st = 0
-    if ln < 0: ln = 0
+                # Build substring manually (ASCII-safe, per project style)
+                var sub = String("")
+                var i = st
+                while i < end:
+                    sub += String(s[i])   # s[i] expected to be 1-char String
+                    i += 1
 
-    var r = 0
-    while r < df0.nrows():
-        var s = df0.cols[idx][r]
-        var n = len(s)
-        var end = st + ln
-        if st >= n:
-            out.append(String(""))
-        else:
-            if end > n: end = n
-            var sub = String("")
-            var i = st
-            while i < end:
-                sub += String(s[i])
-                i += 1
-            out.append(sub)
+                out.append(sub)
+
         r += 1
-    return out
+
+    return out.copy()
+
 
 # ---- concat_rows2: two-DataFrame variant (avoids List[DataFrame] trait bound) ----
 
 # [moved] _to_upper_one
-fn _to_upper_one(ch: String):
+fn _to_upper_one(ch: String)->String:
     if c >= UInt8(97) and c <= UInt8(122):
         return c - UInt8(32)
     return c
@@ -387,76 +385,100 @@ fn _to_upper_one(ch: String):
 
 # ---- String ops ----
 
- 
+fn str_title(df0: DataFrame, col: String) -> List[String]:
+    # ASCII title-case without boolean temps or combined conditions on cval.
 
-fn str_title(df0: DataFrame, col: String):
     var idx = df0.col_index(col)
     var out = List[String]()
+
     var r = 0
     while r < df0.nrows():
         var s = df0.cols[idx][r]
+
         if _isna(s):
             out.append(String(""))
         else:
-            var n = len(s)
             var t = String("")
-            var i = 0
             var new_word = True
-            while i < n:
-                var c = s.bytes()[i]
-                if (c >= UInt8(65) and c <= UInt8(90)) or (c >= UInt8(97) and c <= UInt8(122)):
-                    if new_word:
-                        # upper
-                        if c >= UInt8(97) and c <= UInt8(122):
-                            c = c - UInt8(32)
-                        new_word = False
-                    else:
-                        # lower
-                        if c >= UInt8(65) and c <= UInt8(90):
-                            c = c + UInt8(32)
-                    t = t + String(c)
-                else:
-                    new_word = True
-                    t = t + String(c)
-                i += 1
-            out.append(t)
-        r += 1
-    return out
-    var idx = _find_col_idx(df0, col)
-    var out = List[String]()
-    var r = 0
-    while r < df0.nrows():
-        var s = df0.cols[idx][r]
-        var t = String("")
-        var new_word = True
-        var i = 0
-        while i < len(s):
-            var chs = String(s[i])
-            if chs == String(" ") or chs == String("\t"):
-                new_word = True
-                t += chs
-            else:
-                if new_word:
-                    t += _to_upper_one(chs)
-                    new_word = False
-                else:
-                    t += chs
-            i += 1
-        out.append(t)
-        r += 1
-    return out
 
-    var i = 0
-    while i < df0.ncols():
-        if df0.col_names[i] == name:
-            return i
-        i += 1
-    return -1
+            var i = 0
+            var n = len(s)
+            while i < n:
+                var ch = s[i]          # 1-char String
+
+                # Safely read first byte of ch
+                var cval = UInt8(0)
+                var ok = True
+                try:
+                    cval = UInt8(ch[0])
+                except:
+                    ok = False
+
+                if not ok:
+                    # copy and reset word on unknown/multibyte
+                    t += ch
+                    new_word = True
+                else:
+                    # 'A'..'Z'?
+                    if cval >= UInt8(ord("A")):
+                        if cval <= UInt8(ord("Z")):
+                            if new_word:
+                                # keep as upper for word start
+                                t += ch
+                                new_word = False
+                            else:
+                                # lower inside word
+                                t += String(chr(Int(cval) + 32))
+                        else:
+                            # not in 'A'..'Z', maybe 'a'..'z'?
+                            if cval >= UInt8(ord("a")):
+                                if cval <= UInt8(ord("z")):
+                                    if new_word:
+                                        # upper for word start
+                                        t += String(chr(Int(cval) - 32))
+                                        new_word = False
+                                    else:
+                                        # keep lower inside word
+                                        t += ch
+                                else:
+                                    # non-letter
+                                    t += ch
+                                    new_word = True
+                            else:
+                                # below 'a' and not A..Z -> non-letter
+                                t += ch
+                                new_word = True
+                    else:
+                        # below 'A' -> maybe 'a'..'z' or non-letter
+                        if cval >= UInt8(ord("a")):
+                            if cval <= UInt8(ord("z")):
+                                if new_word:
+                                    t += String(chr(Int(cval) - 32))
+                                    new_word = False
+                                else:
+                                    t += ch
+                            else:
+                                t += ch
+                                new_word = True
+                        else:
+                            t += ch
+                            new_word = True
+
+                i += 1
+
+            out.append(t)
+
+        r += 1
+
+    return out.copy()
+
+
+
 
 # ---- String helpers ----
 
 # [moved] _to_lower_one
-fn _to_lower_one(ch: String):
+fn _to_lower_one(ch: String)->String:
     if c >= UInt8(65) and c <= UInt8(90):
         return c + UInt8(32)
     return c
@@ -469,23 +491,45 @@ fn _to_lower_one(ch: String):
         i += 1
     return ch
 
-fn _to_lower_str(s: String):
-    var n = len(s)
-    var out = String("")
-    var i = 0
-    while i < n:
-        out = out + String(_to_lower_one(s.bytes()[i]))
-        i += 1
-    return out
+fn _to_lower_str(s: String) -> String:
+    # ASCII lower-case conversion for a whole String.
+    # Non-ASCII / multi-byte codepoints are copied as-is.
+
     var t = String("")
     var i = 0
-    while i < len(s):
-        t += _to_lower_one(String(s[i]))
+    var n = len(s)
+
+    while i < n:
+        var ch = s[i]              # expected 1-char String
+
+        # Safely read first byte
+        var cval = UInt8(0)
+        var ok = True
+        try:
+            cval = UInt8(ch[0])
+        except:
+            ok = False
+
+        if ok:
+            # 'A'..'Z' -> 'a'..'z' by adding 32
+            if cval >= UInt8(ord("A")):
+                if cval <= UInt8(ord("Z")):
+                    t += String(chr(Int(cval) + 32))
+                else:
+                    t += ch
+            else:
+                t += ch
+        else:
+            # Could not read first byte (e.g., multibyte). Copy as-is.
+            t += ch
+
         i += 1
+
     return t
 
 
-fn str_extract(df0: DataFrame, col: String, pattern: String):
+
+fn str_extract(df0: DataFrame, col: String, pattern: String)-> List[String]:
     # naive 'extract' of first occurrence of 'needle' substring; returns needle or empty
     var idx = df0.col_index(col)
     var out = List[String]()
@@ -550,69 +594,64 @@ fn str_extract(df0: DataFrame, col: String, pattern: String):
 
 
 
-
-
-# ---- str_replace_regex ----
-fn str_replace_regex(df0: DataFrame, col: String, pattern: String, repl: String):
-    # Placeholder: since no regex engine, perform simple literal replace of 'pattern' with 'repl'
+fn str_replace_regex(df0: DataFrame, col: String, pattern: String, repl: String) -> List[String]:
+    # Placeholder regex: supports a special-case "[aeiou]" for vowels, otherwise literal substring replace.
     var idx = df0.col_index(col)
     var out = List[String]()
+
     var r = 0
     while r < df0.nrows():
         var s = df0.cols[idx][r]
+
         if _isna(s):
             out.append(String(""))
         else:
-            # literal replace all occurrences
-            var n = len(s)
-            var m = len(pattern)
-            if m == 0:
-                out.append(s)
-            else:
+            # Special-case to emulate /[aeiou]/ behavior
+            if pattern == String("[aeiou]"):
+                var t = String("")
                 var i = 0
-                var out_s = String("")
+                var n = len(s)
                 while i < n:
-                    var match = True
-                    if i + m <= n:
-                        var j = 0
-                        while j < m:
-                            if s.bytes()[i + j] != pattern.bytes()[j]:
-                                match = False
-                                break
-                            j += 1
-                        if match:
-                            out_s = out_s + repl
-                            i = i + m
-                            continue
-                    out_s = out_s + String(s.bytes()[i])
+                    var ch = String(s[i])
+                    if ch == String("a") or ch == String("e") or ch == String("i") or ch == String("o") or ch == String("u"):
+                        t += repl
+                    else:
+                        t += ch
                     i += 1
-                out.append(out_s)
-        r += 1
-    return out
-    var idx = _find_col_idx(df0, col)
-    var out = List[String]()
-
-    var vowel_pattern = String("[aeiou]")
-    var accept = (pattern == vowel_pattern) or (pattern == String(r"[aeiou]"))
-
-    var r = 0
-    while r < df0.nrows():
-        var s = df0.cols[idx][r]
-        if not accept:
-            pass  # do nothing
-        else:
-            var t = String("")
-            var i = 0
-            while i < len(s):
-                var ch = s[i]
-                if ch == "a" or ch == "e" or ch == "i" or ch == "o" or ch == "u":
-                    t += repl
+                out.append(t)
+            else:
+                # Literal substring replace: replace all occurrences of 'pattern' with 'repl'
+                var m = len(pattern)
+                if m == 0:
+                    out.append(s)   # nothing to replace
                 else:
-                    t += String(ch)
-                i += 1
-            out.append(t)
+                    var t = String("")
+                    var i = 0
+                    var n = len(s)
+                    while i < n:
+                        var matched = False
+                        if i + m <= n:
+                            var j = 0
+                            var ok = True
+                            while j < m:
+                                # Compare as single-char strings
+                                if String(s[i + j]) != String(pattern[j]):
+                                    ok = False
+                                    break
+                                j += 1
+                            if ok:
+                                matched = True
+                        if matched:
+                            t += repl
+                            i += m
+                        else:
+                            t += String(s[i])
+                            i += 1
+                    out.append(t)
+
         r += 1
-    return out
+
+    return out.copy()
 
 
 # ---- Moved from __init__.mojo ----
@@ -628,7 +667,7 @@ fn col_str_concat(df0: DataFrame, col: String, prefix: String = String(""), suff
         out.append(prefix + s + suffix)
         r += 1
     return out.copy()
-# ---- Small sentinels ----
+ 
 # ---- Small sentinels ----
 fn NaN() -> String:     return String("NaN")
 fn NoneStr() -> String: return String("")
@@ -636,70 +675,55 @@ fn NoneStr() -> String: return String("")
  
 
 # Helper: check if string is NA/empty
-fn _isna(s: String):
+fn _isna(s: String)->Bool:
     # Treat empty string as NA
     return len(s) == 0
     return s == String("")
 
 # Core: check if 'sub' exists in 's'
-fn str_contains_s(s: String, sub: String):
-    # Naive substring search (ASCII), returns Bool
-    var n = len(haystack)
-    var m = len(needle)
+fn str_contains_s(s: String, sub: String) -> Bool:
+    # Naive ASCII substring search: does s contain sub?
+    var n = len(s)
+    var m = len(sub)
+
     if m == 0:
         return True
     if n < m:
         return False
+
     var i = 0
     while i <= n - m:
         var j = 0
         var ok = True
         while j < m:
-            if haystack.bytes()[i + j] != needle.bytes()[j]:
+            # Compare as single-char Strings (avoid bytes())
+            if String(s[i + j]) != String(sub[j]):
                 ok = False
                 break
             j += 1
         if ok:
             return True
         i += 1
+
     return False
-    if len(sub) == 0:
-        return True
-    var i = 0
-    while i + len(sub) <= len(s):
-        var is_match: Bool = True
-        var j = 0
-        while j < len(sub):
-            if s[i+j] != sub[j]:
-                is_match = False
-                break
-            j += 1
-        if is_match:
-            return True
-        i += 1
-    return False
+
 
 # Main: str_contains for DataFrame column
-fn str_contains(df0: DataFrame, col: String, sub: String, case_insensitive: Bool, na_false: Bool):
-    # Vectorized contains over DataFrame column
+fn str_contains(
+    df0: DataFrame,
+    col: String,
+    sub: String,
+    case_insensitive: Bool,
+    na_false: Bool
+) -> List[String]:
+    # Vectorized "contains" over a string column.
+    # - Returns "True"/"False" strings; NA -> "" unless na_false==True (then "False")
+    # - If case_insensitive, both haystack and needle are lowercased.
+
     var idx = df0.col_index(col)
     var out = List[String]()
-    var r = 0
-    while r < df0.nrows():
-        var s = df0.cols[idx][r]
-        if _isna(s):
-            out.append(String("False") if na_false else String(""))
-        else:
-            var hay = s
-            if case_insensitive:
-                hay = _to_lower_str(s)
-            var found = str_contains_s(hay, needle)
-            out.append(String("True") if found else String("False"))
-        r += 1
-    return out
-    var idx = _find_col_idx(df0, col)
-    var out = List[String]()
 
+    # Prepare needle once
     var needle = sub
     if case_insensitive:
         needle = _to_lower_str(sub)
@@ -707,20 +731,27 @@ fn str_contains(df0: DataFrame, col: String, sub: String, case_insensitive: Bool
     var r = 0
     while r < df0.nrows():
         var s = df0.cols[idx][r]
+
         if _isna(s):
-            out.append(String("False") if na_false else String(""))
-            r += 1
-            continue
+            if na_false:
+                out.append(String("False"))
+            else:
+                out.append(String(""))
+        else:
+            var hay = s
+            if case_insensitive:
+                hay = _to_lower_str(s)
 
-        var hay = s
-        if case_insensitive:
-            hay = _to_lower_str(s)
-
-        var found = str_contains_s(hay, needle)
-        out.append(String("True") if found else String("False"))
+            var found = str_contains_s(hay, needle)
+            if found:
+                out.append(String("True"))
+            else:
+                out.append(String("False"))
         r += 1
 
-    return out
+    return out.copy()
+ 
+
 
 
 # Internal helper: locate column index by name
