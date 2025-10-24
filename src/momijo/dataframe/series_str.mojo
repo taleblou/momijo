@@ -190,8 +190,8 @@ struct SeriesStr(Copyable, Movable):
                 _ = out_valid.set(len(out_data) - 1, False)
             i += 1
         var out = SeriesStr(out_data, self.name)
-        out.valid = out_valid
-        return out
+        out.valid = out_valid.copy()
+        return out.copy()
 
     fn gather(self, mask: Bitmap) -> Self:
         var out_data  = List[String]()
@@ -210,8 +210,8 @@ struct SeriesStr(Copyable, Movable):
                 _ = out_valid.set(len(out_data) - 1, self.valid.get(i))
             i += 1
         var out = SeriesStr(out_data, self.name)
-        out.valid = out_valid
-        return out
+        out.valid = out_valid.copy()
+        return out.copy()
 
     # ---------------------------------------------------------------------
     # Conversions / utilities
