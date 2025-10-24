@@ -257,14 +257,7 @@ fn percentile_f64(xs: List[Float64], p: Float64) -> Float64:
     var idx = Int(Float64(len(xs) - 1) * p)
     return xs[argsort_f64(xs, True)[idx]]
 
-fn expanding_corr_last(x: List[Float64], y: List[Float64]) -> List[Float64]:
-    var out = List[Float64]()
-    var i = 1
-    while i <= len(x):
-        out.append(corr_f64(x.slice(0, i), y.slice(0, i)))
-        i += 1
-    return out
-
+ 
 
 fn between_i64(x: Int64, a: Int64, b: Int64) -> Bool:
     return x >= a and x <= b
@@ -920,3 +913,843 @@ fn drop_duplicates_rows(df: DataFrame, subset: String) -> DataFrame:
         cols.append(col_str(col_names[c], vals))
         c += 1
     return df_make(col_names, cols)
+
+
+
+# ------------------------------ ROLLING: SUM ------------------------------
+
+fn rolling_sum_int(values: List[Int], window: Int) -> List[Optional[Int]]:
+    var out = List[Optional[Int]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var acc: Int64 = 0
+    var i = 0
+    while i < n:
+        acc = acc + Int64(values[i])
+        if i + 1 < window:
+            out.append(None)
+        else:
+            if i + 1 == window:
+                out.append(Int(acc))
+            else:
+                acc = acc - Int64(values[i - window])
+                out.append(Int(acc))
+        i += 1
+    return out.copy()
+
+fn rolling_sum_f64(values: List[Float64], window: Int) -> List[Optional[Float64]]:
+    var out = List[Optional[Float64]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var acc = 0.0
+    var i = 0
+    while i < n:
+        acc = acc + values[i]
+        if i + 1 < window:
+            out.append(None)
+        else:
+            if i + 1 == window:
+                out.append(acc)
+            else:
+                acc = acc - values[i - window]
+                out.append(acc)
+        i += 1
+    return out.copy()
+
+# ------------------------------ ROLLING: MEAN ------------------------------
+
+fn rolling_mean_int(values: List[Int], window: Int) -> List[Optional[Float64]]:
+    var out = List[Optional[Float64]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var acc: Int64 = 0
+    var i = 0
+    while i < n:
+        acc = acc + Int64(values[i])
+        if i + 1 < window:
+            out.append(None)
+        else:
+            if i + 1 == window:
+                out.append(Float64(acc) / Float64(window))
+            else:
+                acc = acc - Int64(values[i - window])
+                out.append(Float64(acc) / Float64(window))
+        i += 1
+    return out.copy()
+
+fn rolling_mean_f64(values: List[Float64], window: Int) -> List[Optional[Float64]]:
+    var out = List[Optional[Float64]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var acc = 0.0
+    var i = 0
+    while i < n:
+        acc = acc + values[i]
+        if i + 1 < window:
+            out.append(None)
+        else:
+            if i + 1 == window:
+                out.append(acc / Float64(window))
+            else:
+                acc = acc - values[i - window]
+                out.append(acc / Float64(window))
+        i += 1
+    return out.copy()
+
+# ------------------------------ ROLLING: MIN / MAX (Monotonic Queue) ------------------------------
+
+fn rolling_min_int(values: List[Int], window: Int) -> List[Optional[Int]]:
+    var out = List[Optional[Int]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var dq = List[Int]()
+    var head = 0
+    var i = 0
+    while i < n:
+        while head < len(dq) and dq[head] <= i - window:
+            head += 1
+        var back = len(dq) - 1
+        while back >= head and values[dq[back]] >= values[i]:
+            dq.pop()
+            back -= 1
+        dq.append(i)
+
+        if i + 1 < window:
+            out.append(None)
+        else:
+            out.append(values[dq[head]])
+
+        i += 1
+        if head > 32 and head * 2 > len(dq):
+            var j = head
+            var ndq = List[Int]()
+            while j < len(dq):
+                ndq.append(dq[j])
+                j += 1
+            dq = ndq
+            head = 0
+    return out.copy()
+
+fn rolling_max_int(values: List[Int], window: Int) -> List[Optional[Int]]:
+    var out = List[Optional[Int]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var dq = List[Int]()
+    var head = 0
+    var i = 0
+    while i < n:
+        while head < len(dq) and dq[head] <= i - window:
+            head += 1
+        var back = len(dq) - 1
+        while back >= head and values[dq[back]] <= values[i]:
+            dq.pop()
+            back -= 1
+        dq.append(i)
+
+        if i + 1 < window:
+            out.append(None)
+        else:
+            out.append(values[dq[head]])
+
+        i += 1
+        if head > 32 and head * 2 > len(dq):
+            var j = head
+            var ndq = List[Int]()
+            while j < len(dq):
+                ndq.append(dq[j])
+                j += 1
+            dq = ndq
+            head = 0
+    return out.copy()
+
+fn rolling_min_f64(values: List[Float64], window: Int) -> List[Optional[Float64]]:
+    var out = List[Optional[Float64]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var dq = List[Int]()
+    var head = 0
+    var i = 0
+    while i < n:
+        while head < len(dq) and dq[head] <= i - window:
+            head += 1
+        var back = len(dq) - 1
+        while back >= head and values[dq[back]] >= values[i]:
+            dq.pop()
+            back -= 1
+        dq.append(i)
+
+        if i + 1 < window:
+            out.append(None)
+        else:
+            out.append(values[dq[head]])
+
+        i += 1
+        if head > 32 and head * 2 > len(dq):
+            var j = head
+            var ndq = List[Int]()
+            while j < len(dq):
+                ndq.append(dq[j])
+                j += 1
+            dq = ndq
+            head = 0
+    return out.copy()
+
+fn rolling_max_f64(values: List[Float64], window: Int) -> List[Optional[Float64]]:
+    var out = List[Optional[Float64]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var dq = List[Int]()
+    var head = 0
+    var i = 0
+    while i < n:
+        while head < len(dq) and dq[head] <= i - window:
+            head += 1
+        var back = len(dq) - 1
+        while back >= head and values[dq[back]] <= values[i]:
+            dq.pop()
+            back -= 1
+        dq.append(i)
+
+        if i + 1 < window:
+            out.append(None)
+        else:
+            out.append(values[dq[head]])
+
+        i += 1
+        if head > 32 and head * 2 > len(dq):
+            var j = head
+            var ndq = List[Int]()
+            while j < len(dq):
+                ndq.append(dq[j])
+                j += 1
+            dq = ndq
+            head = 0
+    return out.copy()
+
+# ------------------------------ ROLLING: VAR / STD ------------------------------
+
+fn rolling_var_int(values: List[Int], window: Int, ddof: Int = 0) -> List[Optional[Float64]]:
+    var out = List[Optional[Float64]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var s1: Float64 = 0.0
+    var s2: Float64 = 0.0
+    var i = 0
+    while i < n:
+        var xi = Float64(values[i])
+        s1 = s1 + xi
+        s2 = s2 + xi * xi
+        if i + 1 < window:
+            out.append(None)
+        else:
+            if i + 1 == window:
+                var cnt = window
+                var denom = cnt - ddof
+                if denom <= 0:
+                    out.append(None)
+                else:
+                    var mean = s1 / Float64(cnt)
+                    var varv = (s2 / Float64(cnt)) - mean * mean
+                    if ddof != 0:
+                        varv = varv * Float64(cnt) / Float64(denom)
+                    if varv < 0.0:
+                        varv = 0.0
+                    out.append(varv)
+            else:
+                var xo = Float64(values[i - window])
+                s1 = s1 - xo
+                s2 = s2 - xo * xo
+                var cnt2 = window
+                var denom2 = cnt2 - ddof
+                if denom2 <= 0:
+                    out.append(None)
+                else:
+                    var mean2 = s1 / Float64(cnt2)
+                    var varv2 = (s2 / Float64(cnt2)) - mean2 * mean2
+                    if ddof != 0:
+                        varv2 = varv2 * Float64(cnt2) / Float64(denom2)
+                    if varv2 < 0.0:
+                        varv2 = 0.0
+                    out.append(varv2)
+        i += 1
+    return out.copy()
+
+fn rolling_std_int(values: List[Int], window: Int, ddof: Int = 0) -> List[Optional[Float64]]:
+    var v = rolling_var_int(values, window, ddof)
+    var out = List[Optional[Float64]]()
+    out.reserve(len(v))
+    var i = 0
+    while i < len(v):
+        var o = v[i]
+        if o is None:
+            out.append(None)
+        else:
+            out.append(_sqrt64(o.value()))
+        i += 1
+    return out.copy()
+
+fn rolling_var_f64(values: List[Float64], window: Int, ddof: Int = 0) -> List[Optional[Float64]]:
+    var out = List[Optional[Float64]]()
+    var n = len(values)
+    if window <= 0 or n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var s1 = 0.0
+    var s2 = 0.0
+    var i = 0
+    while i < n:
+        var xi = values[i]
+        s1 = s1 + xi
+        s2 = s2 + xi * xi
+        if i + 1 < window:
+            out.append(None)
+        else:
+            if i + 1 == window:
+                var cnt = window
+                var denom = cnt - ddof
+                if denom <= 0:
+                    out.append(None)
+                else:
+                    var mean = s1 / Float64(cnt)
+                    var varv = (s2 / Float64(cnt)) - mean * mean
+                    if ddof != 0:
+                        varv = varv * Float64(cnt) / Float64(denom)
+                    if varv < 0.0:
+                        varv = 0.0
+                    out.append(varv)
+            else:
+                var xo = values[i - window]
+                s1 = s1 - xo
+                s2 = s2 - xo * xo
+                var cnt2 = window
+                var denom2 = cnt2 - ddof
+                if denom2 <= 0:
+                    out.append(None)
+                else:
+                    var mean2 = s1 / Float64(cnt2)
+                    var varv2 = (s2 / Float64(cnt2)) - mean2 * mean2
+                    if ddof != 0:
+                        varv2 = varv2 * Float64(cnt2) / Float64(denom2)
+                    if varv2 < 0.0:
+                        varv2 = 0.0
+                    out.append(varv2)
+        i += 1
+    return out.copy()
+
+fn rolling_std_f64(values: List[Float64], window: Int, ddof: Int = 0) -> List[Optional[Float64]]:
+    var v = rolling_var_f64(values, window, ddof)
+    var out = List[Optional[Float64]]()
+    out.reserve(len(v))
+    var i = 0
+    while i < len(v):
+        var o = v[i]
+        if o is None:
+            out.append(None)
+        else:
+            out.append(_sqrt64(o.value()))
+        i += 1
+    return out.copy()
+
+# ------------------------------ MATH HELPERS ------------------------------
+
+@always_inline
+fn _sqrt64(x: Float64) -> Float64:
+    if x <= 0.0:
+        return 0.0
+    var g = x
+    var i = 0
+    while i < 12:
+        g = 0.5 * (g + x / g)
+        i += 1
+    return g
+
+@always_inline
+fn _abs64(x: Float64) -> Float64:
+    if x >= 0.0:
+        return x
+    return -x
+
+fn _exp64(x: Float64) -> Float64:
+    var z = x
+    if z > 20.0:
+        z = 20.0
+    if z < -20.0:
+        z = -20.0
+    var term = 1.0
+    var sumv = 1.0
+    var k = 1
+    while k <= 12:
+        term = term * z / Float64(k)
+        sumv = sumv + term
+        k += 1
+    return sumv
+
+# ------------------------------ ELEMENTWISE EXP ------------------------------
+
+fn exp_f64(values: List[Float64]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        out.append(_exp64(values[i]))
+        i += 1
+    return out.copy()
+
+fn exp_int(values: List[Int]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var i = 0
+    var n = len(values)
+    while i < n:
+        out.append(_exp64(Float64(values[i])))
+        i += 1
+    return out.copy()
+
+# ------------------------------ EWM MEAN / VAR / STD ------------------------------
+
+@always_inline
+fn _ewm_alpha_from_span(span: Int) -> Float64:
+    var s = span
+    if s < 1:
+        s = 1
+    return 2.0 / (Float64(s) + 1.0)
+
+fn ewm_mean_f64(values: List[Float64], alpha: Float64, adjust: Bool = False) -> List[Float64]:
+    var out = List[Float64]()
+    var n = len(values)
+    if n == 0 or alpha <= 0.0 or alpha > 1.0:
+        return out.copy()
+    out.reserve(n)
+
+    if not adjust:
+        var y = values[0]
+        out.append(y)
+        var i = 1
+        while i < n:
+            y = (1.0 - alpha) * y + alpha * values[i]
+            out.append(y)
+            i += 1
+        return out.copy()
+
+    var num = alpha * values[0]
+    var den = alpha
+    out.append(num / den)
+    var i2 = 1
+    while i2 < n:
+        num = (1.0 - alpha) * num + alpha * values[i2]
+        den = (1.0 - alpha) * den + alpha
+        out.append(num / den)
+        i2 += 1
+    return out.copy()
+
+fn ewm_mean_int(values: List[Int], alpha: Float64, adjust: Bool = False) -> List[Float64]:
+    var fx = List[Float64]()
+    fx.reserve(len(values))
+    var i = 0
+    while i < len(values):
+        fx.append(Float64(values[i]))
+        i += 1
+    return ewm_mean_f64(fx, alpha, adjust)
+
+fn ewm_var_f64(values: List[Float64], alpha: Float64, adjust: Bool = False) -> List[Float64]:
+    var out = List[Float64]()
+    var n = len(values)
+    if n == 0 or alpha <= 0.0 or alpha > 1.0:
+        return out.copy()
+    out.reserve(n)
+
+    if not adjust:
+        var m = values[0]
+        var v = 0.0
+        out.append(0.0)
+        var i = 1
+        while i < n:
+            var x = values[i]
+            var dm = x - m
+            m = m + alpha * dm
+            v = (1.0 - alpha) * (v + alpha * dm * dm)
+            if v < 0.0:
+                v = 0.0
+            out.append(v)
+            i += 1
+        return out.copy()
+
+    var num_m = alpha * values[0]
+    var den_m = alpha
+    var mean = num_m / den_m
+    var num_c = 0.0
+    var den_c = 0.0
+    out.append(0.0)
+
+    var i2 = 1
+    while i2 < n:
+        var x = values[i2]
+        num_m = (1.0 - alpha) * num_m + alpha * x
+        den_m = (1.0 - alpha) * den_m + alpha
+        var prev_mean = mean
+        mean = num_m / den_m
+
+        var dx = x - prev_mean
+        num_c = (1.0 - alpha) * num_c + alpha * dx * dx
+        den_c = (1.0 - alpha) * den_c + alpha
+
+        var var_adj = 0.0
+        if den_c > 0.0:
+            var_adj = num_c / den_c
+        if var_adj < 0.0:
+            var_adj = 0.0
+        out.append(var_adj)
+        i2 += 1
+    return out.copy()
+
+fn ewm_std_f64(values: List[Float64], alpha: Float64, adjust: Bool = False) -> List[Float64]:
+    var v = ewm_var_f64(values, alpha, adjust)
+    var out = List[Float64]()
+    out.reserve(len(v))
+    var i = 0
+    while i < len(v):
+        out.append(_sqrt64(v[i]))
+        i += 1
+    return out.copy()
+
+fn ewm_var_int(values: List[Int], alpha: Float64, adjust: Bool = False) -> List[Float64]:
+    var fx = List[Float64]()
+    fx.reserve(len(values))
+    var i = 0
+    while i < len(values):
+        fx.append(Float64(values[i]))
+        i += 1
+    return ewm_var_f64(fx, alpha, adjust)
+
+fn ewm_std_int(values: List[Int], alpha: Float64, adjust: Bool = False) -> List[Float64]:
+    var fx = List[Float64]()
+    fx.reserve(len(values))
+    var i = 0
+    while i < len(values):
+        fx.append(Float64(values[i]))
+        i += 1
+    return ewm_std_f64(fx, alpha, adjust)
+
+# Span-based wrappers
+fn ewm_mean_f64_span(values: List[Float64], span: Int, adjust: Bool = False) -> List[Float64]:
+    var alpha = _ewm_alpha_from_span(span)
+    return ewm_mean_f64(values, alpha, adjust)
+
+fn ewm_var_f64_span(values: List[Float64], span: Int, adjust: Bool = False) -> List[Float64]:
+    var alpha = _ewm_alpha_from_span(span)
+    return ewm_var_f64(values, alpha, adjust)
+
+fn ewm_std_f64_span(values: List[Float64], span: Int, adjust: Bool = False) -> List[Float64]:
+    var alpha = _ewm_alpha_from_span(span)
+    return ewm_std_f64(values, alpha, adjust)
+
+fn ewm_mean_int_span(values: List[Int], span: Int, adjust: Bool = False) -> List[Float64]:
+    var alpha = _ewm_alpha_from_span(span)
+    return ewm_mean_int(values, alpha, adjust)
+
+fn ewm_var_int_span(values: List[Int], span: Int, adjust: Bool = False) -> List[Float64]:
+    var alpha = _ewm_alpha_from_span(span)
+    return ewm_var_int(values, alpha, adjust)
+
+fn ewm_std_int_span(values: List[Int], span: Int, adjust: Bool = False) -> List[Float64]:
+    var alpha = _ewm_alpha_from_span(span)
+    return ewm_std_int(values, alpha, adjust)
+
+# ------------------------------ EXPANDING ------------------------------
+
+fn expanding_sum_int(values: List[Int]) -> List[Int]:
+    var out = List[Int]()
+    out.reserve(len(values))
+    var acc: Int64 = 0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        acc = acc + Int64(values[i])
+        out.append(Int(acc))
+        i += 1
+    return out.copy()
+
+fn expanding_sum_f64(values: List[Float64]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var acc = 0.0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        acc = acc + values[i]
+        out.append(acc)
+        i += 1
+    return out.copy()
+
+fn expanding_mean_int(values: List[Int]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var s: Int64 = 0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        s = s + Int64(values[i])
+        out.append(Float64(s) / Float64(i + 1))
+        i += 1
+    return out.copy()
+
+fn expanding_mean_f64(values: List[Float64]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var s = 0.0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        s = s + values[i]
+        out.append(s / Float64(i + 1))
+        i += 1
+    return out.copy()
+
+@always_inline
+fn _nan64() -> Float64:
+    return 0.0 / 0.0
+
+fn expanding_mean_f64(values: List[Float64], min_periods: Int) -> List[Float64]:
+    var out = List[Float64]()
+    var n = len(values)
+    if n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var mp = min_periods
+    if mp <= 0:
+        mp = 1
+
+    var s = 0.0
+    var i = 0
+    while i < n:
+        s = s + values[i]
+        var cnt = i + 1
+        if cnt >= mp:
+            out.append(s / Float64(cnt))
+        else:
+            out.append(_nan64())
+        i += 1
+    return out.copy()
+
+fn expanding_mean_int(values: List[Int], min_periods: Int) -> List[Float64]:
+    var out = List[Float64]()
+    var n = len(values)
+    if n == 0:
+        return out.copy()
+    out.reserve(n)
+
+    var mp = min_periods
+    if mp <= 0:
+        mp = 1
+
+    var s: Int64 = 0
+    var i = 0
+    while i < n:
+        s = s + Int64(values[i])
+        var cnt = i + 1
+        if cnt >= mp:
+            out.append(Float64(s) / Float64(cnt))
+        else:
+            out.append(_nan64())
+        i += 1
+    return out.copy()
+
+fn expanding_abs_mean_int(values: List[Int]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var s = 0.0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        var v = Float64(values[i])
+        if v < 0.0:
+            v = -v
+        s = s + v
+        out.append(s / Float64(i + 1))
+        i += 1
+    return out.copy()
+
+fn expanding_abs_mean_f64(values: List[Float64]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var s = 0.0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        var v = values[i]
+        if v < 0.0:
+            v = -v
+        s = s + v
+        out.append(s / Float64(i + 1))
+        i += 1
+    return out.copy()
+
+fn expanding_min_int(values: List[Int]) -> List[Int]:
+    var out = List[Int]()
+    out.reserve(len(values))
+    var cur = 0
+    var has = False
+    var i = 0
+    var n = len(values)
+    while i < n:
+        if not has:
+            cur = values[i]
+            has = True
+        else:
+            if values[i] < cur:
+                cur = values[i]
+        out.append(cur)
+        i += 1
+    return out.copy()
+
+fn expanding_max_int(values: List[Int]) -> List[Int]:
+    var out = List[Int]()
+    out.reserve(len(values))
+    var cur = 0
+    var has = False
+    var i = 0
+    var n = len(values)
+    while i < n:
+        if not has:
+            cur = values[i]
+            has = True
+        else:
+            if values[i] > cur:
+                cur = values[i]
+        out.append(cur)
+        i += 1
+    return out.copy()
+
+fn expanding_min_f64(values: List[Float64]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var cur = 0.0
+    var has = False
+    var i = 0
+    var n = len(values)
+    while i < n:
+        if not has:
+            cur = values[i]
+            has = True
+        else:
+            if values[i] < cur:
+                cur = values[i]
+        out.append(cur)
+        i += 1
+    return out.copy()
+
+fn expanding_max_f64(values: List[Float64]) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var cur = 0.0
+    var has = False
+    var i = 0
+    var n = len(values)
+    while i < n:
+        if not has:
+            cur = values[i]
+            has = True
+        else:
+            if values[i] > cur:
+                cur = values[i]
+        out.append(cur)
+        i += 1
+    return out.copy()
+
+fn expanding_var_int(values: List[Int], ddof: Int = 0) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var n_seen = 0
+    var mean = 0.0
+    var m2 = 0.0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        n_seen = n_seen + 1
+        var x = Float64(values[i])
+        var delta = x - mean
+        mean = mean + delta / Float64(n_seen)
+        var delta2 = x - mean
+        m2 = m2 + delta * delta2
+        var denom = n_seen - ddof
+        if denom <= 0:
+            out.append(0.0)
+        else:
+            out.append(m2 / Float64(denom))
+        i += 1
+    return out.copy()
+
+fn expanding_std_int(values: List[Int], ddof: Int = 0) -> List[Float64]:
+    var v = expanding_var_int(values, ddof)
+    var out = List[Float64]()
+    out.reserve(len(v))
+    var i = 0
+    var n = len(v)
+    while i < n:
+        out.append(_sqrt64(v[i]))
+        i += 1
+    return out.copy()
+
+fn expanding_var_f64(values: List[Float64], ddof: Int = 0) -> List[Float64]:
+    var out = List[Float64]()
+    out.reserve(len(values))
+    var n_seen = 0
+    var mean = 0.0
+    var m2 = 0.0
+    var i = 0
+    var n = len(values)
+    while i < n:
+        n_seen = n_seen + 1
+        var x = values[i]
+        var delta = x - mean
+        mean = mean + delta / Float64(n_seen)
+        var delta2 = x - mean
+        m2 = m2 + delta * delta2
+        var denom = n_seen - ddof
+        if denom <= 0:
+            out.append(0.0)
+        else:
+            out.append(m2 / Float64(denom))
+        i += 1
+    return out.copy()
+
+fn expanding_std_f64(values: List[Float64], ddof: Int = 0) -> List[Float64]:
+    var v = expanding_var_f64(values, ddof)
+    var out = List[Float64]()
+    out.reserve(len(v))
+    var i = 0
+    var n = len(v)
+    while i < n:
+        out.append(_sqrt64(v[i]))
+        i += 1
+    return out.copy()
