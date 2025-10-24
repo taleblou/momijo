@@ -286,11 +286,17 @@ fn dropna_any(df0: DataFrame) -> DataFrame:
     return out
 
 
-fn drop_duplicates(df: DataFrame, subset: List[String], keep: String = "first"):
-    # keep: 'first'|'last'|'none' (none = drop all duplicates)
+fn drop_duplicates(df: DataFrame, subset: List[String], keep: String = "first") -> DataFrame:
+    # ---------- normalize 'keep' ----------
+    var keep_norm = keep
+    if keep_norm == String("FIRST"): keep_norm = String("first")
+    if keep_norm == String("Last"):  keep_norm = String("last")
+    if keep_norm == String("NONE") or keep_norm == String("all"):
+        keep_norm = String("none")
+
+    # ---------- choose subset columns ----------
     var subset_idx = List[Int]()
     if len(subset) == 0:
-        # all columns
         var c = 0
         while c < df.ncols():
             subset_idx.append(c)
@@ -298,117 +304,89 @@ fn drop_duplicates(df: DataFrame, subset: List[String], keep: String = "first"):
     else:
         var j = 0
         while j < len(subset):
-            var k = 0
-            while k < df.ncols() and df.col_names[k] != subset[j]:
-                k += 1
-            if k < df.ncols():
-                subset_idx.append(k)
+            var idx = df.find_col(subset[j])
+            if idx >= 0:
+                subset_idx.append(idx)
             j += 1
+        if len(subset_idx) == 0:
+            var c2 = 0
+            while c2 < df.ncols():
+                subset_idx.append(c2)
+                c2 += 1
+
+    # ---------- scan rows and apply keep policy ----------
     var seen_keys = List[String]()
-    var keep_rows = List[Bool]()
     var last_index_for = List[Int]()
+    var keep_rows = List[Bool]()
+
     var r = 0
     while r < df.nrows():
-        # build key
         var key = String("")
         var t = 0
         while t < len(subset_idx):
             key = key + String("|") + df.cols[subset_idx[t]][r]
             t += 1
+
         var pos = -1
-        var sidx = 0
-        while sidx < len(seen_keys):
-            if seen_keys[sidx] == key:
-                pos = sidx
+        var s = 0
+        while s < len(seen_keys):
+            if seen_keys[s] == key:
+                pos = s
                 break
-            sidx += 1
+            s += 1
+
         if pos < 0:
             seen_keys.append(key)
-            keep_rows.append(True)
             last_index_for.append(r)
+            keep_rows.append(True)
         else:
-            if keep == String("first"):
+            if keep_norm == String("first"):
                 keep_rows.append(False)
-            elif keep == String("last"):
-                # mark previous false and mark this true
+            elif keep_norm == String("last"):
                 var prev = last_index_for[pos]
-                keep_rows[prev] = False  # previous becomes dropped
+                keep_rows[prev] = False
                 keep_rows.append(True)
                 last_index_for[pos] = r
             else:
-                # drop both/all duplicates
+                var prev2 = last_index_for[pos]
+                keep_rows[prev2] = False
                 keep_rows.append(False)
-                keep_rows[last_index_for[pos]] = False
+                last_index_for[pos] = r
         r += 1
-    # build new DF from keep_rows
-    var kept_indices = List[Int]()
+
+    # ---------- collect kept row indices ----------
+    var kept = List[Int]()
     var i = 0
     while i < len(keep_rows):
         if keep_rows[i]:
-            kept_indices.append(i)
+            kept.append(i)
         i += 1
-    var out_cols = List[Column]()
-    var c2 = 0
-    while c2 < df.ncols():
-        var vals = List[String]()
-        var k = 0
-        while k < len(kept_indices):
-            vals.append(df.cols[c2][kept_indices[k]])
-            k += 1
-        out_cols.append(col_str(df.col_names[c2], vals))
-        c2 += 1
+
+    # ---------- build output frame (DataFrame() + set fields + set_column) ----------
+    var out = DataFrame()
+    out.index_name = String(df.index_name)
+ 
     var new_index = List[String]()
     var ii = 0
-    while ii < len(kept_indices) and ii < len(df.index_vals):
-        new_index.append(df.index_vals[kept_indices[ii]])
-        ii += 1
-    return DataFrame(df.col_names, out_cols, new_index, df.index_name)
-    var seen = List[List[String]]()
-    var new_cols = List[List[String]]()
-    var ncols = df.ncols()
-    var col_idx = List[Int]()
-
-    var i = 0
-    while i < ncols:
-        new_cols.append(List[String]())
-        i += 1
-
-    var r = 0
-    while r < df.nrows():
-        var row_vals = List[String]()
-        var j = 0
-        while j < len(subset):
-            var idx = df.find_col(subset[j])
-            if idx != -1:
-                row_vals.append(df.cols[idx][r])
-            j += 1
-
-        var duplicate = False
+    while ii < len(kept) and ii < len(df.index_vals):
+        new_index.append(df.index_vals[kept[ii]])
+        ii += 1 
+    if len(new_index) > 0:
+        out.index_vals = new_index.copy()
+ 
+    var c3 = 0
+    while c3 < df.ncols():
+        var vals = List[String]()
         var k = 0
-        while k < len(seen):
-            var match_row = True
-            var m = 0
-            while m < len(row_vals):
-                if seen[k][m] != row_vals[m]:
-                    match_row = False
-                    break
-                m += 1
-            if match_row:
-                duplicate = True
-                break
+        while k < len(kept):
+            vals.append(df.cols[c3][kept[k]])
             k += 1
+        var col = col_str(df.col_names[c3], vals)
+        out.set_column(col)   # overload: set_column(mut self, col: Column)
+        c3 += 1
 
-        if not duplicate or (keep == "last"):
-            # Add row to new_cols
-            var c = 0
-            while c < ncols:
-                new_cols[c].append(df.cols[c][r])
-                c += 1
-            seen.append(row_vals)
+    return out
 
-        r += 1
-
-    return DataFrame(df.col_names, new_cols, df.index_vals, df.index_name)
 
 
 # Drop rows with any NA
