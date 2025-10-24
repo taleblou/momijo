@@ -1,10 +1,11 @@
 from collections.list import List
+from collections.dict import Dict
 from pathlib.path import Path
 from momijo.dataframe.io_bytes import string_to_bytes, u8_to_char
 from momijo.dataframe.frame import DataFrame
+# از df_from_pairs استفاده نمی‌کنیم تا به ColPair وابسته نشویم
 
 # --- Internal helpers ---
-
 @always_inline
 fn _first_byte_or(s: String, fallback: UInt8) -> UInt8:
     var bs = string_to_bytes(s)
@@ -24,13 +25,13 @@ fn _split_lines(s: String) -> List[String]:
             i += 1
             continue
         if ch == UInt8(10):
-            out.append(cur)
+            out.append(cur.copy())
             cur = String("")
             i += 1
             continue
         cur = cur + u8_to_char(ch)
         i += 1
-    out.append(cur)
+    out.append(cur.copy())
     return out.copy()
 
 fn _parse_csv_line(line: String, delim: UInt8, quote: UInt8) -> List[String]:
@@ -62,7 +63,7 @@ fn _parse_csv_line(line: String, delim: UInt8, quote: UInt8) -> List[String]:
                 i += 1
                 continue
             if ch == delim:
-                out.append(buf)
+                out.append(buf.copy())
                 buf = String("")
                 i += 1
                 continue
@@ -73,22 +74,21 @@ fn _parse_csv_line(line: String, delim: UInt8, quote: UInt8) -> List[String]:
             i += 1
             continue
 
-    out.append(buf)
+    out.append(buf.copy())
     return out.copy()
 
 fn _string(v: Int) -> String:
     return String(v)
 
-# --- Public API ---
+# ---------------- CSV: parse from in-memory string into DataFrame ----------------
 
-fn read_csv_string(
-    s: String,
+fn read_csv_from_string(
+    text: String,
     header: Bool = True,
     delimiter: String = String(","),
     quotechar: String = String("\"")
 ) -> DataFrame:
-    var lines = _split_lines(s)
-
+    var lines = _split_lines(text)
     var d = _first_byte_or(delimiter, UInt8(44))
     var q = _first_byte_or(quotechar, UInt8(34))
 
@@ -121,14 +121,18 @@ fn read_csv_string(
         width = len(first)
         var j = 0
         while j < width:
-            headers.append(first[j])
+            var name = first[j]
+            if len(name) == 0:
+                name = String("col") + String(String(j))
+            headers.append(name.copy())
             j += 1
         start_row = 1
     else:
         width = len(rows[0])
         var j2 = 0
         while j2 < width:
-            headers.append(String("col_") + _string(j2))
+            var gen = String("col_") + _string(j2)
+            headers.append(gen.copy())
             j2 += 1
 
     var cols = List[List[String]]()
@@ -145,7 +149,7 @@ fn read_csv_string(
             var cell = String("")
             if c2 < len(row):
                 cell = row[c2]
-            cols[c2].append(cell)
+            cols[c2].append(cell.copy())
             c2 += 1
         r += 1
 
@@ -155,21 +159,13 @@ fn read_csv_string(
         nrows = len(cols[0])
     var rr = 0
     while rr < nrows:
-        index.append(_string(rr))
+        var idxs = _string(rr)
+        index.append(idxs.copy())
         rr += 1
 
     return DataFrame(headers, cols, index, String(""))
 
-fn read_csv(
-    path: Path,
-    header: Bool = True,
-    delimiter: String = String(","),
-    quotechar: String = String("\"")
-) raises -> DataFrame:
-    var f = open(String(path), "r")
-    var s = f.read()
-    f.close()
-    return read_csv_string(s, header, delimiter, quotechar)
+# ---------------- CSV: to-string writer ----------------
 
 fn to_csv_string(
     df: DataFrame,
@@ -234,6 +230,85 @@ fn to_csv_string(
         r += 1
 
     return out
+
+# ---------------- column selection (build List[List[String]]) & dtypes (noop) ----------------
+
+fn _select_columns(df: DataFrame, cols: List[String]) -> DataFrame:
+    if len(cols) == 0:
+        return df
+
+    var name_to_idx = Dict[String, Int]()
+    var i = 0
+    while i < len(df.col_names):
+        name_to_idx[df.col_names[i]] = i
+        i += 1
+
+    var new_names = List[String]()
+    var new_cols = List[List[String]]()
+
+    var k = 0
+    while k < len(cols):
+        var opt_idx = name_to_idx.get(cols[k])
+        if opt_idx is not None:
+            var idx = opt_idx.value()
+
+            var vals = List[String]()
+            var r = 0
+            var nrows = df.nrows()
+            while r < nrows:
+                var v = String(df.cols[idx][r])
+                vals.append(v.copy())
+                r += 1
+
+            new_names.append(df.col_names[idx].copy())
+            new_cols.append(vals.copy())
+        k += 1
+
+    var nrows2 = 0
+    if len(new_cols) > 0:
+        nrows2 = len(new_cols[0])
+
+    var new_index = List[String]()
+    var r2 = 0
+    while r2 < nrows2:
+        var s = _string(r2)
+        new_index.append(s.copy())
+        r2 += 1
+
+    return DataFrame(new_names, new_cols, new_index, String(""))
+
+fn _apply_dtypes(df: DataFrame, dtypes: Dict[String, String]) -> DataFrame:
+    if len(dtypes) == 0:
+        return df
+    return df  # placeholder
+
+# ---------------- public API ----------------
+
+fn read_csv_string(
+    text: String,
+    header: Bool = True,
+    delimiter: String = String(","),
+    quotechar: String = String("\""),
+    usecols: List[String] = List[String](),
+    dtypes: Dict[String, String] = Dict[String, String]()
+) -> DataFrame:
+    var base = read_csv_from_string(text, header, delimiter, quotechar)
+    if len(usecols) > 0:
+        base = _select_columns(base, usecols)
+    if len(dtypes) > 0:
+        base = _apply_dtypes(base, dtypes)
+    return base
+
+fn read_csv(
+    path: Path,
+    header: Bool = True,
+    delimiter: String = String(","),
+    quotechar: String = String("\"")
+) raises -> DataFrame:
+    var f = open(String(path), "r")
+    var s = f.read()
+    f.close()
+    return read_csv_string(s, header, delimiter, quotechar)
 
 fn write_csv(
     df: DataFrame,
