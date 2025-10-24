@@ -30,6 +30,22 @@ from math import sqrt
 from collections import Dict, List
 
 
+struct Agg(Copyable, Movable):
+    var tag: Int
+
+    fn __init__(out self, tag: Int):
+        self.tag = tag
+
+    fn __copyinit__(out self, other: Self):
+        self.tag = other.tag
+
+    @staticmethod
+    fn mean() -> Self:
+        var a = Agg(0)
+        return a.copy()
+
+    fn is_mean(self) -> Bool:
+        return self.tag == 0
 # ------------------------ Utilities ------------------------
 
 fn _col_index(df: DataFrame, name: String) -> Int:
@@ -913,3 +929,231 @@ fn _is_numeric_like(s: String) -> Bool:
     # v == 0.0 here: only accept if the literal is another common zero form.
     return s == String("+0") or s == String("+0.0")
 
+
+# returns column index or -1
+fn _find_col_index(frame: DataFrame, name: String) -> Int:
+    var j = 0
+    var n = len(frame.col_names)
+    while j < n:
+        if frame.col_names[j] == name:
+            return j
+        j += 1
+    return -1
+
+# safe parse float from string; returns Optional[Float64]
+fn _try_f64(s: String) -> Optional[Float64]:
+    var n = len(s)
+    if n == 0:
+        var none: Optional[Float64] = None
+        return none
+    # minimal parser: allow leading/trailing spaces
+    var ok = False
+    var acc = 0.0
+    var sign = 1.0
+    var i = 0
+    # skip spaces
+    while i < n and (ord(s[i]) == 32 or ord(s[i]) == 9 or ord(s[i]) == 10 or ord(s[i]) == 13):
+        i += 1
+    if i >= n:
+        var none2: Optional[Float64] = None
+        return none2
+    # sign
+    if s[i] == "-" or s[i] == "+":
+        if s[i] == "-":
+            sign = -1.0
+        i += 1
+        if i >= n:
+            var none3: Optional[Float64] = None
+            return none3
+    # integer part
+    var int_any = False
+    while i < n and (ord(s[i]) >= ord("0") and ord(s[i]) <= ord("9")):
+        acc = acc * 10.0 + Float64(ord(s[i]) - ord("0"))
+        i += 1
+        int_any = True
+    # fraction
+    if i < n and s[i] == ".":
+        i += 1
+        var base = 0.1
+        var frac_any = False
+        while i < n and (ord(s[i]) >= ord("0") and ord(s[i]) <= ord("9")):
+            acc = acc + base * Float64(ord(s[i]) - ord("0"))
+            base = base * 0.1
+            i += 1
+            frac_any = True
+        ok = int_any or frac_any
+    else:
+        ok = int_any
+    # skip trailing spaces
+    while i < n and (ord(s[i]) == 32 or ord(s[i]) == 9 or ord(s[i]) == 10 or ord(s[i]) == 13):
+        i += 1
+    if i != n:
+        var none4: Optional[Float64] = None
+        return none4
+    if not ok:
+        var none5: Optional[Float64] = None
+        return none5
+    var res: Optional[Float64] = None
+    res = sign * acc
+    return res
+
+
+
+fn pivot_table(frame: DataFrame,
+               index: String,
+               columns: String,
+               values: String,
+               agg: Agg,
+               margins: Bool,
+               margins_name: String) -> DataFrame:
+    var idx_i = _find_col_index(frame, index)
+    var col_i = _find_col_index(frame, columns)
+    var val_i = _find_col_index(frame, values)
+    if idx_i < 0 or col_i < 0 or val_i < 0:
+        return frame.copy()
+
+    var rows_unique = List[String]()
+    var cols_unique = List[String]()
+
+    var n = frame.nrows()
+    var r = 0
+    while r < n:
+        var rv = String(frame.cols[idx_i].get_string(r))
+        var cv = String(frame.cols[col_i].get_string(r))
+        var seen_r = False
+        var i = 0
+        while i < len(rows_unique):
+            if rows_unique[i] == rv:
+                seen_r = True
+                break
+            i += 1
+        if not seen_r:
+            rows_unique.append(rv)
+        var seen_c = False
+        var j = 0
+        while j < len(cols_unique):
+            if cols_unique[j] == cv:
+                seen_c = True
+                break
+            j += 1
+        if not seen_c:
+            cols_unique.append(cv)
+        r += 1
+
+    var sums = List[List[Float64]]()
+    var counts = List[List[Int]]()
+    var i2 = 0
+    while i2 < len(rows_unique):
+        var row_s = List[Float64]()
+        var row_c = List[Int]()
+        var j2 = 0
+        while j2 < len(cols_unique):
+            row_s.append(0.0)
+            row_c.append(0)
+            j2 += 1
+        sums.append(row_s.copy())
+        counts.append(row_c.copy())
+        i2 += 1
+
+    var rr = 0
+    while rr < n:
+        var rv = String(frame.cols[idx_i].get_string(rr))
+        var cv = String(frame.cols[col_i].get_string(rr))
+        var vv = String(frame.cols[val_i].get_string(rr))
+
+        var rpos = 0
+        while rpos < len(rows_unique) and rows_unique[rpos] != rv:
+            rpos += 1
+        var cpos = 0
+        while cpos < len(cols_unique) and cols_unique[cpos] != cv:
+            cpos += 1
+
+        if rpos < len(rows_unique) and cpos < len(cols_unique):
+            var fopt = _try_f64(vv)
+            if not (fopt is None):
+                sums[rpos][cpos] = sums[rpos][cpos] + fopt.value()
+                counts[rpos][cpos] = counts[rpos][cpos] + 1
+        rr += 1
+
+    var out_names = List[String]()
+    var out_cols = List[List[String]]()
+
+    out_names.append(index)
+    out_cols.append(List[String]())
+
+    var cj = 0
+    while cj < len(cols_unique):
+        out_names.append(cols_unique[cj])
+        out_cols.append(List[String]())
+        cj += 1
+
+    if margins:
+        out_names.append(margins_name)
+        out_cols.append(List[String]())
+
+    var ri = 0
+    while ri < len(rows_unique):
+        out_cols[0].append(rows_unique[ri])
+
+        var row_sum = 0.0
+        var row_cnt = 0
+
+        var cj2 = 0
+        while cj2 < len(cols_unique):
+            var mstr = String("")
+            if counts[ri][cj2] > 0:
+                var m = sums[ri][cj2] / Float64(counts[ri][cj2])
+                mstr = String(m)
+                row_sum = row_sum + sums[ri][cj2]
+                row_cnt = row_cnt + counts[ri][cj2]
+            out_cols[1 + cj2].append(mstr)
+            cj2 += 1
+
+        if margins:
+            var rmean = String("")
+            if row_cnt > 0:
+                rmean = String(row_sum / Float64(row_cnt))
+            out_cols[1 + len(cols_unique)].append(rmean)
+
+        ri += 1
+
+    if margins:
+        out_cols[0].append(margins_name)
+
+        var col_idx = 0
+        while col_idx < len(cols_unique):
+            var col_sum = 0.0
+            var col_cnt = 0
+            var rx = 0
+            while rx < len(rows_unique):
+                col_sum = col_sum + sums[rx][col_idx]
+                col_cnt = col_cnt + counts[rx][col_idx]
+                rx += 1
+            var cmean = String("")
+            if col_cnt > 0:
+                cmean = String(col_sum / Float64(col_cnt))
+            out_cols[1 + col_idx].append(cmean)
+            col_idx += 1
+
+        var all_sum = 0.0
+        var all_cnt = 0
+        var rx2 = 0
+        while rx2 < len(rows_unique):
+            var cx2 = 0
+            while cx2 < len(cols_unique):
+                all_sum = all_sum + sums[rx2][cx2]
+                all_cnt = all_cnt + counts[rx2][cx2]
+                cx2 += 1
+            rx2 += 1
+        var all_mean = String("")
+        if all_cnt > 0:
+            all_mean = String(all_sum / Float64(all_cnt))
+        out_cols[1 + len(cols_unique)].append(all_mean)
+
+    var pairs = make_pairs()
+    var k = 0
+    while k < len(out_names):
+        pairs = pairs_append(pairs, out_names[k], out_cols[k])
+        k += 1
+    var out = df_from_pairs(pairs)
+    return out
