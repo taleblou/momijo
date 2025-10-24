@@ -190,39 +190,6 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     fn get_column_by_name(self, name: String) -> Column:
         return self.get_column(name)
 
-    fn set_column(mut self, col: Column):
-        var nm = col.get_name()
-        var idx = self.find_col(nm)
-        if idx == -1:
-            self.col_names.append(nm)
-            self.names.append(nm)
-            self.cols.append(col.copy())
-        else:
-            self.cols[idx]      = col.copy()
-            self.col_names[idx] = nm
-            self.names[idx]     = nm
-
-    fn set_column(mut self, idx: Int, src: Column) -> None:
-        if idx < 0 or idx >= self.ncols(): return
-        if self.nrows() > 0:
-            if src.len() != self.nrows(): return
-        else:
-            if src.len() != 0: return
-        self.cols[idx] = src.copy()
-        if idx < len(self.col_names):
-            var new_name = src.get_name()
-            self.col_names[idx] = new_name
-
-    fn set_column(mut self, name: String, src: Column) -> None:
-        var found = -1
-        var i = 0
-        while i < self.ncols():
-            if self.col_names[i] == name:
-                found = i
-                break
-            i += 1
-        if found < 0: return
-        self.set_column(found, src)
 
 
     @always_inline 
@@ -565,9 +532,13 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             use_col = 0
         else:
             return
+
         var col = rhs.cols[use_col].copy()
         col.rename(name)
-        self.set_column(name, col)
+
+        # FIX: insert-or-replace path (نه replace-only)
+        self.set_column(col)   # ← به‌جای self.set_column(name, col)
+  
 
     # Replace a column by positional index from a string list (preserve target tag).
     fn set_column(mut self, idx: Int, values: List[String]) -> None:
@@ -610,11 +581,13 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             if single_col:
                 var src = rhs.cols[0].copy()
                 src.rename(nm)
-                self.set_column(nm, src)
+                self.set_column(src)                 # ← insert-or-replace
             else:
                 var pos = rhs.find_col(nm)
                 if pos >= 0:
-                    self.set_column(nm, rhs.cols[pos].copy())
+                    var src = rhs.cols[pos].copy()
+                    src.rename(nm)                   # ایمن‌تر
+                    self.set_column(src)             # ← insert-or-replace
             i += 1
 
     # Set multiple columns by positions from rhs frame.
@@ -640,6 +613,58 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
                 src_col.rename(target_name)
                 self.set_column(idx, src_col)
             i += 1
+
+    fn set_column(mut self, col: Column):
+        var nm = col.get_name()
+        var idx = self.find_col(nm)
+        if idx == -1:
+            # INSERT
+            self.col_names.append(nm)
+            self.names.append(nm)
+            self.cols.append(col.copy())
+        else:
+            # REPLACE
+            self.cols[idx]      = col.copy()
+            self.col_names[idx] = nm
+            self.names[idx]     = nm
+
+    fn set_column(mut self, idx: Int, src: Column) -> None:
+        if idx < 0 or idx >= self.ncols(): return
+        if self.nrows() > 0:
+            if src.len() != self.nrows(): return
+        else:
+            if src.len() != 0: return
+
+        self.cols[idx] = src.copy()
+
+        var new_name = src.get_name()
+        if idx < len(self.col_names):
+            self.col_names[idx] = new_name
+        if idx < len(self.names):
+            self.names[idx] = new_name      # ← همگام‌سازی names
+
+    fn set_column(mut self, name: String, src: Column) -> None:
+        var found = -1
+        var i = 0
+        while i < self.ncols():
+            if self.col_names[i] == name:
+                found = i
+                break
+            i += 1
+
+        var col = src.copy()
+        col.rename(name)
+
+        if found < 0:
+            # INSERT when not found (قبلاً: early return)
+            self.col_names.append(name)
+            self.names.append(name)
+            self.cols.append(col.copy())
+            return
+
+        # REPLACE when found
+        self.set_column(found, col)
+
 
     # ---------- explicit masked row assignment (replace mask-based __setitem__) ----------
     # Set all cells in rows where mask[r] is True to a scalar string (broadcast across all columns).
@@ -767,10 +792,10 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     # Melt (wide -> long)
     # -------------------------------------------------------------------------
     fn melt(self,
-            id_vars: List[String],
-            var_name: String = "variable",
-            value_name: String = "value") -> DataFrame:
-        # Collect indices for melt columns and id columns once (avoid repeated lookup)
+        id_vars: List[String],
+        var_name: String = "variable",
+        value_name: String = "value") -> DataFrame:
+        # ------------- partition columns into id and melt sets -------------
         var melt_cols = List[Int]()
         var id_idx    = List[Int]()
 
@@ -796,7 +821,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         var nm = len(melt_cols)
         var total_rows = nr * nm
 
-        # Build id columns by repeating each id column for each melted column
+        # ------------- build id columns (row-major repeat) -------------
         var out_cols = List[Column]()
         out_cols.reserve(len(id_idx) + 2)
 
@@ -808,20 +833,21 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             s_id.data = List[String]()
             s_id.data.reserve(total_rows)
 
+            # row-major: for each row, repeat its id value across all melted columns
             var r = 0
             while r < nr:
-                var rep = 0
-                while rep < nm:
+                var mci = 0
+                while mci < nm:
                     s_id.data.append(self.cols[id_idx[v]].get_string(r))
-                    rep += 1
+                    mci += 1
                 r += 1
 
             var c_id = Column()
             c_id.from_str(s_id)
-            out_cols.append(c_id)
+            out_cols.append(c_id.copy())
             v += 1
 
-        # variable and value columns
+        # ------------- build variable and value columns (row-major) -------------
         var s_var = SeriesStr()
         s_var.name = var_name
         s_var.data = List[String]()
@@ -832,24 +858,26 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         s_val.data = List[String]()
         s_val.data.reserve(total_rows)
 
-        var mci = 0
-        while mci < nm:
-            var cidx = melt_cols[mci]
-            var r2 = 0
-            while r2 < nr:
+        # row-major: for each row, append all melted columns in order
+        var r2 = 0
+        while r2 < nr:
+            var mci2 = 0
+            while mci2 < nm:
+                var cidx = melt_cols[mci2]
                 s_var.data.append(self.col_names[cidx])
                 s_val.data.append(self.cols[cidx].get_string(r2))
-                r2 += 1
-            mci += 1
+                mci2 += 1
+            r2 += 1
 
         var col_var = Column()
         col_var.from_str(s_var)
         var col_val = Column()
         col_val.from_str(s_val)
-        out_cols.append(col_var)
-        out_cols.append(col_val)
 
-        # Assemble output DF
+        out_cols.append(col_var.copy())
+        out_cols.append(col_val.copy())
+
+        # ------------- assemble output DataFrame -------------
         var out = DataFrame()
         var k = 0
         var outn = len(out_cols)
@@ -857,10 +885,12 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             out.set_column(out_cols[k])
             k += 1
 
-        # Index: keep empty (caller may set later)
+        # reset index metadata
         out.index_name = String("")
         out.index_vals = List[String]()
+
         return out
+
 
     # -------------------------------------------------------------------------
     # Head-like: first n rows
@@ -1300,7 +1330,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
 
 
     # Return the column as a (string-backed) Series facade by name.
-     fn col_values(self, name: String) -> List[String]:
+    fn col_values(self, name: String) -> List[String]:
         var idx = 0
         while idx < len(self.col_names):
             if self.col_names[idx] == name: 
@@ -1678,103 +1708,96 @@ fn set_index(df: DataFrame, col: String) -> DataFrame:
     return out.copy()
 
 
-# Reset index: inserts index as a normal column (as the first column), and rebuilds a default integer-like index.
-# Reset index: inserts index as a normal column (as the first column), and rebuilds a default integer-like index.
 fn reset_index(df: DataFrame) -> DataFrame:
     var out = DataFrame()
-
-    # prepare containers
     out.col_names = List[String]()
     out.cols = List[Column]()
 
-    # 1) determine index column name (compute length of df.index_name safely)
-    var tmp_len = 0
+    # 1) detect index name presence
+    var has_idx_name = False
     for _ in df.index_name.codepoints():
-        tmp_len += 1
+        has_idx_name = True
+        break
     var idx_name = String(df.index_name)
-    if tmp_len == 0:
-        idx_name = String("index")
+    if not has_idx_name:
+        idx_name = String("index")   # fallback
 
-    # append index name as first column name
-    out.col_names.append(idx_name)
+    # 2) check if a label column already exists (e.g., "city")
+    var has_city_col = False
+    var ci = 0
+    while ci < len(df.col_names):
+        if df.col_names[ci] == "city":
+            has_city_col = True
+            break
+        ci += 1
 
-    # build idx_col_vals from df.index_vals if present
-    var idx_col_vals: List[String] = List[String]()
-    var n_index_vals = 0
-    for _ in df.index_vals:
-        n_index_vals += 1
-
-    var ii = 0
-    while ii < n_index_vals:
-        idx_col_vals.append(String(df.index_vals[ii]))
-        ii += 1
-
-    # if empty, synthesize from first data column length
-    var idx_vals_len = 0
-    for _ in idx_col_vals:
-        idx_vals_len += 1
-
-    if idx_vals_len == 0:
-        # count number of columns in df.cols
-        var ncols = 0
-        for _ in df.cols:
-            ncols += 1
-
-        var nrows = 0
-        if ncols > 0:
-            # df.cols[0] is Column -> use Column.len()
-            nrows = df.cols[0].len()
-        var kk = 0
-        while kk < nrows:
-            idx_col_vals.append(String(kk))
-            kk += 1
-
-    # create a Column for the index (SeriesStr -> Column.from_str)
-    var idx_column = Column()
-    var s = SeriesStr()
-    var j = 0
-    while j < len(idx_col_vals):
-        # If your SeriesStr API uses push(...) instead of append(...), replace accordingly.
-        s.append(idx_col_vals[j])
-        j += 1
-    idx_column.from_str(s)
-    out.cols.append(idx_column.copy())
-
-    # 2) append all existing columns (copy-by-value, preserving original column order)
-    var n_col_names = 0
-    for _ in df.col_names:
-        n_col_names += 1
-
+    # 3) copy existing columns first
     var c = 0
-    while c < n_col_names:
+    while c < len(df.col_names):
         out.col_names.append(String(df.col_names[c]))
-        out.cols.append(df.cols[c].copy())   # Column is Copyable/Movable, so shallow/value copy
+        out.cols.append(df.cols[c].copy())
         c += 1
 
-    # 3) reset index meta to default (0..nrows_after-1)
+    # 4) decide whether to insert an index column
+    var need_insert_index = True
+
+    # if we already have a label column (e.g., "city") and index_name is empty,
+    # skip inserting synthetic "index"
+    if (not has_idx_name) and has_city_col:
+        need_insert_index = False
+
+    if need_insert_index:
+        # build index values (use df.index_vals if present, else 0..nrows-1)
+        var idx_vals = List[String]()
+        var niv = len(df.index_vals)
+        var ii = 0
+        while ii < niv:
+            idx_vals.append(String(df.index_vals[ii]))
+            ii += 1
+
+        if len(idx_vals) == 0:
+            var nrows = 0
+            if len(df.cols) > 0:
+                nrows = df.cols[0].len()
+            var k = 0
+            while k < nrows:
+                idx_vals.append(String(k))
+                k += 1
+
+        var s = SeriesStr()
+        s.name = idx_name
+        s.data = idx_vals.copy()
+
+        var idx_col = Column()
+        idx_col.from_str(s)
+
+        # insert as first col
+        var new_names = List[String]()
+        var new_cols  = List[Column]()
+        new_names.append(idx_name)
+        new_cols.append(idx_col.copy())
+        var j = 0
+        while j < len(out.col_names):
+            new_names.append(out.col_names[j])
+            new_cols.append(out.cols[j].copy())
+            j += 1
+        out.col_names = new_names.copy()
+        out.cols      = new_cols.copy()
+
+    # 5) rebuild meta index 0..N-1
     out.index_name = String("")
     out.index_vals = List[String]()
-
-    # compute number of rows after insertion:
-    var out_ncols = 0
-    for _ in out.cols:
-        out_ncols += 1
-
-    var nrows_after:Int
-    if out_ncols > 1:
-        nrows_after = out.cols[1].len()   # data columns start at 1 after inserted index col
-    else:
-        if out_ncols > 0:
-            nrows_after = out.cols[0].len()
-        else:
-            nrows_after = 0
-
+    var nrows_after = 0
+    if len(out.cols) > 0:
+        nrows_after = out.cols[0].len()
     var t = 0
     while t < nrows_after:
         out.index_vals.append(String(t))
         t += 1
 
-    return out.copy()
+    return out
+
+
 
 
 
@@ -2038,23 +2061,6 @@ fn cum_mean(xs: List[Float64]) -> List[Float64]:
         i += 1
     return out
 
-# 5) Rolling mean (window size w, centered=False; simple trailing window)
-fn rolling_mean(xs: List[Float64], w: Int) -> List[Float64]:
-    if w <= 0:
-        return List[Float64]()
-    var out = List[Float64]()
-    var acc: Float64 = 0.0
-    var i: Int = 0
-    while i < len(xs):
-        acc += xs[i]
-        if i >= w:
-            acc -= xs[i - w]
-        if i + 1 >= w:
-            out.append(acc / Float64(w))
-        else:
-            out.append(acc / Float64(i + 1))  # warm-up
-        i += 1
-    return out
 
 # ----------------------------- Pretty printer -------------------------------
 
@@ -2107,7 +2113,9 @@ fn rolling_mean(xs: List[Float64], win: Int) -> List[Float64]
         out.append(s / Float64(cnt))
         i += 1
     return out
-fn rolling_apply_abs(xs: List[Float64], win: Int) -> List[Float64]
+
+    
+fn rolling_abs(xs: List[Float64], win: Int) -> List[Float64]
 # rolling mean of absolute values
     var n = len(xs)
     var out = List[Float64]()
@@ -2124,6 +2132,23 @@ fn rolling_apply_abs(xs: List[Float64], win: Int) -> List[Float64]
             cnt += 1
             k += 1
         out.append(s / Float64(cnt))
+        i += 1
+    return out
+# 5) Rolling mean (window size w, centered=False; simple trailing window)
+fn rolling_mean(xs: List[Float64], w: Int) -> List[Float64]:
+    if w <= 0:
+        return List[Float64]()
+    var out = List[Float64]()
+    var acc: Float64 = 0.0
+    var i: Int = 0
+    while i < len(xs):
+        acc += xs[i]
+        if i >= w:
+            acc -= xs[i - w]
+        if i + 1 >= w:
+            out.append(acc / Float64(w))
+        else:
+            out.append(acc / Float64(i + 1))  # warm-up
         i += 1
     return out
 
@@ -2189,64 +2214,82 @@ fn argsort_city_ts(cities: List[String], ts: List[String]) raises -> List[Int]:
     return idx
 
 # Sort values by columns
-fn sort_values(df: DataFrame, by: List[String], ascending: List[Bool]) -> DataFrame:
-    var out = df.copy()
+fn sort_values(frame: DataFrame, by: List[String], ascending: List[Bool]) -> DataFrame:
+    var out = frame.copy()
     var n = out.nrows()
-    var idx_order = List[Int]()
+    if n <= 1:
+        return out
+
+    # Resolve column indices once (avoid capturing names later).
+    var by_idx = List[Int]()
+    var k = 0
+    while k < len(by):
+        var ci = out.find_col(by[k])
+        if ci < 0:
+            # if missing, just skip this key
+            k += 1
+            continue
+        by_idx.append(ci)
+        k += 1
+    if len(by_idx) == 0:
+        return out
+
+    # Build index order
+    var idx = List[Int]()
     var i = 0
     while i < n:
-        idx_order.append(i)
+        idx.append(i)
         i += 1
 
-    # Build keys for sorting
-    var keys = List[List[String]]()
-    var bi = 0
-    while bi < len(by):
-        var col_idx = out.find_col(by[bi])
-        var col_vals = List[String]()
-        var r = 0
-        while r < n:
-            col_vals.append(out.cols[col_idx].get_string(r))
-            r += 1
-        keys.append(col_vals)
-        bi += 1
+    # Stable insertion sort with inline compare (no closures, no Column copies)
+    var p = 1
+    while p < n:
+        var cur = idx[p]
+        var q = p - 1
+        while q >= 0:
+            # compare cur vs idx[q] across keys
+            var cmp_res = 0
+            var t = 0
+            while t < len(by_idx):
+                var col_i = by_idx[t]                    # Int, copyable
+                # read as String; if your Column supports numeric getters,
+                # branch here based on dtype for numeric ordering.
+                var a = out.cols[col_i].get_string(cur)
+                var b = out.cols[col_i].get_string(idx[q])
 
-    # Simple bubble-sort by multiple keys (for demonstration)
-    var swapped = True
-    while swapped:
-        swapped = False
-        var j = 0
-        while j < n - 1:
-            var cmp = False
-            var k = 0
-            while k < len(by):
-                if keys[k][idx_order[j]] != keys[k][idx_order[j+1]]:
-                    if ascending[k]:
-                        cmp = keys[k][idx_order[j]] > keys[k][idx_order[j+1]]
+                if a != b:
+                    var lt = (a < b)
+                    if ascending[t]:
+                        cmp_res = -1 if lt else 1
                     else:
-                        cmp = keys[k][idx_order[j]] < keys[k][idx_order[j+1]]
+                        cmp_res = 1 if lt else -1
                     break
-                k += 1
-            if cmp:
-                var tmp = idx_order[j]
-                idx_order[j] = idx_order[j+1]
-                idx_order[j+1] = tmp
-                swapped = True
-            j += 1
+                t += 1
 
-    # Rearrange columns and index
+            if cmp_res < 0:
+                idx[q + 1] = idx[q]
+                q -= 1
+            else:
+                break
+        idx[q + 1] = cur
+        p += 1
+
+    # Rebuild all columns in the new order (avoid Column copies)
+    var new_cols = List[Column]()
     var c = 0
     while c < out.ncols():
-        out.cols[c] = out.cols[c].take(idx_order)
+        var vals = List[String]()
+        vals.reserve(n)
+        var r = 0
+        while r < n:
+            # direct access; no "var col = out.cols[c]"
+            vals.append(out.cols[c].get_string(idx[r]))
+            r += 1
+        new_cols.append(col_str(out.col_names[c], vals))
         c += 1
-    out.index_vals = List[String]()
-    var r2 = 0
-    while r2 < n:
-        out.index_vals.append(String(r2))
-        r2 += 1
 
+    out.cols = new_cols.copy()
     return out
-
 
 #   # ---------- Row slicing like df[start:stop] ----------
 #     struct RowSlice:
