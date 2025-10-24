@@ -33,15 +33,17 @@ from pathlib.path import Path
 
 from momijo.dataframe.compat import df_from_pairs as _df_from_pairs
  
-from momijo.dataframe.io_csv import read_csv as _read_csv_file, read_csv_from_string as _read_csv_text, write_csv as _write_csv_file
+from momijo.dataframe.io_csv import read_csv ,write_csv
 
 
   
+from momijo.dataframe._groupby_core import pivot_table
 
 from momijo.dataframe.series_bool import append
 from momijo.dataframe.datetime_ops import parse_minutes
 from momijo.dataframe.helpers import argsort_f64, argsort_i64
 from momijo.dataframe.api import *
+from momijo.dataframe.datetime_ops import Resampler
  
 from collections.list import List
 
@@ -665,6 +667,10 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         # REPLACE when found
         self.set_column(found, col)
 
+    fn set_column(mut self, name: String, values: List[String]) -> None:
+        var tmp = ToDataFrame({ name: values.copy() })
+        self.set_column(name, tmp)
+
 
     # ---------- explicit masked row assignment (replace mask-based __setitem__) ----------
     # Set all cells in rows where mask[r] is True to a scalar string (broadcast across all columns).
@@ -1286,7 +1292,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     # ------------------------------------------------------------------
     # DataFrame.dtypes(): returns a printable doc listing "name: dtype"
     # ------------------------------------------------------------------
-    fn dtypes(self: DataFrame) -> Dict[String, String]:
+    fn dtypes(self) -> Dict[String, String]:
         var out = Dict[String, String]()
         var j = 0
         var m = len(self.col_names)
@@ -1477,6 +1483,165 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         return out.copy()
 
 
+    
+
+    # fn pivot_table(self,index: String,columns: String,values: String,agg: Agg,margins: Bool,margins_name: String) -> DataFrame:
+    #     return pivot_table(self,index,columns,agg,margins,margins_name) 
+
+    # ---------- DataFrame methods: pivot_table ----------
+
+    # Core method: String indices
+    fn pivot_table(self,
+                index: String,
+                columns: String,
+                values: String,
+                agg: Agg,
+                fill_value: Optional[String] = None,
+                margins: Bool = False,
+                margins_name: String = String("Total")) -> DataFrame:
+        return pivot_table(self, index, columns, values, agg, margins, margins_name, fill_value)
+
+    # Core method: single-item List indices (forwarded)
+    fn pivot_table(self,
+                index: List[String],
+                columns: List[String],
+                values: String,
+                agg: Agg,
+                fill_value: Optional[String] = None,
+                margins: Bool = False,
+                margins_name: String = String("Total")) -> DataFrame:
+        return pivot_table(self, index, columns, values, agg, fill_value, margins, margins_name)
+
+    # Convenience overload: accept Value (from column.mojo) and convert to Optional[String]
+    fn pivot_table(self,
+                index: List[String],
+                columns: List[String],
+                values: String,
+                agg: Agg,
+                fill_value: Value,
+                margins: Bool = False,
+                margins_name: String = String("Total")) -> DataFrame:
+        return pivot_table(self,
+                        index, columns, values, agg,
+                        Optional[String](fill_value.as_string()),
+                        margins, margins_name)
+
+    # Convenience overloads: primitive fill_value → Optional[String]
+    fn pivot_table(self,
+                index: List[String],
+                columns: List[String],
+                values: String,
+                agg: Agg,
+                fill_value: Int,
+                margins: Bool = False,
+                margins_name: String = String("Total")) -> DataFrame:
+        return pivot_table(self,
+                        index, columns, values, agg,
+                        Optional[String](String(fill_value)),
+                        margins, margins_name)
+
+    fn pivot_table(self,
+                index: List[String],
+                columns: List[String],
+                values: String,
+                agg: Agg,
+                fill_value: Float64,
+                margins: Bool = False,
+                margins_name: String = String("Total")) -> DataFrame:
+        return pivot_table(self,
+                        index, columns, values, agg,
+                        Optional[String](String(fill_value)),
+                        margins, margins_name)
+
+    fn pivot_table(self,
+                index: List[String],
+                columns: List[String],
+                values: String,
+                agg: Agg,
+                fill_value: Bool,
+                margins: Bool = False,
+                margins_name: String = String("Total")) -> DataFrame:
+        return pivot_table(self,
+                        index, columns, values, agg,
+                        Optional[String](String(fill_value)),
+                        margins, margins_name)
+
+    fn pivot_table(self,
+                index: List[String],
+                columns: List[String],
+                values: String,
+                agg: Agg,
+                fill_value: String,
+                margins: Bool = False,
+                margins_name: String = String("Total")) -> DataFrame:
+        return pivot_table(self,
+                        index, columns, values, agg,
+                        Optional[String](fill_value),
+                        margins, margins_name)
+
+    
+    fn reset_index(self) -> DataFrame:
+        return reset_index(self)
+
+    fn merge(self, right: DataFrame, on: List[String], how: String) -> DataFrame:
+        return merge(self, right, on.copy(), how)
+
+    # Convenience: single key
+    fn merge(self, right: DataFrame, on: String, how: String) -> DataFrame:
+        var keys = List[String]()
+        keys.append(on)
+        return merge(self, right, keys.copy(), how)
+
+    
+    # Convenience: default 'left' join
+    fn merge(self, right: DataFrame, on: List[String]) -> DataFrame:
+        return merge(self, right, on.copy(), String("left"))
+
+    fn merge(self, right: DataFrame, on: String) -> DataFrame:
+        var keys = List[String]()
+        keys.append(on)
+        return merge(self, right, keys.copy(), String("left"))
+
+    fn sort_values(self, by: List[String], ascending: List[Bool]=[True]) -> DataFrame:
+        return sort_values(self, by , ascending ) 
+ 
+
+    fn to_csv(self: DataFrame,
+          path: String,
+          header: Bool = True,
+          delimiter: String = String(","),
+          quotechar: String = String("\""),
+          index: Bool = True
+        ) -> Bool:
+        return write_csv(self, Path(path), header, delimiter, quotechar)
+
+    fn set_index(self, col: String) -> DataFrame:
+        return set_index(self, col, True)
+
+
+    fn set_index(self, col: String, drop: Bool) -> DataFrame:
+        return set_index(self, col, drop)
+
+    fn resample(self, freq: String) -> Resampler:
+        return Resampler(self, freq)
+    # Return a defensive copy of all index values as List[String].
+    fn index(self) -> List[String]:
+        var out = List[String]()
+        if len(self.index_vals) == 0:
+            # No explicit index: synthesize 0..N-1 as strings
+            var n = self.nrows()
+            var i = 0
+            while i < n:
+                out.append(String(i))
+                i += 1
+            return out.copy()
+        # Copy stored index values
+        var i = 0
+        while i < len(self.index_vals):
+            out.append(String(self.index_vals[i]))
+            i += 1
+        return out.copy()
+
 
 
 # ------------------------------------------------------------------
@@ -1662,51 +1827,59 @@ fn _nrows(df: DataFrame) -> Int:
 
 # Set a column as index: moves the column into index_vals/index_name and removes it from data columns.
 fn set_index(df: DataFrame, col: String) -> DataFrame:
+    return set_index(df, col, True)
+
+# Core implementation with explicit 'drop' control.
+fn set_index(df: DataFrame, col: String, drop: Bool) -> DataFrame:
     var idx = _find_col(df, col)
+
     var out = DataFrame()
-
-    # prepare containers
     out.col_names = List[String]()
-    out.cols = List[Column]()
+    out.cols      = List[Column]()
 
-    # count number of columns
+    # Copy columns; optionally drop the index source column if found.
     var n_cols = 0
     for _ in df.col_names:
         n_cols += 1
 
     var c = 0
     while c < n_cols:
-        if c != idx:
+        var keep = True
+        if drop and c == idx:
+            keep = False
+        if keep:
             out.col_names.append(String(df.col_names[c]))
-            # copy Column by value (Column is Copyable/Movable)
             out.cols.append(df.cols[c].copy())
         c += 1
 
-    # set index metadata
+    # Keep legacy name list in sync
+    out.names = List[String]()
+    var k = 0
+    while k < len(out.col_names):
+        out.names.append(String(out.col_names[k]))
+        k += 1
+
+    # Fill index metadata
     out.index_name = String(col)
     out.index_vals = List[String]()
 
     if idx >= 0:
-        var n_rows_in_idx = df.cols[idx].len()   # use Column.len()
-        var r2 = 0
-        while r2 < n_rows_in_idx:
-            out.index_vals.append(df.cols[idx].get_string(r2))
-            r2 += 1
+        var n_rows_in_idx = df.cols[idx].len()
+        var r = 0
+        while r < n_rows_in_idx:
+            out.index_vals.append(df.cols[idx].get_string(r))
+            r += 1
     else:
-        # if index column not found, infer number of rows from first column (if any)
-        var n_cols2 = 0
-        for _ in df.cols:
-            n_cols2 += 1
-        var n = 0
-        if n_cols2 > 0:
-            n = df.cols[0].len()
+        # If the column is not found, synthesize a 0..N-1 index from the first column's length
+        var n_rows = 0
+        if n_cols > 0:
+            n_rows = df.cols[0].len()
         var i = 0
-        while i < n:
+        while i < n_rows:
             out.index_vals.append(String(i))
             i += 1
 
     return out.copy()
-
 
 fn reset_index(df: DataFrame) -> DataFrame:
     var out = DataFrame()
@@ -1819,55 +1992,10 @@ fn _to_pairs_all(df: DataFrame) -> List[Tuple[String, List[String]]]:
         i += 1
     return out
 
-fn _to_pairs_select(df: DataFrame, cols: List[String]) -> List[Tuple[String, List[String]]]:
-    if len(cols) == 0:
-        return _to_pairs_all(df)
-    var keep = Dict[String, Int]()
-    var i = 0
-    while i < len(cols):
-        keep[cols[i]] = 1
-        i += 1
-    var out = List[Tuple[String, List[String]]]()
-    i = 0
-    while i < len(df.col_names):
-        var name = df.col_names[i]
-        var take = False
-        if name in keep: take = True
-        if take:
-            var vals = List[String]()
-            var r = 0
-            while r < df.nrows():
-                vals.append(String(df.cols[i][r]))
-                r += 1
-            out.append((name, vals))
-        i += 1
-    return out
 
-# dtypes noop (no raises)
-fn _apply_dtypes(df: DataFrame, dtypes: Dict[String, String]) -> DataFrame:
-    if len(dtypes) == 0: return df
-# no conversion in this build; just rebuild pairs
-    return _df_from_pairs(_to_pairs_all(df))
 
-# CSV API
-fn read_csv(path: Path, usecols: List[String] = List[String](), dtypes: Dict[String, String] = Dict[String, String]()) -> DataFrame:
-    var base = _read_csv_file(String(path))
-    if len(usecols) > 0:
-        base = _df_from_pairs(_to_pairs_select(base, usecols))
-    if len(dtypes) > 0:
-        base = _apply_dtypes(base, dtypes)
-    return base
 
-fn read_csv_string(text: String, usecols: List[String] = List[String](), dtypes: Dict[String, String] = Dict[String, String]()) -> DataFrame:
-    var base = _read_csv_text(text)
-    if len(usecols) > 0:
-        base = _df_from_pairs(_to_pairs_select(base, usecols))
-    if len(dtypes) > 0:
-        base = _apply_dtypes(base, dtypes)
-    return base
 
-fn write_csv(frame: DataFrame, path: Path, index: Bool = False) -> Bool:
-    return _write_csv_file(frame, String(path))
 
 # JSON writer (safe concatenation; no char literals)
 fn _q() -> String:
@@ -2114,7 +2242,7 @@ fn rolling_mean(xs: List[Float64], win: Int) -> List[Float64]
         i += 1
     return out
 
-    
+
 fn rolling_abs(xs: List[Float64], win: Int) -> List[Float64]
 # rolling mean of absolute values
     var n = len(xs)
