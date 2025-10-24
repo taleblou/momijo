@@ -29,7 +29,8 @@ from momijo.dataframe.series_bool import append
 from math import sqrt
 from collections import Dict, List
 
-
+# Aggregations covered:
+# mean, sum, min, max, count, std, var, median, first, last, any, all
 struct Agg(Copyable, Movable):
     var tag: Int
 
@@ -39,13 +40,156 @@ struct Agg(Copyable, Movable):
     fn __copyinit__(out self, other: Self):
         self.tag = other.tag
 
+    # -------------------- private tag ids (via static funcs; no globals) --------------------
+    @staticmethod
+    fn _tag_mean() -> Int:   return 0
+    @staticmethod
+    fn _tag_sum() -> Int:    return 1
+    @staticmethod
+    fn _tag_min() -> Int:    return 2
+    @staticmethod
+    fn _tag_max() -> Int:    return 3
+    @staticmethod
+    fn _tag_count() -> Int:  return 4
+    @staticmethod
+    fn _tag_std() -> Int:    return 5
+    @staticmethod
+    fn _tag_var() -> Int:    return 6
+    @staticmethod
+    fn _tag_median() -> Int: return 7
+    @staticmethod
+    fn _tag_first() -> Int:  return 8
+    @staticmethod
+    fn _tag_last() -> Int:   return 9
+    @staticmethod
+    fn _tag_any() -> Int:    return 10
+    @staticmethod
+    fn _tag_all() -> Int:    return 11
+
+    # -------------------- factories --------------------
     @staticmethod
     fn mean() -> Self:
-        var a = Agg(0)
+        var a = Agg(Agg._tag_mean())
         return a.copy()
 
-    fn is_mean(self) -> Bool:
-        return self.tag == 0
+    @staticmethod
+    fn sum() -> Self:
+        var a = Agg(Agg._tag_sum())
+        return a.copy()
+
+    @staticmethod
+    fn min() -> Self:
+        var a = Agg(Agg._tag_min())
+        return a.copy()
+
+    @staticmethod
+    fn max_() -> Self:
+        var a = Agg(Agg._tag_max())
+        return a.copy()
+
+    @staticmethod
+    fn count() -> Self:
+        var a = Agg(Agg._tag_count())
+        return a.copy()
+
+    @staticmethod
+    fn std() -> Self:
+        var a = Agg(Agg._tag_std())
+        return a.copy()
+
+    @staticmethod
+    fn var_() -> Self:
+        var a = Agg(Agg._tag_var())
+        return a.copy()
+
+    @staticmethod
+    fn median() -> Self:
+        var a = Agg(Agg._tag_median())
+        return a.copy()
+
+    @staticmethod
+    fn first() -> Self:
+        var a = Agg(Agg._tag_first())
+        return a.copy()
+
+    @staticmethod
+    fn last() -> Self:
+        var a = Agg(Agg._tag_last())
+        return a.copy()
+
+    @staticmethod
+    fn any() -> Self:
+        var a = Agg(Agg._tag_any())
+        return a.copy()
+
+    @staticmethod
+    fn all() -> Self:
+        var a = Agg(Agg._tag_all())
+        return a.copy()
+
+    # -------------------- predicates --------------------
+    fn is_mean(self) -> Bool:   return self.tag == Agg._tag_mean()
+    fn is_sum(self) -> Bool:    return self.tag == Agg._tag_sum()
+    fn is_min(self) -> Bool:    return self.tag == Agg._tag_min()
+    fn is_max(self) -> Bool:    return self.tag == Agg._tag_max()
+    fn is_count(self) -> Bool:  return self.tag == Agg._tag_count()
+    fn is_std(self) -> Bool:    return self.tag == Agg._tag_std()
+    fn is_var(self) -> Bool:    return self.tag == Agg._tag_var()
+    fn is_median(self) -> Bool: return self.tag == Agg._tag_median()
+    fn is_first(self) -> Bool:  return self.tag == Agg._tag_first()
+    fn is_last(self) -> Bool:   return self.tag == Agg._tag_last()
+    fn is_any(self) -> Bool:    return self.tag == Agg._tag_any()
+    fn is_all(self) -> Bool:    return self.tag == Agg._tag_all()
+
+    # -------------------- helpers --------------------
+    fn name(self) -> String:
+        if self.is_mean():   return String("mean")
+        if self.is_sum():    return String("sum")
+        if self.is_min():    return String("min")
+        if self.is_max():    return String("max")
+        if self.is_count():  return String("count")
+        if self.is_std():    return String("std")
+        if self.is_var():    return String("var")
+        if self.is_median(): return String("median")
+        if self.is_first():  return String("first")
+        if self.is_last():   return String("last")
+        if self.is_any():    return String("any")
+        if self.is_all():    return String("all")
+        return String("unknown")
+
+    @staticmethod
+    fn parse(name: String) -> Self:
+        # Accept common aliases in lowercase
+        var n = name.lower()
+        if n == "mean" or n == "avg" or n == "average":
+            return Agg.mean()
+        if n == "sum" or n == "total":
+            return Agg.sum()
+        if n == "min" or n == "minimum":
+            return Agg.min()
+        if n == "max" or n == "maximum":
+            return Agg.max_()
+        if n == "count" or n == "size" or n == "len":
+            return Agg.count()
+        if n == "std" or n == "stdev" or n == "stddev":
+            return Agg.std()
+        if n == "var" or n == "variance":
+            return Agg.var_()
+        if n == "median" or n == "p50":
+            return Agg.median()
+        if n == "first" or n == "head":
+            return Agg.first()
+        if n == "last" or n == "tail":
+            return Agg.last()
+        if n == "any":
+            return Agg.any()
+        if n == "all":
+            return Agg.all()
+        var a = Agg(-1)
+        return a.copy()
+
+    fn __str__(self) -> String:
+        return self.name()
 # ------------------------ Utilities ------------------------
 
 fn _col_index(df: DataFrame, name: String) -> Int:
@@ -1157,3 +1301,195 @@ fn pivot_table(frame: DataFrame,
         k += 1
     var out = df_from_pairs(pairs)
     return out
+
+
+@always_inline
+fn _fill_or_empty(fill_value: Optional[String]) -> String:
+    if fill_value is None:
+        return String("")
+    return fill_value.value()
+
+fn pivot_table(frame: DataFrame,
+               index: String,
+               columns: String,
+               values: String,
+               agg: Agg,
+               margins: Bool,
+               margins_name: String,
+               fill_value: Optional[String] = None) -> DataFrame:
+    var idx_i = _find_col_index(frame, index)
+    var col_i = _find_col_index(frame, columns)
+    var val_i = _find_col_index(frame, values)
+    if idx_i < 0 or col_i < 0 or val_i < 0:
+        return frame.copy()
+
+    var rows_unique = List[String]()
+    var cols_unique = List[String]()
+
+    var n = frame.nrows()
+    var r = 0
+    while r < n:
+        var rv = String(frame.cols[idx_i].get_string(r))
+        var cv = String(frame.cols[col_i].get_string(r))
+        var seen_r = False
+        var i = 0
+        while i < len(rows_unique):
+            if rows_unique[i] == rv:
+                seen_r = True
+                break
+            i += 1
+        if not seen_r:
+            rows_unique.append(rv)
+
+        var seen_c = False
+        var j = 0
+        while j < len(cols_unique):
+            if cols_unique[j] == cv:
+                seen_c = True
+                break
+            j += 1
+        if not seen_c:
+            cols_unique.append(cv)
+        r += 1
+
+    var sums = List[List[Float64]]()
+    var counts = List[List[Int]]()
+    var i2 = 0
+    while i2 < len(rows_unique):
+        var row_s = List[Float64]()
+        var row_c = List[Int]()
+        var j2 = 0
+        while j2 < len(cols_unique):
+            row_s.append(0.0)
+            row_c.append(0)
+            j2 += 1
+        sums.append(row_s.copy())
+        counts.append(row_c.copy())
+        i2 += 1
+
+    var rr = 0
+    while rr < n:
+        var rv = String(frame.cols[idx_i].get_string(rr))
+        var cv = String(frame.cols[col_i].get_string(rr))
+        var vv = String(frame.cols[val_i].get_string(rr))
+
+        var rpos = 0
+        while rpos < len(rows_unique) and rows_unique[rpos] != rv:
+            rpos += 1
+        var cpos = 0
+        while cpos < len(cols_unique) and cols_unique[cpos] != cv:
+            cpos += 1
+
+        if rpos < len(rows_unique) and cpos < len(cols_unique):
+            var fopt = _try_f64(vv)
+            if not (fopt is None):
+                sums[rpos][cpos] = sums[rpos][cpos] + fopt.value()
+                counts[rpos][cpos] = counts[rpos][cpos] + 1
+        rr += 1
+
+    var out_names = List[String]()
+    var out_cols = List[List[String]]()
+
+    out_names.append(index)
+    out_cols.append(List[String]())
+
+    var cj = 0
+    while cj < len(cols_unique):
+        out_names.append(cols_unique[cj])
+        out_cols.append(List[String]())
+        cj += 1
+
+    if margins:
+        out_names.append(margins_name)
+        out_cols.append(List[String]())
+
+    var ri = 0
+    while ri < len(rows_unique):
+        out_cols[0].append(rows_unique[ri])
+
+        var row_sum = 0.0
+        var row_cnt = 0
+
+        var cj2 = 0
+        while cj2 < len(cols_unique):
+            var mstr = String("")
+            if counts[ri][cj2] > 0:
+                # NOTE: current behavior = mean; extend with 'agg' later if needed
+                var m = sums[ri][cj2] / Float64(counts[ri][cj2])
+                mstr = String(m)
+                row_sum = row_sum + sums[ri][cj2]
+                row_cnt = row_cnt + counts[ri][cj2]
+            else:
+                mstr = _fill_or_empty(fill_value)
+            out_cols[1 + cj2].append(mstr)
+            cj2 += 1
+
+        if margins:
+            var rmean = String("")
+            if row_cnt > 0:
+                rmean = String(row_sum / Float64(row_cnt))
+            else:
+                rmean = _fill_or_empty(fill_value)
+            out_cols[1 + len(cols_unique)].append(rmean)
+
+        ri += 1
+
+    if margins:
+        out_cols[0].append(margins_name)
+
+        var col_idx = 0
+        while col_idx < len(cols_unique):
+            var col_sum = 0.0
+            var col_cnt = 0
+            var rx = 0
+            while rx < len(rows_unique):
+                col_sum = col_sum + sums[rx][col_idx]
+                col_cnt = col_cnt + counts[rx][col_idx]
+                rx += 1
+            var cmean = String("")
+            if col_cnt > 0:
+                cmean = String(col_sum / Float64(col_cnt))
+            else:
+                cmean = _fill_or_empty(fill_value)
+            out_cols[1 + col_idx].append(cmean)
+            col_idx += 1
+
+        var all_sum = 0.0
+        var all_cnt = 0
+        var rx2 = 0
+        while rx2 < len(rows_unique):
+            var cx2 = 0
+            while cx2 < len(cols_unique):
+                all_sum = all_sum + sums[rx2][cx2]
+                all_cnt = all_cnt + counts[rx2][cx2]
+                cx2 += 1
+            rx2 += 1
+        var all_mean = String("")
+        if all_cnt > 0:
+            all_mean = String(all_sum / Float64(all_cnt))
+        else:
+            all_mean = _fill_or_empty(fill_value)
+        out_cols[1 + len(cols_unique)].append(all_mean)
+
+    var pairs = make_pairs()
+    var k = 0
+    while k < len(out_names):
+        pairs = pairs_append(pairs, out_names[k], out_cols[k])
+        k += 1
+    var out = df_from_pairs(pairs)
+    return out
+
+
+fn pivot_table(frame: DataFrame,
+               index: List[String],
+               columns: List[String],
+               values: String,
+               agg: Agg,
+               fill_value: Optional[String] = None,
+               margins: Bool = False,
+               margins_name: String = String("Total")) -> DataFrame:
+    var idx = String("")
+    if len(index) > 0: idx = index[0]
+    var cols = String("")
+    if len(columns) > 0: cols = columns[0]
+    return pivot_table(frame, idx, cols, values, agg, margins, margins_name, fill_value)
