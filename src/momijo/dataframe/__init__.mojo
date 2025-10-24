@@ -44,7 +44,7 @@ from momijo.dataframe.api import df_from_columns as df_from_columns
 from momijo.dataframe.api import df_shape as df_shape
 from momijo.dataframe.api import df_dtypes as df_dtypes
 from momijo.dataframe.api import DType,int32,int64,bool,float32,float64,string
-from momijo.dataframe.api import Series,Index,ToDataFrame,df_describe,range,date_range,range_f64,ToDataFrameNullable
+from momijo.dataframe.api import Series,Index,ToDataFrame,df_describe,range,date_range,range_f64,ToDataFrameNullable,Series_from_strings
 
 # from momijo.dataframe.api import to_category
 
@@ -141,7 +141,7 @@ from momijo.dataframe.string_ops import str_replace_regex
 
 
 
-from momijo.dataframe.join import merge,Join
+from momijo.dataframe.join import merge,Join,AsOf,merge_asof
 
  
 
@@ -155,3 +155,5 @@ from momijo.dataframe.io_json_min import write_json as to_json
 from momijo.dataframe.io_json_min import write_json as to_json_lines
 from momijo.dataframe.io_json_min import read_json as read_json_lines
 
+
+from momijo.dataframe.multiindex import MultiIndex
