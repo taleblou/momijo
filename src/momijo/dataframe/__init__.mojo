@@ -25,10 +25,12 @@ from momijo.dataframe.column import Value,set_col_strings,col_from_list_with_tag
 from momijo.dataframe.column import make_broadcast_col_by_name,make_broadcast_col_by_pos
 
 from momijo.dataframe.utils import compute_stats as _compute_stats
+from momijo.dataframe.utils import rolling_mean_f64,rolling_sum_f64,rolling_std_f64,expanding_mean_f64,ewm_var_f64,ewm_mean_f64,ewm_mean_f64_span,ewm_var_f64_span
 
 from momijo.dataframe.datetime_ops import datetime_year as datetime_year
 from momijo.dataframe.datetime_ops import datetime_year_df
 from momijo.dataframe._groupby_core import groupby_transform as groupby_transform
+from momijo.dataframe._groupby_core import Agg,pivot_table
 # ---- Core types ----
 from momijo.dataframe.frame import DataFrame as DataFrame
 
@@ -42,7 +44,7 @@ from momijo.dataframe.api import df_from_columns as df_from_columns
 from momijo.dataframe.api import df_shape as df_shape
 from momijo.dataframe.api import df_dtypes as df_dtypes
 from momijo.dataframe.api import DType,int32,int64,bool,float32,float64,string
-from momijo.dataframe.api import Series,Index,ToDataFrame,df_describe,range,date_range
+from momijo.dataframe.api import Series,Index,ToDataFrame,df_describe,range,date_range,range_f64,ToDataFrameNullable
 
 # from momijo.dataframe.api import to_category
 
@@ -86,8 +88,7 @@ from momijo.dataframe.api import df_rename as _df_rename
 # Returns a List[String] to be used with assign(...).
 
 from momijo.dataframe.string_ops import col_str_concat as col_str_concat
-from momijo.dataframe.series_str import df_label_where
-from momijo.dataframe.api import pivot_table
+from momijo.dataframe.series_str import df_label_where 
 from momijo.dataframe.api import make_pairs
 
 from momijo.dataframe.series import series_index
