@@ -288,7 +288,7 @@ struct Column(Copyable, Movable):
             out.from_bool(self.b.take(idxs))
         else:
             out.from_str(self.s.take(idxs))
-        return out
+        return out.copy()
 
     fn gather(self, mask: Bitmap) -> Column:
         var out = Column()
@@ -300,7 +300,7 @@ struct Column(Copyable, Movable):
             out.from_bool(self.b.gather(mask))
         else:
             out.from_str(self.s.gather(mask))
-        return out
+        return out.copy()
 
     # ---------------- Column setters ---------------- 
 
