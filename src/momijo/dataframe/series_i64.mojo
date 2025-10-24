@@ -124,8 +124,8 @@ struct SeriesI64(Copyable, Movable):
                 _ = out_valid.set(len(out_data) - 1, False)
             i += 1
         var out = SeriesI64(out_data, self.name)
-        out.valid = out_valid
-        return out
+        out.valid = out_valid.copy()
+        return out.copy()
 
     fn gather(self, mask: Bitmap) -> SeriesI64:
         var out_data = List[Int]()
@@ -138,8 +138,8 @@ struct SeriesI64(Copyable, Movable):
                 _ = out_valid.set(len(out_data) - 1, self.valid.get(i))
             i += 1
         var out = SeriesI64(out_data, self.name)
-        out.valid = out_valid
-        return out
+        out.valid = out_valid.copy()
+        return out.copy()
 
     # Aggregations
     fn count_valid(self) -> Int:
