@@ -1142,15 +1142,14 @@ fn outer_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> 
 
     return df_make(col_names, cols)
 
+ 
 
 
-
-# [moved] merge
 fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> DataFrame:
-# Left-join only. 'how' is ignored for now.
+    # Left-join only. 'how' is ignored for now.
     var keys = on.copy()
 
-# map key columns to indices in both frames
+    # Map key columns to indices in both frames
     var lk = List[Int]()
     var rk = List[Int]()
     var i = 0
@@ -1159,7 +1158,7 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
         rk.append(_find_col_idx(right, keys[i]))
         i += 1
 
-# ---- Build right index: parallel arrays (keys -> list of row ids) ----
+    # ---- Build right index: parallel arrays (keys -> list of row ids) ----
     var rkeys  = List[String]()
     var rlists = List[List[Int]]()
 
@@ -1174,7 +1173,7 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
             key += s
             j += 1
 
-# linear search (no Dict → no may-raise)
+        # Linear search (no Dict to avoid may-raise)
         var pos = -1
         var t = 0
         while t < len(rkeys):
@@ -1193,7 +1192,7 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
 
         rrow += 1
 
-# ---- Output schema: left columns + right non-key columns ----
+    # ---- Output schema: left columns + right non-key columns ----
     var out_names = List[String]()
     i = 0
     while i < left.ncols():
@@ -1215,23 +1214,23 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
             out_names.append(right.col_names[i])
         i += 1
 
-# allocate output columns
+    # Allocate output columns
     var out_vals = List[List[String]]()
     i = 0
     while i < len(out_names):
         out_vals.append(List[String]())
         i += 1
 
-# ---- Populate rows (left-join: take first match; else NA="") ----
+    # ---- Populate rows (left-join: take first match; else NA="") ----
     var r2 = 0
     while r2 < left.nrows():
-# append left columns
+        # Append left columns
         i = 0
         while i < left.ncols():
             out_vals[i].append(left.cols[i][r2])
             i += 1
 
-# build left key
+        # Build left composite key
         var key2 = String("")
         var j3 = 0
         while j3 < len(lk):
@@ -1241,7 +1240,7 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
             key2 += s2
             j3 += 1
 
-# find in right index
+        # Find in right index
         var pos2 = -1
         var t2 = 0
         while t2 < len(rkeys):
@@ -1250,7 +1249,7 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
                 break
             t2 += 1
 
-# append right non-key columns
+        # Append right non-key columns
         var offset = left.ncols()
         var rn = 0
         while rn < len(right_nonkey):
@@ -1259,16 +1258,165 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
                 var rr = rlists[pos2][0]                # first match
                 out_vals[offset].append(right.cols[rc][rr])
             else:
-                out_vals[offset].append(String(""))      # NA for left-join miss
+                out_vals[offset].append(String(""))     # NA for left-join miss
             offset += 1
             rn += 1
 
         r2 += 1
 
-# Build DataFrame (reuse left index)
+    # Build DataFrame (reuse left index)
     return DataFrame(out_names, out_vals, left.index_vals, left.index_name)
 
 
+
+
+ 
+struct AsOf:
+    var backward: Int
+    var forward: Int
+    var nearest: Int
+    fn __init__(out self):
+        self.backward = 0
+        self.forward = 1
+        self.nearest = 2
+
+fn _mid_lex(a: String, b: String) -> String:
+    # var i = 0
+    # var la = len(a)
+    # var lb = len(b)
+    # var lm = la
+    # if lb < lm:
+    #     lm = lb
+    # while i < lm and a[i] == b[i]:
+    #     i += 1
+    # if i == lm:
+    #     if la < lb:
+    #         return b
+    #     else:
+    #         return a
+    # var ch_a = a[i]
+    # var ch_b = b[i]
+    # var ch = ch_a
+    # if ch_b > ch_a:
+    #     ch = ch_b
+    # var out = String("")
+    # var j = 0
+    # while j < i:
+    #     out = out + String(a[j])
+    #     j += 1
+    # out = out + String(ch)
+    return "out"
+
+fn merge_asof(left: DataFrame, right: DataFrame, on: String, direction: Int) -> DataFrame:
+    var lkey = left.find_col(on)
+    var rkey = right.find_col(on)
+    if lkey < 0 or rkey < 0:
+        return left.copy()
+
+    var nL = left.nrows()
+    var nR = right.nrows()
+
+    var r_keep_idx = List[Int]()
+    var r_keep_names = List[String]()
+    var c = 0
+    while c < right.ncols():
+        if c != rkey:
+            r_keep_idx.append(c)
+            r_keep_names.append(right.col_names[c])
+        c += 1
+
+    var r_keys = List[String]()
+    r_keys.reserve(nR)
+    var i = 0
+    while i < nR:
+        r_keys.append(right.cols[rkey].get_string(i))
+        i += 1
+
+    var out_names = List[String]()
+    var out_vals_cols = List[List[String]]()
+
+    var lc = 0
+    while lc < left.ncols():
+        out_names.append(left.col_names[lc])
+        var buf = List[String]()
+        buf.reserve(nL)
+        out_vals_cols.append(buf.copy())
+        lc += 1
+
+    var rk = 0
+    while rk < len(r_keep_idx):
+        out_names.append(r_keep_names[rk])
+        var buf2 = List[String]()
+        buf2.reserve(nL)
+        out_vals_cols.append(buf2.copy())
+        rk += 1
+
+    var rpos = 0
+    var rpos_prev = -1
+    var rpos_next = 0
+
+    var lr = 0
+    while lr < nL:
+        var lk = left.cols[lkey].get_string(lr)
+        var match_idx = -1
+
+        if direction == AsOf().backward:
+            while rpos < nR and r_keys[rpos] <= lk:
+                rpos += 1
+            match_idx = rpos - 1
+        elif direction == AsOf().forward:
+            while rpos < nR and r_keys[rpos] < lk:
+                rpos += 1
+            if rpos < nR:
+                match_idx = rpos
+            else:
+                match_idx = -1
+        else:
+            while rpos_next < nR and r_keys[rpos_next] < lk:
+                rpos_next += 1
+            rpos_prev = rpos_next - 1
+
+            var has_prev = (rpos_prev >= 0)
+            var has_next = (rpos_next < nR)
+
+            if has_prev and has_next:
+                var pk = r_keys[rpos_prev]
+                var nk = r_keys[rpos_next]
+                if lk == pk:
+                    match_idx = rpos_prev
+                elif lk == nk:
+                    match_idx = rpos_next
+                else:
+                    var left_span_smaller = (lk <= _mid_lex(pk, nk))
+                    if left_span_smaller:
+                        match_idx = rpos_prev
+                    else:
+                        match_idx = rpos_next
+            elif has_prev:
+                match_idx = rpos_prev
+            elif has_next:
+                match_idx = rpos_next
+            else:
+                match_idx = -1
+
+        var lc2 = 0
+        while lc2 < left.ncols():
+            out_vals_cols[lc2].append(left.cols[lc2].get_string(lr))
+            lc2 += 1
+
+        var base = left.ncols()
+        var rk2 = 0
+        while rk2 < len(r_keep_idx):
+            if match_idx >= 0:
+                out_vals_cols[base + rk2].append(right.cols[r_keep_idx[rk2]].get_string(match_idx))
+            else:
+                out_vals_cols[base + rk2].append(String(""))
+            rk2 += 1
+
+        lr += 1
+
+    var idx_vals = List[String]()
+    return DataFrame(out_names.copy(), out_vals_cols.copy(), idx_vals.copy(), String(""))
 
 
 
