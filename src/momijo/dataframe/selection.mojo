@@ -393,18 +393,25 @@ fn loc_impl_indices(df: DataFrame, row_idxs: List[Int], cols: List[String]) -> D
 
     return out
  
-
+ 
 # boolean mask to filter rows
-struct Mask:
+struct Mask(Copyable, Movable):
     var vals: List[Bool]
+
     fn __init__(out self):
         self.vals = List[Bool]()
+
     fn __copyinit__(out self, other: Mask):
         self.vals = List[Bool]()
         var i = 0
         while i < len(other.vals):
             self.vals.append(other.vals[i])
             i += 1
+ 
+  
+
+
+
 # Logical AND of two masks (length = min(len(a), len(b)))
 fn mask_and(a: Mask, b: Mask) -> Mask:
     var out = Mask()
@@ -418,7 +425,7 @@ fn mask_and(a: Mask, b: Mask) -> Mask:
     while i < L:
         out.vals.append(a.vals[i] and b.vals[i])
         i += 1
-    return out
+    return out.copy()
 
 
 # Filter rows of a DataFrame using a boolean mask.
@@ -482,12 +489,84 @@ fn filter_rows(df: DataFrame, mask: List[Bool]) -> DataFrame:
 
     return out
 
+
+# Helper: extract ASCII/UTF-8 bytes for simple [0-9 + -] parsing
+@always_inline
+fn ascii_at(s: String, i: Int) -> UInt8: 
+    return UInt8(ord(s[i]))
+
+@always_inline
+fn ascii_bytes(s: String) -> List[UInt8]:
+    var out = List[UInt8]()
+    var i = 0
+    var n = len(s)
+    while i < n:
+        out.append(ascii_at(s, i))
+        i += 1
+    return out.copy()
+
 # Build mask: column >= value (numeric compare; non-parsable → False)
+@always_inline
+fn code_at(s: String, i: Int) -> Int:
+    return ord(s[i])
+
+@always_inline
+fn is_space_code(c: Int) -> Bool:
+    return c == 32 or c == 9 or c == 10 or c == 13
+
+@always_inline
+fn is_digit_code(c: Int) -> Bool:
+    var z0 = ord("0")
+    var z9 = ord("9")
+    return c >= z0 and c <= z9
+
+fn try_parse_int_strict(s: String) -> Optional[Int]:
+    var n = len(s)
+    var i = 0
+
+    while i < n and is_space_code(code_at(s, i)):
+        i += 1
+    if i >= n:
+        var none: Optional[Int] = None
+        return none
+
+    var sign = 1
+    var c0 = code_at(s, i)
+    if c0 == ord("+") or c0 == ord("-"):
+        if c0 == ord("-"):
+            sign = -1
+        i += 1
+        if i >= n:
+            var none2: Optional[Int] = None
+            return none2
+
+    var acc = 0
+    var nd = 0
+    while i < n and is_digit_code(code_at(s, i)):
+        acc = acc * 10 + (code_at(s, i) - ord("0"))
+        i += 1
+        nd += 1
+
+    if nd == 0:
+        var none3: Optional[Int] = None
+        return none3
+
+    while i < n and is_space_code(code_at(s, i)):
+        i += 1
+
+    if i != n:
+        var none4: Optional[Int] = None
+        return none4
+
+    var res: Optional[Int] = None
+    res = acc * sign
+    return res
+
+
 fn col_ge(df: DataFrame, name: String, value: Int) -> Mask:
     var out = Mask()
     out.vals = List[Bool]()
 
-    # Resolve column index by name
     var j = 0
     var ncols = len(df.col_names)
     while j < ncols and df.col_names[j] != name:
@@ -495,64 +574,25 @@ fn col_ge(df: DataFrame, name: String, value: Int) -> Mask:
 
     var nrows = df.nrows()
 
-    # If column not found → all False (proper length)
     if j >= ncols:
         var r0 = 0
         while r0 < nrows:
             out.vals.append(False)
             r0 += 1
-        return out
+        return out.copy()
 
-    # ASCII constants
-    var ZERO:  UInt8 = UInt8(48)  # '0'
-    var NINE:  UInt8 = UInt8(57)  # '9'
-    var MINUS: UInt8 = UInt8(45)  # '-'
-    var PLUS:  UInt8 = UInt8(43)  # '+'
-
-    # Row-wise parse and compare
     var r = 0
     while r < nrows:
-        # Read cell as string
         var s = String(df.cols[j].get_string(r))
-        var bs = s.bytes()
-        var n = len(bs)
-
-        # Default = invalid
-        var bad = (n == 0)
-        var sign = 1
-        var i = 0
-
-        # Optional leading sign
-        if (not bad) and (bs[0] == MINUS or bs[0] == PLUS):
-            if n == 1:
-                bad = True
-            else:
-                if bs[0] == MINUS:
-                    sign = -1
-                else:
-                    sign = 1
-                i = 1
-
-        # Parse decimal integer
-        var acc = 0
-        while (not bad) and (i < n):
-            var ch = bs[i]
-            if (ch < ZERO) or (ch > NINE):
-                bad = True
-                break
-            # acc = acc * 10 + (ch - '0')
-            acc = acc * 10 + (Int(ch) - Int(ZERO))
-            i += 1
-
-        if not bad:
-            acc = acc * sign
-            out.vals.append(acc >= value)
-        else:
+        var parsed = try_parse_int_strict(s)
+        if parsed is None:
             out.vals.append(False)
-
+        else:
+            out.vals.append(parsed.value() >= value)
         r += 1
 
-    return out
+    return out.copy()
+
 
 # Build mask: column string value is in a given set of strings
 fn col_isin(df: DataFrame, name: String, values: List[String]) -> Mask:
@@ -573,7 +613,7 @@ fn col_isin(df: DataFrame, name: String, values: List[String]) -> Mask:
         while r0 < nrows:
             out.vals.append(False)
             r0 += 1
-        return out
+        return out.copy()
 
     # membership check
     var r = 0
@@ -592,7 +632,7 @@ fn col_isin(df: DataFrame, name: String, values: List[String]) -> Mask:
         out.vals.append(found)
         r += 1
 
-    return out
+    return out.copy()
 
 
 # where: return only rows where mask is True
