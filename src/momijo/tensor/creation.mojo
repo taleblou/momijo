@@ -178,6 +178,10 @@ fn zeros[T: ImplicitlyCopyable & Copyable & Movable](
 # ------------------------------ dtype-specific ------------------------------
 
 @always_inline
+fn zeros(shape: List[Int]) -> Tensor[Float64]:
+    return zeros_with_shape[Float64](shape, to_f64_from_f64)
+
+@always_inline
 fn zeros_f64(shape: List[Int]) -> Tensor[Float64]:
     return zeros_with_shape[Float64](shape, to_f64_from_f64)
 
@@ -188,6 +192,16 @@ fn zeros_f32(shape: List[Int]) -> Tensor[Float32]:
 @always_inline
 fn zeros_int(shape: List[Int]) -> Tensor[Int]:
     return zeros_with_shape[Int](shape, to_int_from_f64)
+@always_inline
+fn zeros_u8(shape: List[Int]) -> Tensor[UInt8]:
+    return zeros_with_shape[UInt8](shape, to_u8_from_f64)
+
+@always_inline
+fn zeros_i8(shape: List[Int]) -> Tensor[Int8]:
+    return zeros_with_shape[Int8](shape, to_i8_from_f64)
+@always_inline
+fn zeros_i32(shape: List[Int]) -> Tensor[Int32]:
+    return zeros_with_shape[Int32](shape, to_i32_from_f64)
 
 # ------------------------------ like-helpers ------------------------------
 
@@ -262,6 +276,10 @@ fn ones_with_shape[T: ImplicitlyCopyable & Copyable & Movable](
     var one_t = from_f64(1.0)
     return full[T](shape, one_t)
 
+@always_inline
+fn ones(shape: List[Int]) -> Tensor[Float64]:
+    return ones_with_shape[Float64](shape, to_f64_from_f64)
+    
 @always_inline
 fn ones_f64(shape: List[Int]) -> Tensor[Float64]:
     return ones_with_shape[Float64](shape, to_f64_from_f64)
@@ -581,7 +599,14 @@ fn randn_with_shape[T: ImplicitlyCopyable & Copyable & Movable](
     # Tensor constructor is (shape: List[Int], flat: List[T]) in your code
     return Tensor[T](shape, out)
 
+
+
 # Convenience overloads by dtype (Tensor-based)
+@always_inline
+fn randn(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
+    var tmp = Tensor[Float64](shape.copy(), Float64(0))  # (shape, fill)
+    return randn_like_with[Float64](tmp, to_f64_from_f64, seed)
+
 @always_inline
 fn randn(x: Tensor[Float64], seed: Optional[Int] = None) -> Tensor[Float64]:
     return randn_like_with[Float64](x, to_f64_from_f64, seed)
