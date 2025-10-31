@@ -563,7 +563,7 @@ fn round_t(x: Tensor[Int]) -> Tensor[Float64]:
 
 # -------- SIGN (op 14) --------
 @always_inline
-fn sign_t(x: Tensor[Float64]) -> Tensor[Float64]:
+fn sign_t(x: Tensor[Float64]) -> Tensor[Float64]: 
     return apply_unary(x, 14)
 @always_inline
 fn sign_t(x: Tensor[Float32]) -> Tensor[Float64]:
