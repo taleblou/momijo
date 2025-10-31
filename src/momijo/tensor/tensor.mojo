@@ -14,7 +14,7 @@
 # Repository:   https://github.com/taleblou/momijo
 #
 # License:      MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT 
 # Notes:
 #   - var-only; no asserts.
 #   - No wildcard imports.
@@ -930,14 +930,23 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         # Full axis: start=0, stop=dim will be normalized later per-axis
         return make_slice_sel((0, 0, 1))  # stop will be filled from axis dim
 
-    @always_inline
-    fn take(self, js: List[Int]) -> IndexSel:
-        return make_fancy_sel(js)
+    # @always_inline
+    # fn take(self, js: List[Int]) -> IndexSel:
+    #     return make_fancy_sel(js)
     
+    # @always_inline
+    # fn take(self, js: Tensor[Int]) -> IndexSel:
+    #     ls=js.to_list()
+    #     return make_fancy_sel(ls)
+
     @always_inline
-    fn take(self, js: Tensor[Int]) -> IndexSel:
-        ls=js.to_list()
-        return make_fancy_sel(ls)
+    fn take(self, js: List[Int], axis: Int = 0) -> Tensor[T]:
+        return take(self, js, axis)
+
+    @always_inline
+    fn take(self, js: Tensor[Int], axis: Int = 0) -> Tensor[T]:
+        return take(self, js, axis)
+
 
 
     # Normalize a slice selector against dim and (possibly) negative step.
@@ -2676,6 +2685,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
          
     fn transpose(self, i: Int, j: Int) -> Tensor[T]: return transpose(self, i, j)
     fn transpose(self, perm: List[Int]) -> Tensor[T]:  return transpose(self, perm)
+    fn transpose(self) -> Tensor[T]:  return transpose(self)
 
     fn flatten(self, start_dim: Int = 0,    end_dim_opt: Optional[Int] = None) -> Tensor[T]:
         return flatten(self,start_dim,    end_dim_opt)
@@ -3772,6 +3782,283 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return abs_t(self)
 
  
+
+
+    # =========================
+    # Elementwise sin overloads
+    # =========================
+
+    @always_inline
+    fn sin(self: Tensor[Int]) -> Tensor[Float64]: 
+        return sin_t(self)
+
+    @always_inline
+    fn sin(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return sin_t(self)
+
+    @always_inline
+    fn sin(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return sin_t(self)
+
+
+
+    # =========================
+    # Elementwise cos overloads
+    # =========================
+
+    @always_inline
+    fn cos(self: Tensor[Int]) -> Tensor[Float64]: 
+        return cos_t(self)
+
+    @always_inline
+    fn cos(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return cos_t(self)
+
+    @always_inline
+    fn cos(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return cos_t(self)
+
+
+
+    # =========================
+    # Elementwise tan overloads
+    # =========================
+
+    @always_inline
+    fn tan(self: Tensor[Int]) -> Tensor[Float64]: 
+        return tan_t(self)
+
+    @always_inline
+    fn tan(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return tan_t(self)
+
+    @always_inline
+    fn tan(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return tan_t(self)
+
+
+
+    # =========================
+    # Elementwise relu overloads
+    # =========================
+
+    @always_inline
+    fn relu(self: Tensor[Int]) -> Tensor[Float64]: 
+        return relu_t(self)
+
+    @always_inline
+    fn relu(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return relu_t(self)
+
+    @always_inline
+    fn relu(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return relu_t(self)
+
+
+
+    # =========================
+    # Elementwise expm1 overloads
+    # =========================
+
+    @always_inline
+    fn expm1(self: Tensor[Int]) -> Tensor[Float64]: 
+        return expm1_t(self)
+
+    @always_inline
+    fn expm1(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return expm1_t(self)
+
+    @always_inline
+    fn expm1(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return expm1_t(self)
+
+
+
+    # =========================
+    # Elementwise log1p overloads
+    # =========================
+
+    @always_inline
+    fn log1p(self: Tensor[Int]) -> Tensor[Float64]: 
+        return log1p_t(self)
+
+    @always_inline
+    fn log1p(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return log1p_t(self)
+
+    @always_inline
+    fn log1p(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return log1p_t(self)
+
+
+    # =========================
+    # Elementwise floor overloads
+    # =========================
+
+    @always_inline
+    fn floor(self: Tensor[Int]) -> Tensor[Float64]: 
+        return floor_t(self)
+
+    @always_inline
+    fn floor(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return floor_t(self)
+
+    @always_inline
+    fn floor(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return floor_t(self)
+
+ 
+    # =========================
+    # Elementwise ceil overloads
+    # =========================
+
+    @always_inline
+    fn ceil(self: Tensor[Int]) -> Tensor[Float64]: 
+        return ceil_t(self)
+
+    @always_inline
+    fn ceil(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return ceil_t(self)
+
+    @always_inline
+    fn ceil(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return ceil_t(self)
+
+ 
+    # =========================
+    # Elementwise round overloads
+    # =========================
+
+    @always_inline
+    fn round(self: Tensor[Int]) -> Tensor[Float64]: 
+        return round_t(self)
+
+    @always_inline
+    fn round(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return round_t(self)
+
+    @always_inline
+    fn round(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return round_t(self)
+
+ 
+    # =========================
+    # Elementwise sign overloads
+    # =========================
+
+    @always_inline
+    fn sign(self: Tensor[Int]) -> Tensor[Float64]: 
+        return sign_t(self)
+
+    @always_inline
+    fn sign(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return sign_t(self)
+
+    @always_inline
+    fn sign(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return sign_t(self)
+
+ 
+    # =========================
+    # Elementwise sigmoid overloads
+    # =========================
+
+    @always_inline
+    fn sigmoid(self: Tensor[Int]) -> Tensor[Float64]: 
+        return sigmoid_t(self)
+
+    @always_inline
+    fn sigmoid(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return sigmoid_t(self)
+
+    @always_inline
+    fn sigmoid(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return sigmoid_t(self)
+
+ 
+    # =========================
+    # Elementwise tanh overloads
+    # =========================
+
+    @always_inline
+    fn tanh(self: Tensor[Int]) -> Tensor[Float64]: 
+        return tanh_t(self)
+
+    @always_inline
+    fn tanh(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return tanh_t(self)
+
+    @always_inline
+    fn tanh(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return tanh_t(self)
+
+ 
+    # =========================
+    # Elementwise silu overloads
+    # =========================
+
+    @always_inline
+    fn silu(self: Tensor[Int]) -> Tensor[Float64]: 
+        return silu_t(self)
+
+    @always_inline
+    fn silu(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return silu_t(self)
+
+    @always_inline
+    fn silu(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return silu_t(self)
+
+ 
+    # =========================
+    # Elementwise gelu overloads
+    # =========================
+
+    @always_inline
+    fn gelu(self: Tensor[Int]) -> Tensor[Float64]: 
+        return gelu_t(self)
+
+    @always_inline
+    fn gelu(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return gelu_t(self)
+
+    @always_inline
+    fn gelu(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return gelu_t(self)
+
+ 
+    # =========================
+    # Elementwise elu overloads
+    # =========================
+
+    @always_inline
+    fn elu(self: Tensor[Int]) -> Tensor[Float64]: 
+        return elu_t(self)
+
+    @always_inline
+    fn elu(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return elu_t(self)
+
+    @always_inline
+    fn elu(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return elu_t(self)
+
+    # =========================
+    # Elementwise selu overloads
+    # =========================
+
+    @always_inline
+    fn selu(self: Tensor[Int]) -> Tensor[Float64]: 
+        return selu_t(self)
+
+    @always_inline
+    fn selu(self: Tensor[Float64]) -> Tensor[Float64]: 
+        return selu_t(self)
+
+    @always_inline
+    fn selu(self: Tensor[Float32]) -> Tensor[Float64]: 
+        return selu_t(self)
+
      
    # Any / All / Count for Float64
     fn any(self: Tensor[Float64]) -> Bool:
