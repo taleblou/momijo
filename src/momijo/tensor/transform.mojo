@@ -1381,21 +1381,65 @@ fn view_reshape_strides_if_contiguous(
 # Strict reshape: size must match. Returns a view when C-contiguous; otherwise
 # materializes a contiguous buffer and updates header.
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Reshape with single -1 inference:
+# - Preserves total size; if exactly one -1 is present, infer it.
+# - If x is row-major contiguous → header-only view; else materialize contiguous.
+# - On any invalid request (multiple -1, bad product, negative dims other than -1),
+#   returns x.copy() as a safe fallback.
+# -----------------------------------------------------------------------------
 fn reshape[T: ImplicitlyCopyable & Copyable & Movable](
-    x: Tensor[T], new_shape: List[Int]
+    x: Tensor[T], new_shape_in: List[Int]
 ) -> Tensor[T]:
-    # Size must be preserved
+    # Copy and sanitize target shape; handle one optional -1
+    var new_shape = new_shape_in.copy()
+
+    var neg_count = 0
+    var neg_idx = -1
+    var prod_known = 1
+    var i = 0
+    while i < len(new_shape):
+        var d = new_shape[i]
+        if d == -1:
+            neg_count += 1
+            neg_idx = i
+        else:
+            if d < 0:
+                # invalid negative dim (other than -1)
+                return x.copy()
+            # allow zero dims; they contribute 0 to product if any exists
+            prod_known *= d
+        i += 1
+
     var n_old = numel(x._shape)
+
+    # Infer -1 if exactly one present
+    if neg_count == 1:
+        # Guard: prod_known must divide n_old
+        if prod_known == 0:
+            # If any non -1 dim is zero, only valid if n_old == 0
+            if n_old != 0:
+                return x.copy()
+            # n_old==0 ⇒ replace -1 with 0
+            new_shape[neg_idx] = 0
+        else:
+            if n_old % prod_known != 0:
+                return x.copy()
+            new_shape[neg_idx] = n_old // prod_known
+    elif neg_count > 1:
+        return x.copy()
+
+    # Final size check
     var n_new = numel(new_shape)
     if n_old != n_new:
         return x.copy()
 
-    # View path: if source is row-major contiguous, build a header-only view
+    # View path: header-only if row-major contiguous
     if is_row_major_contiguous(x._shape, x._strides):
         var st = compute_row_major_strides(new_shape)
         return Tensor[T](x._data, new_shape, st, x._offset)
 
-    # Fallback: materialize contiguous, then update header
+    # Fallback: materialize contiguous then retag header
     var c = contiguous(x)
     var st2 = compute_row_major_strides(new_shape)
     return Tensor[T](c._data, new_shape, st2, 0)
@@ -2079,6 +2123,13 @@ fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], i: Int, j
 @always_inline
 fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], perm: List[Int]) -> Tensor[T]: 
     return x.permute(perm)
+
+@always_inline
+fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
+    var r = len(x._shape)
+    if r <= 1:
+        return x.copy() 
+    return transpose(x, r - 2, r - 1)
 
 @always_inline
 fn _norm_axis_safe_inclusive(ax: Int, rank: Int) -> Int:
