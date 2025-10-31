@@ -124,20 +124,20 @@ fn reserve_len(mut xs: List[Int], n: Int) -> None:
         xs.append(0)
         i += 1
 
-@always_inline
-fn zeros(n: Int) -> List[Int]:
-    var xs = List[Int]()
-    xs.reserve(n)
-    var i = 0
-    var lim = (n // 8) * 8
-    while i < lim:
-        xs.append(0); xs.append(0); xs.append(0); xs.append(0)
-        xs.append(0); xs.append(0); xs.append(0); xs.append(0)
-        i += 8
-    while i < n:
-        xs.append(0)
-        i += 1
-    return xs
+# @always_inline
+# fn zeros(n: Int) -> List[Int]:
+#     var xs = List[Int]()
+#     xs.reserve(n)
+#     var i = 0
+#     var lim = (n // 8) * 8
+#     while i < lim:
+#         xs.append(0); xs.append(0); xs.append(0); xs.append(0)
+#         xs.append(0); xs.append(0); xs.append(0); xs.append(0)
+#         i += 8
+#     while i < n:
+#         xs.append(0)
+#         i += 1
+#     return xs.copy()
 
 # Generic fast copy (unified for all T).
 @always_inline
