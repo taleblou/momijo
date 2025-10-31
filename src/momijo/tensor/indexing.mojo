@@ -496,40 +496,6 @@ fn tail[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T], n: Int) -> Ten
 # Take / Gather
 # -----------------------------------------------------------------------------
 
-fn take1d[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T], indices: List[Int]) -> Tensor[T]:
-    var shp = t._shape
-    var n0 = 0
-    if len(shp) > 0:
-        n0 = shp[0]
-    var out = Tensor[T](shape=[len(indices)], fill=zero_scalar_of[T](cast_from_f64[T]))
-    if n0 <= 0:
-        return out.copy()
-    var s0 = t._strides[0]
-    var i = 0
-    var lim = (len(indices) // 8) * 8
-    while i < lim:
-        var i0 = clamp(indices[i + 0], 0, n0 - 1)
-        var i1 = clamp(indices[i + 1], 0, n0 - 1)
-        var i2 = clamp(indices[i + 2], 0, n0 - 1)
-        var i3 = clamp(indices[i + 3], 0, n0 - 1)
-        var i4 = clamp(indices[i + 4], 0, n0 - 1)
-        var i5 = clamp(indices[i + 5], 0, n0 - 1)
-        var i6 = clamp(indices[i + 6], 0, n0 - 1)
-        var i7 = clamp(indices[i + 7], 0, n0 - 1)
-        out._data[i + 0] = t._data[i0 * s0]
-        out._data[i + 1] = t._data[i1 * s0]
-        out._data[i + 2] = t._data[i2 * s0]
-        out._data[i + 3] = t._data[i3 * s0]
-        out._data[i + 4] = t._data[i4 * s0]
-        out._data[i + 5] = t._data[i5 * s0]
-        out._data[i + 6] = t._data[i6 * s0]
-        out._data[i + 7] = t._data[i7 * s0]
-        i += 8
-    while i < len(indices):
-        var idx = clamp(indices[i], 0, n0 - 1)
-        out._data[i] = t._data[idx * s0]
-        i += 1
-    return out.copy()
 
  
 # Gather along a given axis, preserving other dimensions.
@@ -749,10 +715,47 @@ fn setitem[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], idx: In
         d += 1
     x._data[off] = v
 
-fn item[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> T:
+
+@always_inline
+fn item(x: Tensor[Float64]) -> Float64:
     var n = numel(x._shape)
     if n == 0:
-        return zero_scalar_of[T](cast_from_f64[T])
+        return 0.0
+    return x._data[0]
+
+@always_inline
+fn item(x: Tensor[Float32]) -> Float32:
+    var n = numel(x._shape)
+    if n == 0:
+        return Float32(0.0)
+    return x._data[0]
+
+@always_inline
+fn item(x: Tensor[Int]) -> Int:
+    var n = numel(x._shape)
+    if n == 0:
+        return 0
+    return x._data[0]
+
+@always_inline
+fn item(x: Tensor[Int32]) -> Int32:
+    var n = numel(x._shape)
+    if n == 0:
+        return Int32(0)
+    return x._data[0]
+
+@always_inline
+fn item(x: Tensor[Int16]) -> Int16:
+    var n = numel(x._shape)
+    if n == 0:
+        return Int16(0)
+    return x._data[0]
+
+@always_inline
+fn item(x: Tensor[Bool]) -> Bool:
+    var n = numel(x._shape)
+    if n == 0:
+        return False
     return x._data[0]
 
 fn at[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], i: Int, j: Int) -> T:
@@ -1331,7 +1334,56 @@ fn where(cond: Tensor[Int], x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
 # -----------------------------------------------------------------------------
 # Take / Take-along / Scatter / gather_nd / scatter_nd
 # -----------------------------------------------------------------------------
+# take1d: gather along axis 0 for a rank>=1 tensor, returning 1D tensor
+# NOTE: use positional ctor (shape, fill). Respect x._off and out._off.
+# ---------------------------------------------------------------------
+fn take1d[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T], indices: List[Int]) -> Tensor[T]:
+    var shp = t._shape
+    var n0 = 0
+    if len(shp) > 0:
+        n0 = shp[0]
 
+    # shape = [len(indices)]
+    var out_shape = List[Int]()
+    out_shape.append(len(indices))
+
+    var out = Tensor[T](out_shape.copy(), zero_scalar_of[T](cast_from_f64[T]))
+    if n0 <= 0:
+        return out.copy()
+
+    var s0 = t._strides[0]
+    var i = 0
+    var lim = (len(indices) // 8) * 8
+    while i < lim:
+        var i0 = clamp(indices[i + 0], 0, n0 - 1)
+        var i1 = clamp(indices[i + 1], 0, n0 - 1)
+        var i2 = clamp(indices[i + 2], 0, n0 - 1)
+        var i3 = clamp(indices[i + 3], 0, n0 - 1)
+        var i4 = clamp(indices[i + 4], 0, n0 - 1)
+        var i5 = clamp(indices[i + 5], 0, n0 - 1)
+        var i6 = clamp(indices[i + 6], 0, n0 - 1)
+        var i7 = clamp(indices[i + 7], 0, n0 - 1)
+
+        out._data[out._off + i + 0] = t._data[t._off + i0 * s0]
+        out._data[out._off + i + 1] = t._data[t._off + i1 * s0]
+        out._data[out._off + i + 2] = t._data[t._off + i2 * s0]
+        out._data[out._off + i + 3] = t._data[t._off + i3 * s0]
+        out._data[out._off + i + 4] = t._data[t._off + i4 * s0]
+        out._data[out._off + i + 5] = t._data[t._off + i5 * s0]
+        out._data[out._off + i + 6] = t._data[t._off + i6 * s0]
+        out._data[out._off + i + 7] = t._data[t._off + i7 * s0]
+        i += 8
+    while i < len(indices):
+        var idx = clamp(indices[i], 0, n0 - 1)
+        out._data[out._off + i] = t._data[t._off + idx * s0]
+        i += 1
+    return out.copy()
+
+# ---------------------------------------------------------------------
+# take: gather with Tensor[Int] indices along an arbitrary axis (copy)
+# Uses your existing helpers: _row_major_multipliers / _coords_from_linear / _offset_from_coords
+# Renamed normalize_axis -> normalize_axis, and fixed _off usage and constructors.
+# ---------------------------------------------------------------------
 @always_inline
 fn take[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], indices: Tensor[Int], axis: Int = 0
@@ -1343,12 +1395,26 @@ fn take[T: ImplicitlyCopyable & Copyable & Movable](
     var out_shape = x._shape.copy()
     out_shape[ax] = idx_len
 
-    var out = Tensor[T](shape=out_shape, fill=zero_scalar_of[T](cast_from_f64[T]))
-    if numel(out_shape) == 0:
-        return out.copy()
+    # num elements
+    var n = numel(out_shape)
+    if n == 0:
+        # بساز با data خالی
+        var empty = List[T]()
+        return Tensor[T](empty, out_shape.copy()).copy()
+
+    # flat buffer with dummy init copied from x
+    var flat = List[T]()
+    flat.reserve(n)
+    var init_val = x._data[x._offset]          # از دادهٔ موجود می‌گیریم
+    var ii = 0
+    while ii < n:
+        flat.append(init_val)
+        ii += 1
+
+    # out tensor from (data, shape)
+    var out = Tensor[T](flat.copy(), out_shape.copy())
 
     var rm_out = _row_major_multipliers(out_shape)
-    var n = numel(out_shape)
 
     var pre = ax
     var post = r - ax - 1
@@ -1358,41 +1424,72 @@ fn take[T: ImplicitlyCopyable & Copyable & Movable](
         var ocoord = _coords_from_linear(out_shape, rm_out, lin)
 
         var k = indices._data[indices._offset + ocoord[ax]]
-        if k < 0:
-            k = k + x._shape[ax]
-        if k < 0:
-            k = 0
+        if k < 0: k = k + x._shape[ax]
+        if k < 0: k = 0
         var mx = x._shape[ax] - 1
-        if k > mx:
-            k = mx
+        if k > mx: k = mx
 
         var xcoord = List[Int]()
         xcoord.reserve(r)
 
         var d = 0
         while d < pre:
-            xcoord.append(ocoord[d]); d += 1
+            xcoord.append(ocoord[d])
+            d += 1
         xcoord.append(k)
         var e = 0
         while e < post:
-            xcoord.append(ocoord[pre + 1 + e]); e += 1
+            xcoord.append(ocoord[pre + 1 + e])
+            e += 1
 
         var xoff = _offset_from_coords(x._strides, x._offset, xcoord)
         out._data[out._offset + lin] = x._data[xoff]
         lin += 1
     return out.copy()
 
+
+@always_inline
+fn take[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T], indices: List[Int], axis: Int = 0
+) -> Tensor[T]:
+    # shape of the index tensor: [len(indices)]
+    var ish = List[Int](); ish.append(len(indices))
+
+    # flat data for indices tensor
+    var id_flat = List[Int]()
+    id_flat.reserve(len(indices))
+    var i = 0
+    while i < len(indices):
+        id_flat.append(indices[i])
+        i += 1
+
+    # 1D contiguous strides and zero offset → disambiguates ctor
+    var strides = List[Int](); strides.append(1)
+    var idx = Tensor[Int](id_flat.copy(), ish.copy(), strides.copy(), 0)
+
+    return take(x, idx, axis)
+
+
+# ---------------------------------------------------------------------
+# take_along_axis: shape of indices matches output; gather per element along axis
+# Fixed: constructors (no keyword), offsets (_off), stride math intact.
+# ---------------------------------------------------------------------
 fn take_along_axis[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], indices: Tensor[Int], axis: Int) -> Tensor[T]:
     var ax = normalize_axis(axis, len(x._shape))
     var sh = x._shape.copy()
     var sh_idx = indices._shape
-    var out_shape = sh
+
+    var out_shape = sh.copy()
     out_shape[ax] = sh_idx[ax]
-    var out = Tensor[T](shape=out_shape, fill=zero_scalar_of[T](cast_from_f64[T]))
+
+    var out = Tensor[T](out_shape.copy(), zero_scalar_of[T](cast_from_f64[T]))
+
     var total = numel(out_shape)
     var rm = compute_row_major_strides(out_shape)
+
     var i = 0
     while i < total:
+        # decode linear i to coords idxs[]
         var idxs = List[Int]()
         idxs.reserve(len(out_shape))
         var d = 0
@@ -1403,24 +1500,35 @@ fn take_along_axis[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], ind
                 s = (i // stride) % out_shape[d]
             idxs.append(s)
             d += 1
-        var off_idx = 0
+
+        # offset inside indices
+        var off_idx = indices._off
         var dd = 0
         while dd < len(sh):
             off_idx = off_idx + idxs[dd] * indices._strides[dd]
             dd += 1
+
+        # clamp selected position along axis
         var gather_i = clamp(indices._data[off_idx], 0, sh[ax] - 1)
+
+        # build src index (same as idxs but axis replaced by gather_i)
         var src_idxs = idxs
         src_idxs[ax] = gather_i
-        var offx = 0
-        var offo = 0
+
+        # compute linear offsets for x and out
+        var offx = x._off
+        var offo = out._off
         var d2 = 0
         while d2 < len(sh):
             offx = offx + src_idxs[d2] * x._strides[d2]
             offo = offo + idxs[d2] * out._strides[d2]
             d2 += 1
+
         out._data[offo] = x._data[offx]
         i += 1
     return out.copy()
+
+
 
 @always_inline
 fn scatter[T: ImplicitlyCopyable & Copyable & Movable](
