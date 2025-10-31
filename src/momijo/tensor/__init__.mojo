@@ -12,7 +12,7 @@
 #   - Re-exports transforms (pad/fliplr/flipud/sliding_window)
 #   - Re-exports math reductions (mean)
 #   - Re-exports selected indexing/printing helpers
-#
+# 
 # Notes:
 #   - No wildcard imports.
 #   - English-only comments.
@@ -35,8 +35,8 @@ from momijo.tensor.dtype import itemsize_for_code  # if needed by callers
 # If your codebase currently provides only *_f64 variants, expose ergonomic names:
 from momijo.tensor.creation import linspace_int,linspace_f64,linspace_f32
 from momijo.tensor.creation import arange_int,arange_f64,arange_f32
-from momijo.tensor.creation import zeros_int,zeros_f64 ,zeros_f32
-from momijo.tensor.creation import ones_int,ones_f64,ones_f32
+from momijo.tensor.creation import zeros,zeros_int,zeros_f64 ,zeros_f32 ,zeros_u8,zeros_i8,zeros_i32
+from momijo.tensor.creation import ones,ones_int,ones_f64,ones_f32,ones_like
 from momijo.tensor.creation import full,empty,empty_f32,empty_f64
 from momijo.tensor.creation import eye_int,eye_f64,eye_f32
 from momijo.tensor.creation import randperm_int,randperm_f64,randperm_f32
@@ -66,9 +66,12 @@ from momijo.tensor.transform import fliplr
 from momijo.tensor.transform import flipud
 from momijo.tensor.transform import sliding_window
 from momijo.tensor.transform import sliding_window_step
+from momijo.tensor.transform import transpose
 
 # ----------------------------- Math / Reductions ------------------------------
 from momijo.tensor.math import mean
+
+from momijo.tensor.math import and_t,complex,complex_abs,complex_real,complex_imag,mean
 # If you later expose sum/min/max generics, re-export them here similarly:
 # from momijo.tensor.math import sum,analytic_jacobian,numeric_jacobian,f_vec
 # from momijo.tensor.math import min
@@ -114,10 +117,9 @@ from momijo.tensor.io import save_npz_f64
 # from momijo.tensor.io import load_csv
 
 from momijo.tensor.helpers import write_plane
-from momijo.tensor.math import and_t,complex,complex_abs,complex_real,complex_imag
 
 
-from momijo.tensor.broadcast import broadcast_to
+from momijo.tensor.broadcast import broadcast_to,matmul
 
 
 from momijo.tensor.transform import reshape,reshape_infer,resize_like_with_pad,reshape_like
@@ -138,3 +140,6 @@ from momijo.tensor.io import (
     write_xml_f32, read_xml_f32,
     write_xml_int, read_xml_int,
 )
+
+
+from momijo.tensor.autograd import GradContext, GradTensor, no_grad_begin, no_grad_end
