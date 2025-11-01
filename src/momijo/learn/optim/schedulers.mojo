@@ -221,7 +221,7 @@ struct MultiStepLR:
         # milestones should be strictly increasing non-negative
         var i = 0
         var prev = -1
-        while i < Int(milestones.size()):
+        while i < len(milestones):
             var m = milestones[i]
             assert(m >= 0)
             assert(m > prev)
@@ -239,7 +239,7 @@ struct MultiStepLR:
     fn _compute_lr(self, epoch: Int) -> Float64:
         var count = 0
         var i = 0
-        while i < Int(self.milestones.size()):
+        while i < len(self.milestones):
             if epoch >= self.milestones[i]:
                 count = count + 1
             i = i + 1
@@ -270,7 +270,7 @@ struct MultiStepLR:
         var s = String("{'type':'MultiStepLR'")
         s = s + ",'base_lr':" + String(self.base_lr)
         s = s + ",'gamma':" + String(self.gamma)
-        s = s + ",'milestones':" + String(Int(self.milestones.size()))
+        s = s + ",'milestones':" + String(len(self.milestones))
         s = s + ",'last_epoch':" + String(self.last_epoch)
         s = s + ",'current_lr':" + String(self.current_lr) + "}"
         return s
@@ -644,7 +644,7 @@ struct ChainedLR:
     var current_lr: Float64
 
     fn __init__(out self, schedulers: List[CosineAnnealingLR], spans: List[Int]):
-        assert(Int(schedulers.size()) == Int(spans.size()))
+        assert(len(schedulers) == len(spans))
         self.schedulers = schedulers
         self.spans = spans
         self.last_epoch = -1
@@ -657,7 +657,7 @@ struct ChainedLR:
         # returns (which, local_t)
         var acc = 0
         var i = 0
-        while i < Int(self.spans.size()):
+        while i < len(self.spans):
             var sp = self.spans[i]
             if sp < 0:
                 return (i, t - acc)
@@ -666,7 +666,7 @@ struct ChainedLR:
             acc = acc + sp
             i = i + 1
         # beyond all spans -> clamp to last
-        var last = Int(self.spans.size()) - 1
+        var last = len(self.spans) - 1
         return (last, self.spans[last] - 1)
 
     fn step(mut self) -> Float64:
@@ -693,7 +693,7 @@ struct ChainedLR:
 
     fn load_state_dict(mut self, state: String):
         self.last_epoch = -1
-        if Int(self.schedulers.size()) > 0:
+        if len(self.schedulers) > 0:
             self.current_lr = self.schedulers[0].get_lr()
 
 # -----------------------------------------------------------------------------
