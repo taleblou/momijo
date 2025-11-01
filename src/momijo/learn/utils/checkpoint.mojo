@@ -1,22 +1,96 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project:      Momijo
-# Module:       learn.utils.checkpoint
-# File:         src/momijo/learn/utils/checkpoint.mojo
-#
-# Description:
-#   Checkpoint utilities for Momijo Learn.
-#   Stable header+payload layout:
-#     - <base>.json       : header (JSON)
-#     - <base>.state.json : model state (JSON, by model contract)
-#     - <base>.bin        : reserved for future Float32 blob
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
+# Project: momijo
+# File: src/momijo/learn/utils/checkpoint.mojo
+# Description: Stateless checkpoint (Linear-only) -> (header JSON string, flat blob).
+
+from momijo.tensor import tensor
+from momijo.learn.api.sequential import Sequential
+from momijo.learn.nn.conv import Conv2d
 
 from pathlib.path import Path
 from collections.list import List
+
+fn make_checkpoint(net: Sequential) -> (String, tensor.Tensor[Float64]):
+    var count = 0; var i = 0
+    while i < net.len():
+        var m = net.get(i)
+        if m.tag == 0: count += m.linear.weight.numel() + m.linear.bias.numel()
+            elif m.tag == 7: count += m.conv2d.weight.numel() + m.conv2d.bias.numel()
+        i += 1
+    var flat = tensor.zeros([count])
+    var header = String("{\"params\":[")
+    i = 0; var k = 0
+    while i < net.len():
+        var m = net.get(i)
+        if m.tag == 0:
+            var W = m.linear.weight; var B = m.linear.bias
+            var nW = W.numel(); var nB = B.numel()
+            var j = 0
+            while j < nW: flat._data[k + j] = W._data[j]; j += 1
+            k += nW; j = 0
+            while j < nB: flat._data[k + j] = B._data[j]; j += 1
+            k += nB
+            var s = String("{\"type\":\"Linear\",\"w\":"+String(nW)+",\"b\":"+String(nB)+"}")
+            header = header + s
+            if i < net.len() - 1: header = header + ","
+        i += 1
+    header = header + "]}"
+    return (header, flat)
+
+fn apply_checkpoint(mut net: Sequential, header: String, blob: tensor.Tensor[Float64]) -> Bool:
+    var i = 0; var k = 0
+    while i < net.len():
+        var m = net.get(i)
+        if m.tag == 0:
+            var nW = m.linear.weight.numel(); var nB = m.linear.bias.numel()
+            var j = 0
+            while j < nW: m.linear.weight._data[j] = blob._data[k + j]; j += 1
+            k += nW; j = 0
+            while j < nB: m.linear.bias._data[j] = blob._data[k + j]; j += 1
+            k += nB
+            net.set(i, m)
+        i += 1
+    return True
+
+
+# Append Conv2d params as well
+i = 0
+while i < net.len():
+    var m = net.get(i)
+    if m.tag == 7:
+        var Wc = m.conv2d.weight; var Bc = m.conv2d.bias
+        var nWc = Wc.numel(); var nBc = Bc.numel()
+        var j2 = 0
+        while j2 < nWc: flat._data[k + j2] = Wc._data[j2]; j2 += 1
+        k += nWc; j2 = 0
+        while j2 < nBc: flat._data[k + j2] = Bc._data[j2]; j2 += 1
+        k += nBc
+    i += 1
+
+
+# Apply Conv2d
+i = 0; k = 0
+# Re-count Linear sizes to move k
+while i < net.len():
+    var t = net.get(i)
+    if t.tag == 0:
+        k += t.linear.weight.numel() + t.linear.bias.numel()
+    i += 1
+i = 0
+while i < net.len():
+    var m2 = net.get(i)
+    if m2.tag == 7:
+        var nWc = m2.conv2d.weight.numel(); var nBc = m2.conv2d.bias.numel()
+        var j3 = 0
+        while j3 < nWc: m2.conv2d.weight._data[j3] = blob._data[k + j3]; j3 += 1
+        k += nWc; j3 = 0
+        while j3 < nBc: m2.conv2d.bias._data[j3] = blob._data[k + j3]; j3 += 1
+        k += nBc
+        net.set(i, m2)
+    i += 1
+
+
 
 # ------------------------------------------------------------
 # Internal helpers (no-raise, defensive where possible)
