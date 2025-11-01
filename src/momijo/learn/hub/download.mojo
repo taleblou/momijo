@@ -117,7 +117,7 @@ fn _hex_of_u64(x: UInt64) -> String:
             n = n >> 4
         # reverse
         var i: Int = 0
-        var j: Int = Int(buf.size()) - 1
+        var j: Int = len(buf) - 1
         while i < j:
             var t = buf[i]
             buf[i] = buf[j]
@@ -126,7 +126,7 @@ fn _hex_of_u64(x: UInt64) -> String:
             j = j - 1
     var s = String("")
     var k: Int = 0
-    while k < Int(buf.size()):
+    while k < len(buf):
         s = s + _u8_to_string(buf[k])
         k = k + 1
     return s
@@ -135,7 +135,7 @@ fn _hex_of_bytes(bs: List[UInt8]) -> String:
     var digits = "0123456789abcdef"
     var out = String("")
     var i: Int = 0
-    while i < Int(bs.size()):
+    while i < Int(bs):
         var v = UInt8(bs[i])
         var hi = Int((v >> 4) & 0xF)
         var lo = Int(v & 0xF)
@@ -153,7 +153,7 @@ fn _fnv1a64(data: List[UInt8]) -> String:
     var hash: UInt64 = 0xcbf29ce484222325
     var prime: UInt64 = 0x100000001b3
     var i: Int = 0
-    while i < Int(data.size()):
+    while i < len(data):
         hash = hash ^ UInt64(data[i])
         hash = hash * prime
         i = i + 1
@@ -190,13 +190,13 @@ fn _sha256(data: List[UInt8]) -> String:
     # Padding
     var msg = List[UInt8]()
     var i: Int = 0
-    while i < Int(data.size()):
+    while i < len(data):
         msg.push_back(data[i])
         i = i + 1
     msg.push_back(UInt8(0x80))
-    while ((Int(msg.size()) % 64) != 56):
+    while ((len(msg) % 64) != 56):
         msg.push_back(UInt8(0x00))
-    var bit_len: UInt64 = UInt64(Int(data.size())) * UInt64(8)
+    var bit_len: UInt64 = UInt64(len(data)) * UInt64(8)
     var s: Int = 56
     while s >= 0:
         var b = UInt8((bit_len >> UInt64(s)) & UInt64(0xff))
@@ -205,7 +205,7 @@ fn _sha256(data: List[UInt8]) -> String:
 
     # Process chunks
     var chunk: Int = 0
-    while chunk < Int(msg.size()):
+    while chunk < len(msg):
         # message schedule
         var w = List[UInt32]()
         var t: Int = 0
@@ -280,10 +280,10 @@ fn _sha256(data: List[UInt8]) -> String:
 # -----------------------------------------------------------------------------
 
 fn _starts_with(s: String, prefix: String) -> Bool:
-    if Int(s.size()) < Int(prefix.size()):
+    if len(s) < len(prefix):
         return False
     var i: Int = 0
-    while i < Int(prefix.size()):
+    while i < len(prefix):
         if s[i] != prefix[i]:
             return False
         i = i + 1
@@ -293,16 +293,16 @@ fn _basename_from_url(url: String) -> String:
     var last = String("")
     var i: Int = 0
     var part = String("")
-    while i < Int(url.size()):
+    while i < len(url):
         var c = url[i]
         if c == '/':
-            if Int(part.size()) > 0:
+            if len(part) > 0:
                 last = part
             part = String("")
         else:
             part = part + _u8_to_string(UInt8(c))
         i = i + 1
-    if Int(part.size()) > 0:
+    if len(part) > 0:
         last = part
     return last
 
@@ -322,11 +322,11 @@ fn _download_http_to_file(url: String, tmp_path: Path, opts: DownloadOptions) ->
 # -----------------------------------------------------------------------------
 
 fn _verify_checksums(data: List[UInt8], opts: DownloadOptions) -> Bool:
-    if Int(opts.expected_fnv64.size()) > 0:
+    if len(opts.expected_fnv64) > 0:
         var got = _fnv1a64(data)
         if got != opts.expected_fnv64:
             return False
-    if Int(opts.expected_sha256.size()) > 0:
+    if len(opts.expected_sha256) > 0:
         var got2 = _sha256(data)
         if got2 != opts.expected_sha256:
             return False
@@ -346,7 +346,7 @@ fn cached_download(url: String, path: String, opts: DownloadOptions = DownloadOp
 
     # 1) Cache hit
     if _exists(dst):
-        if not (Int(opts.expected_fnv64.size()) > 0 or Int(opts.expected_sha256.size()) > 0):
+        if not (len(opts.expected_fnv64) > 0 or len(opts.expected_sha256) > 0):
             return dst
         var data = _read_bytes(dst)
         if _verify_checksums(data, opts):
