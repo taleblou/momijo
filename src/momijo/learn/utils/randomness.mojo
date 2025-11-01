@@ -163,40 +163,62 @@ struct RNG:
 
     # Uniform integers in [low, high) with rejection to avoid modulo bias
     fn randint(mut self, low: Int, high: Int) -> Int:
-        assert(high > low)
+        # guard: empty range ⇒ فقط low را برگردان
+        if high <= low:
+            return low
+
         var span_u = UInt64(high - low)
-        var threshold = UInt64(0) - (UInt64(0) % span_u)  # 2^64 % span
+        # max_u = 2^64-1  (wraparound با 0-1)
+        var max_u = UInt64(0) - UInt64(1)
+        # threshold = max_u - ((max_u + 1) % span_u)
+        # هر x <= threshold را می‌پذیریم تا بایاس تقسیم حذف شود
+        var threshold = max_u - ((max_u + UInt64(1)) % span_u)
+
         while True:
             var x = self.next_u64()
-            if x < threshold:
+            if x <= threshold:
                 return low + Int(x % span_u)
 
     # Uniform Float64 in [low, high)
     fn uniform(mut self, low: Float64 = 0.0, high: Float64 = 1.0) -> Float64:
-        assert(high > low)
+        # guard: اگر بازه نامعتبر بود، low را بده
+        if high <= low:
+            return low
         var r = self.next_f64_open01()
         return low + (high - low) * r
 
     # Standard normal via Box–Muller (with 1-sample cache)
     fn normal(mut self, mean: Float64 = 0.0, std: Float64 = 1.0) -> Float64:
-        assert(std >= 0.0)
+        # guard: واریانس منفی را هندل کن
+        if std < 0.0:
+            std = -std
+
         if self._has_gauss:
             self._has_gauss = False
             return mean + std * self._gauss
+
         var u1 = self.next_f64_open01()
         var u2 = self.next_f64_open01()
-        # guard u1>0
+
+        # guard: u1 باید >0 باشد
         if u1 <= 5e-324:
             u1 = 5e-324
-        # r = sqrt(-2 ln u1); theta = 2pi u2 ; but avoid pi constant dep: use tau≈6.283185307179586
+
+        # r = sqrt(-2 ln u1), theta = 2*pi*u2 (tau ≈ 6.283185307179586)
         var ln_u1 = _log_approx(u1)
         var r = _sqrt_approx(-2.0 * ln_u1)
         var tau = 6.283185307179586
-        var z0 = r * _cos_sin_combo(tau * u2, True)
-        var z1 = r * _cos_sin_combo(tau * u2, False)
+        var angle = tau * u2
+
+        # فرض بر این است که _cos_sin_combo(angle, True/False) موجود است:
+        # True ⇒ cos, False ⇒ sin (یا هر نگاشتی که شما تعریف کرده‌اید)
+        var z0 = r * _cos_sin_combo(angle, True)
+        var z1 = r * _cos_sin_combo(angle, False)
+
         self._gauss = z1
         self._has_gauss = True
         return mean + std * z0
+
 
     # Bernoulli(p)
     fn bernoulli(mut self, p: Float64) -> Int:
@@ -209,7 +231,7 @@ struct RNG:
 
     # Shuffle a list in-place (Fisher–Yates)
     fn shuffle[T: Copyable & Movable & ImplicitlyCopyable](mut self, xs: List[T]):
-        var n = Int(xs.size())
+        var n = len(xs)
         var i = n - 1
         while i > 0:
             var j = self.randint(0, i + 1)
@@ -228,22 +250,29 @@ struct RNG:
         self.shuffle(idx)
         return idx
 
-    # Choice without replacement from [0..n-1], k <= n
+   # Choice without replacement from [0..n-1], returns k unique indices. 
     fn choice_k(mut self, n: Int, k: Int) -> List[Int]:
-        assert(k >= 0)
-        assert(k <= n)
-        var idx = self.permutation(n)
         var out = List[Int]()
+        if n <= 0:           # هیچ آیتمی برای انتخاب نیست
+            return out
+        var kk = k
+        if kk < 0: kk = 0
+        if kk > n: kk = n
+
+        # فرض: self.permutation(n) یک لیست از 0..n-1 با ترتیب تصادفی می‌دهد.
+        var idx = self.permutation(n)
         var i = 0
-        while i < k:
-            out.push_back(idx[i])
+        while i < kk:
+            out.append(idx[i])
             i = i + 1
         return out
 
-    # Weighted choice (with replacement) over weights w[0..m-1]
+    # Weighted choice (with replacement) over weights w[0..m-1] 
     fn weighted_choice(mut self, weights: List[Float64]) -> Int:
-        var m = Int(weights.size())
-        assert(m > 0)
+        var m = len(weights)
+        if m <= 0:
+            return 0
+
         var sumw = 0.0
         var i = 0
         while i < m:
@@ -251,8 +280,10 @@ struct RNG:
             if w > 0.0:
                 sumw = sumw + w
             i = i + 1
+
         if sumw <= 0.0:
             return 0
+
         var r = self.uniform(0.0, sumw)
         var acc = 0.0
         i = 0
@@ -263,6 +294,7 @@ struct RNG:
                 if r <= acc:
                     return i
             i = i + 1
+ 
         return m - 1
 
 # -----------------------------------------------------------------------------
