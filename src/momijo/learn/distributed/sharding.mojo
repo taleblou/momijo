@@ -106,7 +106,7 @@ struct ZeroStage1:
     # Replace with tensor views/slices when wiring to momijo.tensor.
 
     fn shard_list(self, xs: List[Float64]) -> List[Float64]:
-        var n = Int(xs.size())
+        var n = len(xs)
         var sr = self.shard_index(n)
         var out = List[Float64]()
         var i = sr.start
@@ -116,7 +116,7 @@ struct ZeroStage1:
         return out
 
     fn shard_list_i32(self, xs: List[Int]) -> List[Int]:
-        var n = Int(xs.size())
+        var n = len(xs)
         var sr = self.shard_index(n)
         var out = List[Int]()
         var i = sr.start
@@ -132,7 +132,7 @@ struct ZeroStage1:
         var sr = self.shard_index(total_len)
         var j = 0
         var pos = sr.start
-        while pos < sr.end and j < Int(shard.size()):
+        while pos < sr.end and j < len(shard):
             full[pos] = shard[j]
             pos = pos + 1
             j = j + 1
@@ -144,7 +144,7 @@ struct ZeroStage1:
         var sr = self.shard_index(total_len)
         var j = 0
         var pos = sr.start
-        while pos < sr.end and j < Int(shard.size()):
+        while pos < sr.end and j < len(shard):
             full[pos] = shard[j]
             pos = pos + 1
             j = j + 1
