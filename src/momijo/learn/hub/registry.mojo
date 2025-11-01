@@ -30,11 +30,11 @@ struct _Registry:
         self.ctor_paths = List[String]()
 
     fn size(self) -> Int:
-        return self.names.size()
+        return len(self.names)
 
     fn _index_of(self, name: String) -> Int:
         var i = 0
-        var n = self.names.size()
+        var n = len(self.names)
         while i < n:
             if self.names[i] == name:
                 return i
@@ -87,7 +87,7 @@ fn list_models() -> List[String]:
     var reg = _registry()
     var out = List[String]()
     var i = 0
-    var n = reg.size()
+    var n = len(reg)
     while i < n:
         out.push_back(reg.names[i])
         i = i + 1
@@ -99,7 +99,7 @@ fn unregister_model(name: String) -> Bool:
     var idx = reg._index_of(name)
     if idx < 0:
         return False
-    var last = reg.size() - 1
+    var last = len(reg) - 1
     # Swap-with-last then pop (O(1))
     reg.names[idx] = reg.names[last]
     reg.ctor_paths[idx] = reg.ctor_paths[last]
@@ -110,7 +110,7 @@ fn unregister_model(name: String) -> Bool:
 # Clear the registry; returns number of entries removed.
 fn clear_registry() -> Int:
     var reg = _registry()
-    var n = reg.size()
+    var n = len(reg)
     reg.names = List[String]()
     reg.ctor_paths = List[String]()
     return n
@@ -121,7 +121,7 @@ fn dump_registry() -> (List[String], List[String]):
     var names_copy = List[String]()
     var paths_copy = List[String]()
     var i = 0
-    var n = reg.size()
+    var n = len(reg)
     while i < n:
         names_copy.push_back(reg.names[i])
         paths_copy.push_back(reg.ctor_paths[i])
