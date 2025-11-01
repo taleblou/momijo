@@ -41,12 +41,12 @@ struct EvalResult:
         s = s + String("samples=") + String(self.samples)
         s = s + String(", batches=") + String(self.batches)
         s = s + String(", loss_avg=") + String(self.loss_avg)
-        if self.metric_names.size() > 0:
+        if len(self.metric_names) > 0:
             s = s + String(", metrics={")
             var i = 0
-            while i < self.metric_names.size():
+            while i < len(self.metric_names):
                 s = s + self.metric_names[i] + String(":") + String(self.metric_avgs[i])
-                if i + 1 < self.metric_names.size():
+                if i + 1 < len(self.metric_names):
                     s = s + String(", ")
                 i = i + 1
             s = s + String("}")
@@ -75,7 +75,7 @@ struct _RunningStats:
         self.count = self.count + 1
         self.sum_loss = self.sum_loss + loss_val
         var i = 0
-        while i < self.metric_sums.size() and i < metric_vals.size():
+        while i < len(self.metric_sum) and i < len(metric_vals):
             self.metric_sums[i] = self.metric_sums[i] + metric_vals[i]
             i = i + 1
 
@@ -88,12 +88,12 @@ struct _RunningStats:
         var avgs = List[Float64]()
         if self.count == 0:
             var i = 0
-            while i < self.metric_sums.size():
+            while i < len(self.metric_sums):
                 avgs.push_back(0.0)
                 i = i + 1
             return avgs
         var i2 = 0
-        while i2 < self.metric_sums.size():
+        while i2 < len(self.metric_sums):
             avgs.push_back(self.metric_sums[i2] / Float64(self.count))
             i2 = i2 + 1
         return avgs
@@ -135,7 +135,7 @@ struct Evaluator:
     ) -> EvalResult:
 
         var n_batches = data_loader.__len__()
-        var n_metrics = Int(metric_fns.size())
+        var n_metrics = len(metric_fns)
         var stats = _RunningStats(n_metrics)
 
         var total_samples = 0
@@ -203,7 +203,7 @@ struct Evaluator:
         result.loss_avg = stats.loss_avg()
 
         var names = self.metric_names
-        if names.size() != n_metrics:
+        if len(names) != n_metrics:
             names = List[String]()
             var k = 0
             while k < n_metrics:
