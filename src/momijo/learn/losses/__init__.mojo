@@ -1,20 +1,7 @@
-    # Project:      Momijo
-    # Module:       learn.losses.__init__
-    # File:         losses/__init__.mojo
-    # Path:         src/momijo/learn/losses/__init__.mojo
-    #
-    # Description:  learn.losses.__init__ — Skeleton implementation for Momijo Learn high-level training API.
-    #               This file is part of the scaffolding that mirrors PyTorch and TensorFlow features.
-    #               Replace stubs with real logic progressively while keeping API stable.
-    #
-    # Author(s):    Morteza Taleblou & Mitra Daneshmand
-    # Website:      https://taleblou.ir/
-    # Repository:   https://github.com/taleblou/momijo
-    #
-    # License:      MIT License
-    # SPDX-License-Identifier: MIT
-    # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
-    #
-    # Notes:
-#   - Skeleton placeholders only
-#   - Replace with real logic incrementally
+# MIT License
+# SPDX-License-Identifier: MIT
+# Project: momijo
+# File: src/momijo/learn/losses/__init__.mojo
+# Description: Loss functions.
+
+from momijo.learn.losses.losses import softmax, log_softmax, softmax_cross_entropy, cross_entropy_from_logits, cross_entropy_from_probs, mse_loss
