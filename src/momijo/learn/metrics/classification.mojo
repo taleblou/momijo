@@ -40,7 +40,7 @@ fn argmax_index(xs: List[Float64]) -> Int:
     var best_idx = 0
     var best_val = Float64(-1.7976931348623157e308)  # ~-inf
     var i = 0
-    while i < Int(xs.size()):
+    while i < len(xs):
         var v = xs[i]
         if v > best_val:
             best_val = v
@@ -51,12 +51,12 @@ fn argmax_index(xs: List[Float64]) -> Int:
 fn _n_classes_from_labels(y_true: List[Int], y_pred: List[Int]) -> Int:
     var max_c = 0
     var i = 0
-    while i < Int(y_true.size()):
+    while i < len(y_true):
         if y_true[i] > max_c:
             max_c = y_true[i]
         i = i + 1
     i = 0
-    while i < Int(y_pred.size()):
+    while i < len(y_pred):
         if y_pred[i] > max_c:
             max_c = y_pred[i]
         i = i + 1
@@ -74,7 +74,7 @@ fn confusion_matrix_from_labels(y_pred: List[Int], y_true: List[Int], n_classes:
             c = c + 1
         cm.push_back(row)
         r = r + 1
-    var n = Int(y_true.size())
+    var n = len(y_true)
     var i = 0
     while i < n:
         var t = y_true[i]
@@ -90,8 +90,8 @@ fn confusion_matrix_from_labels(y_pred: List[Int], y_true: List[Int], n_classes:
 
 # Case 1: y_pred are already label indices (0..C-1)
 fn accuracy(y_pred: List[Int], y_true: List[Int]) -> Float64:
-    var n_true = Int(y_true.size())
-    var n_pred = Int(y_pred.size())
+    var n_true = len(y_true)
+    var n_pred = len(y_pred)
     if n_true == 0 or n_pred == 0 or n_true != n_pred:
         return 0.0
     var correct = 0
@@ -104,8 +104,8 @@ fn accuracy(y_pred: List[Int], y_true: List[Int]) -> Float64:
 
 # Case 2: y_pred are per-class scores (logits/probs); pick argmax
 fn accuracy(y_pred: List[List[Float64]], y_true: List[Int]) -> Float64:
-    var n = Int(y_true.size())
-    if n == 0 or n != Int(y_pred.size()):
+    var n = len(y_true)
+    if n == 0 or n != len(y_pred):
         return 0.0
     var preds = List[Int]()
     var i = 0
@@ -120,8 +120,8 @@ fn accuracy(y_pred: List[List[Float64]], y_true: List[Int]) -> Float64:
 
 # Binary F1 (y_pred are scores/probabilities for positive class; threshold->labels)
 fn f1_score_binary(y_pred: List[Float64], y_true: List[Int], threshold: Float64 = 0.5) -> Float64:
-    var n = Int(y_true.size())
-    if n == 0 or n != Int(y_pred.size()):
+    var n = len(y_true)
+    if n == 0 or n != len(y_pred):
         return 0.0
 
     var tp = 0
@@ -147,8 +147,8 @@ fn f1_score_binary(y_pred: List[Float64], y_true: List[Int], threshold: Float64 
 
 # Multiclass F1 macro (y_pred are label indices; requires n_classes)
 fn f1_score(y_pred: List[Int], y_true: List[Int], n_classes: Int) -> Float64:
-    var n = Int(y_true.size())
-    if n == 0 or n != Int(y_pred.size()):
+    var n = len(y_true)
+    if n == 0 or n != len(y_pred):
         return 0.0
     var cm = confusion_matrix_from_labels(y_pred, y_true, n_classes)
 
@@ -183,16 +183,16 @@ fn f1_score(y_pred: List[Int], y_true: List[Int], n_classes: Int) -> Float64:
 
 # Convenience overload: when n_classes is not provided, infer from labels
 fn f1_score(y_pred: List[Int], y_true: List[Int]) -> Float64:
-    var n = Int(y_true.size())
-    if n == 0 or n != Int(y_pred.size()):
+    var n = len(y_true)
+    if n == 0 or n != len(y_pred):
         return 0.0
     var C = _n_classes_from_labels(y_true, y_pred)
     return f1_score(y_pred, y_true, C)
 
 # Multiclass F1 macro from logits/probabilities (auto-argmax + infer classes)
 fn f1_score(y_pred: List[List[Float64]], y_true: List[Int]) -> Float64:
-    var n = Int(y_true.size())
-    if n == 0 or n != Int(y_pred.size()):
+    var n = len(y_true)
+    if n == 0 or n != len(y_pred):
         return 0.0
     var labels = List[Int]()
     var i = 0
