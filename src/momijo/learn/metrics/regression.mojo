@@ -57,7 +57,7 @@ fn _safe_div(num: Float64, den: Float64, eps: Float64 = 1e-12) -> Float64:
     return num / den
 
 fn _mean(xs: List[Float64]) -> Float64:
-    var n = Int(xs.size())
+    var n = len(xs)
     if n == 0:
         return 0.0
     var s = 0.0
@@ -69,7 +69,7 @@ fn _mean(xs: List[Float64]) -> Float64:
 
 # Unbiased = False (population variance) since metrics usually use population form here.
 fn _variance(xs: List[Float64], mean_val: Float64) -> Float64:
-    var n = Int(xs.size())
+    var n = len(xs)
     if n == 0:
         return 0.0
     var s2 = 0.0
@@ -86,8 +86,8 @@ fn _variance(xs: List[Float64], mean_val: Float64) -> Float64:
 
 # Mean Squared Error
 fn mse(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
-    var n_pred = Int(y_pred.size())
-    var n_true = Int(y_true.size())
+    var n_pred = len(y_pred)
+    var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
         return 0.0
     # Require equal length; if not, use the min length (defensive).
@@ -109,8 +109,8 @@ fn rmse(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
 
 # Mean Absolute Error
 fn mae(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
-    var n_pred = Int(y_pred.size())
-    var n_true = Int(y_true.size())
+    var n_pred = len(y_pred)
+    var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
         return 0.0
     var n = n_pred
@@ -127,8 +127,8 @@ fn mae(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
 # Mean Absolute Percentage Error (in percent if scale=100.0).
 # Zeros in y_true are handled with eps to avoid division by zero.
 fn mape(y_pred: List[Float64], y_true: List[Float64], scale: Float64 = 100.0, eps: Float64 = 1e-8) -> Float64:
-    var n_pred = Int(y_pred.size())
-    var n_true = Int(y_true.size())
+    var n_pred = len(y_pred)
+    var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
         return 0.0
     var n = n_pred
@@ -150,8 +150,8 @@ fn mape(y_pred: List[Float64], y_true: List[Float64], scale: Float64 = 100.0, ep
 # R^2 = 1 - SS_res / SS_tot
 # If SS_tot == 0: return 1.0 if SS_res==0 else 0.0 (degenerate target variance).
 fn r2_score(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
-    var n_pred = Int(y_pred.size())
-    var n_true = Int(y_true.size())
+    var n_pred = len(y_pred)
+    var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
         return 0.0
     var n = n_pred
@@ -187,8 +187,8 @@ fn r2_score(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
 # 1 - Var(y - y_pred) / Var(y)
 # If Var(y) == 0: return 1.0 if Var(error)==0 else 0.0
 fn explained_variance(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
-    var n_pred = Int(y_pred.size())
-    var n_true = Int(y_true.size())
+    var n_pred = len(y_pred)
+    var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
         return 0.0
     var n = n_pred
