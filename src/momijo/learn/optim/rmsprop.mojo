@@ -1,20 +1,59 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project:      Momijo
-# Module:       learn.optim.rmsprop
-# File:         src/momijo/learn/optim/rmsprop.mojo
-#
-# Description:
-#   RMSprop optimizer with optional momentum, weight decay, and centered variant.
-#   Backend-agnostic: works on a placeholder scalar param type for demos, and
-#   optionally on Momijo tensor facade when available.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
+# Project: momijo
+# File: src/momijo/learn/optim/rmsprop.mojo
+# Description: RMSprop optimizer for Linear layers.
 
 from collections.list import List
-from momijo.tensor import tensor   # tensor facade (dtype factories + ops)
+from momijo.tensor import tensor 
+from momijo.learn.nn.conv import Conv2d
+from momijo.learn.nn.layers import Linear
+
+struct RMSprop:
+    var lr: Float64
+    var alpha: Float64
+    var eps: Float64
+    var sW: tensor.Tensor[Float64]
+    var sB: tensor.Tensor[Float64]
+    var _init: Bool
+
+    fn __init__(out self, lr: Float64 = 1e-3, alpha: Float64 = 0.99, eps: Float64 = 1e-8):
+        self.lr = lr
+        self.alpha = alpha
+        self.eps = eps
+        self.sW = tensor.zeros([1, 1])
+        self.sB = tensor.zeros([1])
+        self._init = False
+
+    fn __copyinit__(out self, other: Self):
+        self.lr = other.lr
+        self.alpha = other.alpha
+        self.eps = other.eps
+        self.sW = other.sW
+        self.sB = other.sB
+        self._init = other._init
+
+    fn step_linear(mut self, mut layer: Linear, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
+        if not self._init:
+            self.sW = tensor.zeros_like(dW)
+            self.sB = tensor.zeros_like(db)
+            self._init = True
+        self.sW = self.alpha * self.sW + (1.0 - self.alpha) * (dW * dW)
+        self.sB = self.alpha * self.sB + (1.0 - self.alpha) * (db * db)
+        layer.weight = layer.weight - self.lr * (dW / (tensor.sqrt(self.sW) + self.eps))
+        layer.bias   = layer.bias   - self.lr * (db / (tensor.sqrt(self.sB) + self.eps))
+
+
+
+fn step_conv2d(mut self, mut layer: Conv2d, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
+    if not self._init:
+        self.sW = tensor.zeros_like(dW); self.sB = tensor.zeros_like(db); self._init = True
+    self.sW = self.alpha * self.sW + (1.0 - self.alpha) * (dW * dW)
+    self.sB = self.alpha * self.sB + (1.0 - self.alpha) * (db * db)
+    layer.weight = layer.weight - self.lr * (dW / (tensor.sqrt(self.sW) + self.eps))
+    layer.bias   = layer.bias   - self.lr * (db / (tensor.sqrt(self.sB) + self.eps))
+
+
 
 # -----------------------------------------------------------------------------
 # Small numeric helpers (fallbacks)
