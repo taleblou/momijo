@@ -124,7 +124,7 @@ struct Adagrad:
     # List API (immediately usable for smoke tests)
     # -------------------------------------------------------------------------
     fn _ensure_acc_capacity(mut self, n: Int):
-        var cur = Int(self._accumulators.size())
+        var cur = len(self._accumulators)
         if n > cur:
             var i = cur
             while i < n:
@@ -133,8 +133,8 @@ struct Adagrad:
 
     # params[i] <- params[i] - lr * g[i] / (sqrt(acc[i])+eps)
     fn step_on_lists(mut self, mut params: List[Float64], grads: List[Float64]) -> List[Float64]:
-        var n = Int(params.size())
-        assert(n == Int(grads.size()))
+        var n = len(params)
+        assert(n == len(grads))
         self._ensure_acc_capacity(n)
 
         var i = 0
@@ -261,11 +261,11 @@ struct Adagrad:
         mut params_f64: List[tensor.Tensor[Float64]],
         grads_f64: List[tensor.Tensor[Float64]]
     ) -> List[tensor.Tensor[Float64]]:
-        var n = Int(params_f64.size())
-        assert(n == Int(grads_f64.size()))
+        var n = len(params_f64)
+        assert(n == len(grads_f64))
 
         # Ensure accumulator slots
-        var cur = Int(self._acc_tensors_f64.size())
+        var cur = len(self._acc_tensors_f64)
         if n > cur:
             var i = cur
             while i < n:
@@ -292,10 +292,10 @@ struct Adagrad:
         mut params_f32: List[tensor.Tensor[Float32]],
         grads_f32: List[tensor.Tensor[Float32]]
     ) -> List[tensor.Tensor[Float32]]:
-        var n = Int(params_f32.size())
-        assert(n == Int(grads_f32.size()))
+        var n = len(params_f32)
+        assert(n == len(grads_f32))
 
-        var cur = Int(self._acc_tensors_f32.size())
+        var cur = len(self._acc_tensors_f32)
         if n > cur:
             var i = cur
             while i < n:
