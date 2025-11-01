@@ -88,7 +88,7 @@ fn _clamp_prob(x: Float64) -> Float64:
     return x
 
 fn _assert_same_len(a: List[Float64], b: List[Float64]) -> None:
-    assert(Int(a.size()) == Int(b.size()))
+    assert(len(a) == len(b))
 
 @always_inline
 fn _assert_same_shape_t(a: tensor.Tensor[Float64], b: tensor.Tensor[Float64]) -> None:
@@ -156,7 +156,7 @@ fn kl_normal_normal_diag(mu_p: List[Float64], logvar_p: List[Float64],
     _assert_same_len(logvar_p, logvar_q)
     _assert_same_len(mu_p, logvar_p)
 
-    var n = Int(mu_p.size())
+    var n = len(mu_p)
     var acc = 0.0
     var i = 0
     while i < n:
@@ -199,7 +199,7 @@ fn kl_bernoulli_scalar(p: Float64, q: Float64) -> Float64:
 
 fn kl_bernoulli_vector(p: List[Float64], q: List[Float64]) -> Float64:
     _assert_same_len(p, q)
-    var n = Int(p.size())
+    var n = len(p)
     var acc = 0.0
     var i = 0
     while i < n:
@@ -219,7 +219,7 @@ fn kl_divergence(p: Bernoulli, q: Bernoulli) -> Float64:
 
 fn kl_categorical(p: List[Float64], q: List[Float64]) -> Float64:
     _assert_same_len(p, q)
-    var n = Int(p.size())
+    var n = len(p)
     var acc = 0.0
     var i = 0
     while i < n:
