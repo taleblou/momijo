@@ -55,7 +55,7 @@ fn _csv_escape(s: String) -> String:
 fn _join_csv(fields: List[String]) -> String:
     var out = String("")
     var i = 0
-    var n = Int(fields.size())
+    var n = len(fields)
     while i < n:
         out = out + _csv_escape(fields[i])
         if i + 1 < n:
@@ -67,7 +67,7 @@ fn _join_csv(fields: List[String]) -> String:
 fn _lines_join(lines: List[String]) -> String:
     var out = String("")
     var i = 0
-    var n = Int(lines.size())
+    var n = len(lines)
     while i < n:
         out = out + lines[i]
         if i + 1 < n:
@@ -129,7 +129,7 @@ struct CSVTableLogger:
         self.buffer = List[String]()
 
         var i = 0
-        var n = Int(columns.size())
+        var n = len(columns)
         while i < n:
             self.columns.push_back(columns[i])
             i = i + 1
@@ -140,8 +140,8 @@ struct CSVTableLogger:
 
     # Log using values aligned with schema order (len(values) must equal len(columns)).
     fn log_row(mut self, values: List[String]):
-        var ncols = Int(self.columns.size())
-        if Int(values.size()) != ncols:
+        var ncols = len(self.columns)
+        if len(values) != ncols:
             # Mismatched row length; ignore safely.
             return
         var row = _join_csv(values)
@@ -149,7 +149,7 @@ struct CSVTableLogger:
 
     # Log with name/value pairs. pairs: ["name1","value1","name2","value2", ...]
     fn log_pairs(mut self, pairs: List[String]):
-        var ncols = Int(self.columns.size())
+        var ncols = len(self.columns)
         var temp = List[String]()
         temp.reserve(ncols)
 
@@ -158,7 +158,7 @@ struct CSVTableLogger:
             temp.push_back(String(""))
             i = i + 1
 
-        var m = Int(pairs.size())
+        var m = len(pairs)
         if m % 2 != 0:
             # malformed pairs; ignore
             return
