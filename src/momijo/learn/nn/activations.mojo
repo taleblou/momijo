@@ -88,9 +88,9 @@ fn _log_approx(x: Float64) -> Float64:
 
 fn _map(xs: List[Float64], f) -> List[Float64]:
     var out = List[Float64]()
-    out.reserve(Int(xs.size()))
+    out.reserve(len(xs))
     var i = 0
-    var n = Int(xs.size())
+    var n = len(xs)
     while i < n:
         out.push_back(f(xs[i]))
         i = i + 1
@@ -281,7 +281,7 @@ fn hardshrink(xs: List[Float64], lambd: Float64 = 0.5) -> List[Float64]:
 # --------------------------------------------
 
 fn _softmax_1d(xs: List[Float64]) -> List[Float64]:
-    var n = Int(xs.size())
+    var n = len(xs)
     if n == 0:
         return List[Float64]()
     var m = xs[0]
@@ -313,7 +313,7 @@ fn softmax(xs: List[Float64]) -> List[Float64]:
 
 # 2D softmax with dimension control (List[List[Float64]])
 fn softmax(x2d: List[List[Float64]], dim: Int = -1) -> List[List[Float64]]:
-    var rows = Int(x2d.size())
+    var rows = len(x2d)
     if rows == 0:
         return List[List[Float64]]()
     if dim == -1 or dim == 1:
@@ -328,7 +328,7 @@ fn softmax(x2d: List[List[Float64]], dim: Int = -1) -> List[List[Float64]]:
         var cols = 0
         var r2 = 0
         while r2 < rows:
-            var l = Int(x2d[r2].size())
+            var l = len(x2d[r2])
             if l > cols:
                 cols = l
             r2 = r2 + 1
@@ -338,7 +338,7 @@ fn softmax(x2d: List[List[Float64]], dim: Int = -1) -> List[List[Float64]]:
         while r2 < rows:
             var row = List[Float64]()
             var c2 = 0
-            var rl = Int(x2d[r2].size())
+            var rl = len(x2d[r2])
             while c2 < rl:
                 row.push_back(0.0)
                 c2 = c2 + 1
@@ -351,13 +351,13 @@ fn softmax(x2d: List[List[Float64]], dim: Int = -1) -> List[List[Float64]]:
             row_ids.reserve(rows)
             var rr = 0
             while rr < rows:
-                if c < Int(x2d[rr].size()):
+                if c < len(x2d[rr]):
                     col_vals.push_back(x2d[rr][c])
                     row_ids.push_back(rr)
                 rr = rr + 1
             var col_sm = _softmax_1d(col_vals)
             var k = 0
-            var clen = Int(col_sm.size())
+            var clen = len(col_sm)
             while k < clen:
                 var rid = row_ids[k]
                 out2[rid][c] = col_sm[k]
