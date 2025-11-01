@@ -1,22 +1,114 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project:      Momijo
-# Module:       momijo.learn.losses
-# File:         src/momijo/learn/losses.mojo
-#
-# Description:
-#   Common loss functions for classification, regression, and similarity.
-#   Implemented to leverage existing Tensor ops for performance and clarity.
-#
-# Notes:
-#   - No 'let' and no 'assert'.
-#   - English-only comments.
-#   - All scalar returns follow the library convention: Tensor[Float64] shaped as [1].
-#   - Inputs are expected as Tensor[Float64]. If your code uses other dtypes, cast before.
-#   - This module uses only: from momijo.tensor import tensor
+# Project: momijo
+# File: src/momijo/learn/losses/losses.mojo
+# Description: Stable softmax/log_softmax and loss functions.
 
 from collections.list import List
-from momijo.tensor import tensor
+from momijo.tensor import tensor 
+
+# --- helpers ---
+
+@always_inline
+fn _numel(shape: List[Int]) -> Int:
+    var p = 1
+    var i = 0
+    var n = len(shape)
+    while i < n:
+        p = p * shape[i]
+        i = i + 1
+    return p
+
+# Extract a Float64 scalar from a 1-element tensor (e.g. shape [1,1] or [1])
+@always_inline
+fn _scalar(t: tensor.Tensor[Float64]) -> Float64:
+    # Assumes t has exactly one element
+    return t._data[0]
+
+# Row-wise sum: (N,C) @ (C,1) => (N,1)
+fn _row_sum(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    var C = x.shape()[1]
+    var ones_c1 = tensor.ones([C, 1])
+    return x.matmul(ones_c1)
+
+# Soft row-wise max via softmax-weighted expectation (smooth approx)
+fn _row_max_approx(x: tensor.Tensor[Float64], k: Float64 = 64.0) -> tensor.Tensor[Float64]:
+    var kx = x * k
+    var w = tensor.exp(kx)
+    var Z = _row_sum(w) + 1e-12     # avoid divide-by-zero
+    var p = w / Z
+    return _row_sum(x * p)
+
+# Stable softmax per row
+fn softmax(logits: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    var m = _row_max_approx(logits)
+    var z = logits - m
+    var e = tensor.exp(z)
+    var s = _row_sum(e) + 1e-12
+    return e / s
+
+# Stable log_softmax per row
+fn log_softmax(logits: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    var m = _row_max_approx(logits)
+    var z = logits - m
+    var e = tensor.exp(z)
+    var s = _row_sum(e) + 1e-12
+    var lse = tensor.log(s) + m
+    return logits - lse
+
+# Cross-entropy from probabilities (targets one-hot)
+fn cross_entropy_from_probs(
+    probs: tensor.Tensor[Float64],
+    target_onehot: tensor.Tensor[Float64]
+) -> Float64:
+    var eps = 1e-12
+    var logp = tensor.log(probs + eps)
+    var mul = target_onehot * logp            # (N,C)
+    var row = _row_sum(mul)                   # (N,1)
+    var N = probs.shape()[0]
+    var ones_n1_T = tensor.ones([N, 1]).transpose()  # (1,N)
+    var total = ones_n1_T.matmul(row)         # (1,1)
+    return - _scalar(total) / Float64(N)
+
+# Cross-entropy directly from logits (more stable)
+fn cross_entropy_from_logits(
+    logits: tensor.Tensor[Float64],
+    target_onehot: tensor.Tensor[Float64]
+) -> Float64:
+    var lsm = log_softmax(logits)             # (N,C)
+    var mul = target_onehot * lsm
+    var row = _row_sum(mul)                   # (N,1)
+    var N = logits.shape()[0]
+    var ones_n1_T = tensor.ones([N, 1]).transpose()
+    var total = ones_n1_T.matmul(row)         # (1,1)
+    return - _scalar(total) / Float64(N)
+
+# Softmax CE with gradient wrt logits
+fn softmax_cross_entropy(
+    logits: tensor.Tensor[Float64],
+    target_onehot: tensor.Tensor[Float64]
+) -> (Float64, tensor.Tensor[Float64]):
+    var probs = softmax(logits)
+    var loss = cross_entropy_from_probs(probs, target_onehot)
+    var N = logits.shape()[0]
+    var grad = (probs - target_onehot) / Float64(N)
+    return (loss, grad)
+
+# MSE over all elements (mean over N*C)
+fn mse_loss(
+    y_pred: tensor.Tensor[Float64],
+    y_true: tensor.Tensor[Float64]
+) -> Float64:
+    var diff = y_pred - y_true
+    var sq = diff * diff                      # (N,C)
+    var row = _row_sum(sq)                    # (N,1)
+    var N = y_pred.shape()[0]
+    var C = y_pred.shape()[1]
+    var ones_n1_T = tensor.ones([N, 1]).transpose()  # (1,N)
+    var total = ones_n1_T.matmul(row)         # (1,1)
+    return _scalar(total) / Float64(N * C)    # ← به‌جای total.item()
+
+
 
 # -----------------------------------------------------------------------------
 # Helpers
