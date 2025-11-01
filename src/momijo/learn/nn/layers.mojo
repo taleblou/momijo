@@ -1,73 +1,48 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project:      Momijo
-# Module:       learn.nn.layers
-# File:         src/momijo/learn/nn/layers.mojo
-#
-# Description:
-#   Core neural network layers for Momijo Learn. Public-facing layer types with
-#   stable constructors and forward() APIs. The math is backend-agnostic for now;
-#   wire real vectorized kernels later. Parameters use momijo.tensor so they can
-#   be summarized and counted properly.
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
+# Project: momijo
+# File: src/momijo/learn/nn/layers.mojo
+# Description: Core dense and activation layers for Momijo Learn.
 
-from collections.list import List
 from momijo.tensor import tensor
+from collections.list import List 
 from momijo.learn.nn.module import Module
 from momijo.learn.utils.summary import Summarizer
 from momijo.learn.utils.randomness import RNG, rng_from_seed
+ 
+from collections.list import List
+from momijo.tensor import tensor
 
-# -----------------------------------------------------------------------------
-# Small numeric / tensor helpers (pure Mojo; row-major contiguous assumption)
-# -----------------------------------------------------------------------------
+from momijo.learn.api.functional import (
+    quantize_symmetric_int8,
+    matmul_i8_i8_to_i32,
+    dequantize_i32_to_f32_add_bias
+)
+# ---------- math helpers (approx) ----------
+@always_inline
+fn _sqrt_pos_f64(x: Float64) -> Float64:
+    if x <= 0.0: return 0.0
+    var y = x
+    var i = 0
+    while i < 12:            # Newton-Raphson
+        y = 0.5 * (y + x / y)
+        i = i + 1
+    return y
 
 @always_inline
-fn _numel(shape: List[Int]) -> Int:
-    var p = 1
-    var i = 0
-    var n = len(shape)
-    while i < n:
-        p = p * shape[i]
-        i = i + 1
-    return p
+fn _exp_f64(x: Float64) -> Float64:
+    # سری تیلور تا 12 جمله؛ برای اکتیواسیون کافی‌ست.
+    var term = 1.0
+    var sum = 1.0
+    var k = 1
+    while k <= 12:
+        term = term * x / Float64(k)
+        sum = sum + term
+        k = k + 1
+    return sum
+
 
 @always_inline
-fn _zeros_f64(shape: List[Int]) -> tensor.Tensor[Float64]:
-    return tensor.Tensor[Float64](shape, 0.0)
-
-@always_inline
-fn _ones_f64(shape: List[Int]) -> tensor.Tensor[Float64]:
-    var t = tensor.Tensor[Float64](shape, 0.0)
-    var d = t._data
-    var n = _numel(shape)
-    var i = 0
-    while i < n:
-        d[i] = 1.0
-        i = i + 1
-    return t
-
-fn _copy_tensor(mut dst: tensor.Tensor[Float64], src: tensor.Tensor[Float64]):
-    var n = _numel(src.shape())
-    var sd = src._data
-    var dd = dst._data
-    var i = 0
-    while i < n:
-        dd[i] = sd[i]
-        i = i + 1
-
-# Fill tensor with uniform values in [low, high) using RNG.
-fn _fill_uniform_(mut t: tensor.Tensor[Float64], low: Float64, high: Float64, rng: Pointer[RNG]):
-    var d = t._data
-    var n = _numel(t.shape())
-    var i = 0
-    while i < n:
-        d[i] = rng.value.uniform(low, high)
-        i = i + 1
-
-# fan_in/fan_out for Linear and Conv2d weights
 fn _calc_fans(shape: List[Int]) -> (Int, Int):
     var n = len(shape)
     if n == 2:
@@ -89,66 +64,195 @@ fn _calc_fans(shape: List[Int]) -> (Int, Int):
         prod = prod * shape[j]
         j = j + 1
     return (prod, prod)
+# ---------- small tensor helpers ----------
+@always_inline
+fn _numel(shape: List[Int]) -> Int:
+    var p = 1
+    var i = 0
+    var n = len(shape)
+    while i < n:
+        p = p * shape[i]
+        i = i + 1
+    return p
 
-# Xavier/Glorot uniform: bound = sqrt(6 / (fan_in + fan_out))
-fn _xavier_uniform_(mut t: tensor.Tensor[Float64], rng: Pointer[RNG]):
+@always_inline
+fn _zeros_f64(shape: List[Int]) -> tensor.Tensor[Float64]:
+    return tensor.Tensor[Float64](shape, 0.0)
+
+@always_inline
+fn _ones_f64(shape: List[Int]) -> tensor.Tensor[Float64]:
+    var t = tensor.Tensor[Float64](shape, 0.0)
+    var n = _numel(shape)
+    var i = 0
+    while i < n:
+        t._data[i] = 1.0    
+        i = i + 1
+    return t.copy()
+
+# elementwise max(x, a)
+fn _maximum_scalar(x: tensor.Tensor[Float64], a: Float64) -> tensor.Tensor[Float64]:
+    var y = tensor.Tensor[Float64](x.shape(), 0.0)
+    var n = _numel(x.shape())
+    var i = 0
+    while i < n:
+        var v = x._data[i]
+        y._data[i] = v if v > a else a
+        i = i + 1
+    return y.copy()
+
+# ---------- activations ----------
+struct ReLU(Copyable, Movable):
+    fn __init__(out self): pass
+    fn __copyinit__(out self, other: Self): pass
+    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        return _maximum_scalar(x, 0.0)
+
+struct LeakyReLU(Copyable, Movable):
+    var slope: Float64
+    fn __init__(out self, slope: Float64 = 0.01): self.slope = slope
+    fn __copyinit__(out self, other: Self): self.slope = other.slope
+    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        var pos = _maximum_scalar(x, 0.0)
+        var neg = x - pos
+        return pos + (neg * self.slope)
+
+struct Sigmoid(Copyable, Movable):
+    fn __init__(out self): pass
+    fn __copyinit__(out self, other: Self): pass
+    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        # σ(x) = 1 / (1 + exp(-x)) با exp تقریبی
+        var y = tensor.Tensor[Float64](x.shape(), 0.0)
+        var n = _numel(x.shape())
+        var i = 0
+        while i < n:
+            var v = x._data[i]
+            var e = _exp_f64(-v)
+            y._data[i] = 1.0 / (1.0 + e)
+            i = i + 1
+        return y.copy()
+
+struct Tanh(Copyable, Movable):
+    fn __init__(out self): pass
+    fn __copyinit__(out self, other: Self): pass
+    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        # tanh(x) = (e^x - e^{-x})/(e^x + e^{-x})
+        var y = tensor.Tensor[Float64](x.shape(), 0.0)
+        var n = _numel(x.shape())
+        var i = 0
+        while i < n:
+            var v = x._data[i]
+            var ex = _exp_f64(v)
+            var em = _exp_f64(-v)
+            y._data[i] = (ex - em) / (ex + em)
+            i = i + 1
+        return y.copy()
+
+
+struct BatchNorm1d(Copyable, Movable):
+    var num_features: Int
+    var gamma: tensor.Tensor[Float64]
+    var beta: tensor.Tensor[Float64]
+    var running_mean: tensor.Tensor[Float64]
+    var running_var: tensor.Tensor[Float64]
+    var eps: Float64
+    var momentum: Float64
+
+    fn __init__(out self, num_features: Int, eps: Float64 = 1e-5, momentum: Float64 = 0.1):
+        self.num_features = num_features
+        self.gamma = _ones_f64([num_features])
+        self.beta = _zeros_f64([num_features])
+        self.running_mean = _zeros_f64([num_features])
+        self.running_var = _ones_f64([num_features])
+        self.eps = eps
+        self.momentum = momentum
+
+    fn __copyinit__(out self, other: Self):
+        self.num_features = other.num_features
+        self.gamma = other.gamma.copy()
+        self.beta = other.beta.copy()
+        self.running_mean = other.running_mean.copy()
+        self.running_var = other.running_var.copy()
+        self.eps = other.eps
+        self.momentum = other.momentum
+
+    fn _col_sum(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        # Sum over rows ⇒ [1, C]
+        var shp = x.shape()          # [N, C]
+        var N = shp[0]; var C = shp[1]
+        var out = tensor.Tensor[Float64]([1, C], 0.0)
+        var r = 0
+        while r < N:
+            var c = 0
+            while c < C:
+                out._data[c] = out._data[c] + x._data[r * C + c]
+                c = c + 1
+            r = r + 1
+        return out.copy()
+
+    fn forward(mut self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        # x: [N, C]
+        var shp = x.shape()
+        if len(shp) != 2 or shp[1] != self.num_features:
+            return x.copy()
+
+        var N = shp[0]; var C = shp[1]
+        if N <= 0: return x.copy()
+
+        var mean = self._col_sum(x) / Float64(N)               # [1, C]
+        var xm = x - mean                                      # broadcast row
+        var varv = self._col_sum(xm * xm) / Float64(N)         # [1, C]
+
+        # update running stats
+        var c = 0
+        while c < C:
+            self.running_mean._data[c] = (self.running_mean._data[c] * (1.0 - self.momentum)) + (mean._data[c] * self.momentum)
+            self.running_var._data[c]  = (self.running_var._data[c]  * (1.0 - self.momentum)) + (varv._data[c] * self.momentum)
+            c = c + 1
+
+        # invstd = 1 / sqrt(var + eps)
+        var invstd = tensor.Tensor[Float64]([1, C], 0.0)
+        c = 0
+        while c < C:
+            invstd._data[c] = 1.0 / _sqrt_pos_f64(varv._data[c] + self.eps)
+            c = c + 1
+
+        return (xm * invstd) * self.gamma + self.beta          # broadcasting row-wise
+
+
+fn _fill_uniform_(mut t: tensor.Tensor[Float64],
+                  low: Float64,
+                  high: Float64,
+                  mut rng: RNG):
+    var n = _numel(t.shape())
+    var i = 0
+    while i < n:
+        t._data[i] = rng.uniform(low, high)    # مستقیم روی بافر
+        i = i + 1
+
+fn _xavier_uniform_(mut t: tensor.Tensor[Float64], mut rng: RNG):
     var shp = t.shape()
     var fans = _calc_fans(shp)
     var fan_in = fans[0]
     var fan_out = fans[1]
     var denom = fan_in + fan_out
-    if denom <= 0:
-        return
-    var bound = Float64.sqrt(6.0 / Float64(denom))
+    if denom <= 0: return
+    var bound = _sqrt_pos_f64(6.0 / Float64(denom))
     _fill_uniform_(t, -bound, bound, rng)
 
-# Kaiming/He uniform for ReLU: bound = sqrt(6 / fan_in)
-fn _kaiming_uniform_relu_(mut t: tensor.Tensor[Float64], rng: Pointer[RNG]):
+fn _kaiming_uniform_relu_(mut t: tensor.Tensor[Float64], mut rng: RNG):
     var shp = t.shape()
     var fans = _calc_fans(shp)
     var fan_in = fans[0]
-    if fan_in <= 0:
-        return
-    var bound = Float64.sqrt(6.0 / Float64(fan_in))
+    if fan_in <= 0: return
+    var bound = _sqrt_pos_f64(6.0 / Float64(fan_in))
     _fill_uniform_(t, -bound, bound, rng)
 
-# Flatten shape utility: merges dims [start..end] (inclusive) into one.
-fn _flatten_shape(shape: List[Int], start_dim: Int, end_dim: Int) -> List[Int]:
-    var rank = len(shape)
-    var sd = start_dim
-    var ed = end_dim
-    if sd < 0: sd = rank + sd
-    if ed < 0: ed = rank + ed
-    if sd < 0: sd = 0
-    if ed >= rank: ed = rank - 1
-    if sd > ed:
-        var tmp = sd; sd = ed; ed = tmp
-
-    var out = List[Int]()
-    var i = 0
-    while i < sd:
-        out.push_back(shape[i])
-        i = i + 1
-
-    var prod = 1
-    var k = sd
-    while k <= ed:
-        prod = prod * shape[k]
-        k = k + 1
-    out.push_back(prod)
-
-    var j = ed + 1
-    while j < rank:
-        out.push_back(shape[j])
-        j = j + 1
-
-    return out
 
 # -----------------------------------------------------------------------------
 # Linear
 # -----------------------------------------------------------------------------
 
-struct Linear(Module):
+struct Linear(Copyable, Movable):
     var in_features: Int
     var out_features: Int
     var bias: Bool
@@ -163,16 +267,16 @@ struct Linear(Module):
         self.bias = bias
 
         var wshape = List[Int]()
-        wshape.push_back(out_features)
-        wshape.push_back(in_features)
+        wshape.append(out_features)
+        wshape.append(in_features)
         self.weight = _zeros_f64(wshape)
 
         var bshape = List[Int]()
         if bias:
-            bshape.push_back(out_features)
+            bshape.append(out_features)
             self.bias_t = _zeros_f64(bshape)
         else:
-            bshape.push_back(0)
+            bshape.append(0)
             self.bias_t = _zeros_f64(bshape)
 
         self.reset_parameters()
@@ -180,58 +284,24 @@ struct Linear(Module):
     fn reset_parameters(mut self):
         # Xavier uniform for weights, bias = zeros.
         var rng = rng_from_seed(12345)
-        _xavier_uniform_(self.weight, &rng)
+        _xavier_uniform_(self.weight, rng)
         var bn = _numel(self.bias_t.shape())
         var j = 0
         while j < bn:
             self.bias_t._data[j] = 0.0
             j = j + 1
 
-    fn forward(self, x):
-        # Implements y = x @ W^T + b for tensor.Tensor[Float64] input.
-        # Shapes:
-        #   x: [N, in_features]
-        #   W: [out_features, in_features]
-        #   b: [out_features] (optional)
-        # Returns:
-        #   y: [N, out_features]
+        
+    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         var shp = x.shape()
         if len(shp) != 2 or shp[1] != self.in_features:
-            # Pass-through for unsupported shapes/dtypes.
-            return x
+            return x.copy()
 
-        var N = shp[0]
-        var D_in = shp[1]
-        var D_out = self.out_features
+        var y = x.matmul(self.weight.transpose())
+        if self.bias:
+            y = y + self.bias_t
+        return y.copy()
 
-        var yshape = List[Int]()
-        yshape.push_back(N)
-        yshape.push_back(D_out)
-        var y = tensor.Tensor[Float64](yshape, 0.0)
-
-        var xd = x._data
-        var yd = y._data
-        var wd = self.weight._data
-        var bd = self.bias_t._data
-
-        var n = 0
-        while n < N:
-            var o = 0
-            while o < D_out:
-                var acc = 0.0
-                var d = 0
-                while d < D_in:
-                    # x[n, d] index in row-major: n*D_in + d
-                    var xv = xd[n * D_in + d]
-                    # W[o, d] index in row-major: o*D_in + d
-                    acc = acc + xv * wd[o * D_in + d]
-                    d = d + 1
-                if self.bias:
-                    acc = acc + bd[o]
-                yd[n * D_out + o] = acc
-                o = o + 1
-            n = n + 1
-        return y
 
     fn __str__(self) -> String:
         var s = String("Linear(")
@@ -242,16 +312,16 @@ struct Linear(Module):
 
     fn summarize(self, s: Pointer[Summarizer]):
         var in_shape = List[Int]()
-        in_shape.push_back(-1)
-        in_shape.push_back(self.in_features)
+        in_shape.append(-1)
+        in_shape.append(self.in_features)
         var out_shape = List[Int]()
-        out_shape.push_back(-1)
-        out_shape.push_back(self.out_features)
+        out_shape.append(-1)
+        out_shape.append(self.out_features)
         var ps = List[tensor.Tensor[Float64]]()
-        ps.push_back(self.weight)
+        ps.append(self.weight)
         var bs = List[tensor.Tensor[Float64]]()
         if self.bias:
-            bs.push_back(self.bias_t)
+            bs.append(self.bias_t)
         s.value.add_params_f64("Linear", in_shape, out_shape, ps, bs, True)
 
 # -----------------------------------------------------------------------------
@@ -262,8 +332,22 @@ struct Linear(Module):
 fn _idx_nchw(n: Int, c: Int, h: Int, w: Int, C: Int, H: Int, W: Int) -> Int:
     # Row-major contiguous: ((((n*C)+c)*H)+h)*W + w
     return (((n * C) + c) * H + h) * W + w
+  
 
-struct Conv2d(Module):
+fn _zeros(shape: List[Int]) -> tensor.Tensor[Float64]:
+    return tensor.zeros(shape)
+
+fn _randn(shape: List[Int], scale: Float64 = 0.01) -> tensor.Tensor[Float64]:
+    var t = tensor.randn(shape)
+    # scale in-place
+    var n = t.numel()
+    var i = 0
+    while i < n:
+        t._data[i] = t._data[i] * scale
+        i = i + 1
+    return t.copy()
+
+struct Conv2d(Copyable, Movable):
     var in_channels: Int
     var out_channels: Int
     var kernel_size: Int
@@ -302,38 +386,39 @@ struct Conv2d(Module):
         var icg = in_channels // groups
 
         var wshape = List[Int]()
-        wshape.push_back(out_channels)
-        wshape.push_back(icg)
-        wshape.push_back(kernel_size)
-        wshape.push_back(kernel_size)
-        self.weight = _zeros_f64(wshape)
+        wshape.append(out_channels)
+        wshape.append(icg)
+        wshape.append(kernel_size)
+        wshape.append(kernel_size)
+        # small Gaussian init (replace with project Kaiming if available)
+        self.weight = _randn(wshape, 0.02)
 
         var bshape = List[Int]()
         if bias:
-            bshape.push_back(out_channels)
-            self.bias_t = _zeros_f64(bshape)
+            bshape.append(out_channels)
+            self.bias_t = _zeros(bshape)
         else:
-            bshape.push_back(0)
-            self.bias_t = _zeros_f64(bshape)
+            bshape.append(0)
+            self.bias_t = _zeros(bshape)
 
-        self.reset_parameters()
+    fn __copyinit__(out self, other: Self):
+        self.in_channels  = other.in_channels
+        self.out_channels = other.out_channels
+        self.kernel_size  = other.kernel_size
+        self.stride       = other.stride
+        self.padding      = other.padding
+        self.dilation     = other.dilation
+        self.groups       = other.groups
+        self.bias         = other.bias
+        self.weight = other.weight.copy()
+        self.bias_t = other.bias_t.copy()
 
-    fn reset_parameters(mut self):
-        # Kaiming uniform (ReLU) for weights, bias = zeros.
-        var rng = rng_from_seed(54321)
-        _kaiming_uniform_relu_(self.weight, &rng)
-        var bn = _numel(self.bias_t.shape())
-        var j = 0
-        while j < bn:
-            self.bias_t._data[j] = 0.0
-            j = j + 1
-
-    fn forward(self, x):
+    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         # Naive NCHW convolution with groups, stride, padding, dilation.
-        # Only implemented for tensor.Tensor[Float64]; other types pass-through.
         var shp = x.shape()
         if len(shp) != 4 or shp[1] != self.in_channels:
-            return x
+            # pass-through when incompatible
+            return x.copy()
 
         var N = shp[0]; var C = shp[1]; var H = shp[2]; var W = shp[3]
         var K  = self.kernel_size
@@ -349,16 +434,16 @@ struct Conv2d(Module):
         var OH = (H + 2 * P - D * (K - 1) - 1) // S + 1
         var OW = (W + 2 * P - D * (K - 1) - 1) // S + 1
         if OH <= 0 or OW <= 0:
-            return x
+            return x.copy()
 
         var yshape = List[Int]()
-        yshape.push_back(N); yshape.push_back(OC); yshape.push_back(OH); yshape.push_back(OW)
-        var y = tensor.Tensor[Float64](yshape, 0.0)
+        yshape.append(N); yshape.append(OC); yshape.append(OH); yshape.append(OW)
+        var y = tensor.zeros(yshape)
 
-        var xd = x._data
-        var yd = y._data
-        var wd = self.weight._data
-        var bd = self.bias_t._data
+        var xd = x._data.copy()
+        var yd = y._data.copy()
+        var wd = self.weight._data.copy()
+        var bd = self.bias_t._data.copy()
 
         var n = 0
         while n < N:
@@ -381,8 +466,9 @@ struct Conv2d(Module):
                                 while kw < K:
                                     var iw = ow * S - P + kw * D
                                     if ih >= 0 and ih < H and iw >= 0 and iw < W:
+                                        # x index
                                         var x_idx = _idx_nchw(n, ic, ih, iw, C, H, W)
-                                        # weight index: [oc, icg, kh, kw]
+                                        # w index: [oc, icg, kh, kw] in row-major
                                         var w_idx = (((oc * ICG) + icg) * K + kh) * K + kw
                                         acc = acc + xd[x_idx] * wd[w_idx]
                                     kw = kw + 1
@@ -395,7 +481,7 @@ struct Conv2d(Module):
                     oh = oh + 1
                 oc = oc + 1
             n = n + 1
-        return y
+        return y.copy()
 
     fn __str__(self) -> String:
         var s = String("Conv2d(")
@@ -409,23 +495,12 @@ struct Conv2d(Module):
         s = s + ", bias=" + (String("True") if self.bias else String("False")) + ")"
         return s
 
-    fn summarize(self, s: Pointer[Summarizer]):
-        var in_shape = List[Int]()
-        in_shape.push_back(-1); in_shape.push_back(self.in_channels); in_shape.push_back(-1); in_shape.push_back(-1)
-        var out_shape = List[Int]()
-        out_shape.push_back(-1); out_shape.push_back(self.out_channels); out_shape.push_back(-1); out_shape.push_back(-1)
-        var ps = List[tensor.Tensor[Float64]]()
-        ps.push_back(self.weight)
-        var bs = List[tensor.Tensor[Float64]]()
-        if self.bias:
-            bs.push_back(self.bias_t)
-        s.value.add_params_f64("Conv2d", in_shape, out_shape, ps, bs, True)
 
 # -----------------------------------------------------------------------------
 # BatchNorm2d (NCHW; training/eval behavior with running stats)
 # -----------------------------------------------------------------------------
 
-struct BatchNorm2d(Module):
+struct BatchNorm2d(Copyable, Movable):
     var num_features: Int
     var eps: Float64
     var momentum: Float64
@@ -451,13 +526,13 @@ struct BatchNorm2d(Module):
         self.affine = affine
         self.track_running_stats = track_running_stats
 
-        var cshape = List[Int](); cshape.push_back(num_features)
+        var cshape = List[Int](); cshape.append(num_features)
 
         if affine:
             self.weight = _ones_f64(cshape)
             self.bias_t = _zeros_f64(cshape)
         else:
-            var z = List[Int](); z.push_back(0)
+            var z = List[Int](); z.append(0)
             self.weight = _zeros_f64(z)
             self.bias_t = _zeros_f64(z)
 
@@ -465,7 +540,7 @@ struct BatchNorm2d(Module):
             self.running_mean = _zeros_f64(cshape)
             self.running_var  = _ones_f64(cshape)
         else:
-            var z2 = List[Int](); z2.push_back(0)
+            var z2 = List[Int](); z2.append(0)
             self.running_mean = _zeros_f64(z2)
             self.running_var  = _zeros_f64(z2)
 
@@ -491,8 +566,8 @@ struct BatchNorm2d(Module):
                 self.running_var._data[k] = 1.0
                 k = k + 1
 
-    fn forward(self, x, training: Bool = True):
-        # Only implements tensor.Tensor[Float64] with shape [N, C, H, W].
+    fn forward(self, x: tensor.Tensor[Float64], training: Bool = True) -> tensor.Tensor[Float64]:
+        # Only Float64 with [N,C,H,W]
         var shp = x.shape()
         if len(shp) != 4 or shp[1] != self.num_features:
             return x
@@ -508,47 +583,44 @@ struct BatchNorm2d(Module):
         var rm    = self.running_mean._data
         var rv    = self.running_var._data
 
-        # Allocate output
-        var yshape = List[Int](); yshape.push_back(N); yshape.push_back(C); yshape.push_back(H); yshape.push_back(W)
+        var yshape = List[Int](); yshape.append(N); yshape.append(C); yshape.append(H); yshape.append(W)
         var y = tensor.Tensor[Float64](yshape, 0.0)
         var yd = y._data
 
         var c = 0
         while c < C:
-            # Compute mean/var for channel c (over N,H,W) in training; else use running stats.
             var mean_c = 0.0
             var var_c  = 1.0
 
             if training:
                 var sum = 0.0
-                var n = 0
-                while n < N:
-                    var h = 0
-                    while h < H:
-                        var w = 0
-                        while w < W:
-                            sum = sum + xd[_idx_nchw(n, c, h, w, C, H, W)]
-                            w = w + 1
-                        h = h + 1
-                    n = n + 1
+                var n0 = 0
+                while n0 < N:
+                    var h0 = 0
+                    while h0 < H:
+                        var w0 = 0
+                        while w0 < W:
+                            sum = sum + xd[_idx_nchw(n0, c, h0, w0, C, H, W)]
+                            w0 = w0 + 1
+                        h0 = h0 + 1
+                    n0 = n0 + 1
                 mean_c = sum / count
 
                 var sq = 0.0
-                n = 0
-                while n < N:
-                    var h2 = 0
-                    while h2 < H:
-                        var w2 = 0
-                        while w2 < W:
-                            var v = xd[_idx_nchw(n, c, h2, w2, C, H, W)] - mean_c
+                var n1 = 0
+                while n1 < N:
+                    var h1 = 0
+                    while h1 < H:
+                        var w1 = 0
+                        while w1 < W:
+                            var v = xd[_idx_nchw(n1, c, h1, w1, C, H, W)] - mean_c
                             sq = sq + v * v
-                            w2 = w2 + 1
-                        h2 = h2 + 1
-                    n = n + 1
+                            w1 = w1 + 1
+                        h1 = h1 + 1
+                    n1 = n1 + 1
                 var_c = sq / count
 
                 if self.track_running_stats:
-                    # Update running stats: new = (1-m)*old + m*batch
                     var m = self.momentum
                     rm[c] = (1.0 - m) * rm[c] + m * mean_c
                     rv[c] = (1.0 - m) * rv[c] + m * var_c
@@ -560,28 +632,30 @@ struct BatchNorm2d(Module):
                     mean_c = 0.0
                     var_c  = 1.0
 
-            var inv = 1.0 / Float64.sqrt(var_c + self.eps)
+            
+            var inv = 1.0 / _sqrt_pos_f64(var_c + self.eps)
+
             var g = 1.0
             var b = 0.0
             if self.affine:
                 g = gamma[c]
                 b = beta[c]
 
-            var n3 = 0
-            while n3 < N:
-                var h3 = 0
-                while h3 < H:
-                    var w3 = 0
-                    while w3 < W:
-                        var xval = xd[_idx_nchw(n3, c, h3, w3, C, H, W)]
+            var n2 = 0
+            while n2 < N:
+                var h2 = 0
+                while h2 < H:
+                    var w2 = 0
+                    while w2 < W:
+                        var xval = xd[_idx_nchw(n2, c, h2, w2, C, H, W)]
                         var z = (xval - mean_c) * inv
-                        var outv = z * g + b
-                        yd[_idx_nchw(n3, c, h3, w3, C, H, W)] = outv
-                        w3 = w3 + 1
-                    h3 = h3 + 1
-                n3 = n3 + 1
+                        yd[_idx_nchw(n2, c, h2, w2, C, H, W)] = z * g + b
+                        w2 = w2 + 1
+                    h2 = h2 + 1
+                n2 = n2 + 1
             c = c + 1
-        return y
+
+    return y.copy()
 
     fn __str__(self) -> String:
         var s = String("BatchNorm2d(")
@@ -594,19 +668,19 @@ struct BatchNorm2d(Module):
 
     fn summarize(self, s: Pointer[Summarizer]):
         var in_shape = List[Int]()
-        in_shape.push_back(-1); in_shape.push_back(self.num_features); in_shape.push_back(-1); in_shape.push_back(-1)
+        in_shape.append(-1); in_shape.append(self.num_features); in_shape.append(-1); in_shape.append(-1)
         var out_shape = List[Int]()
-        out_shape.push_back(-1); out_shape.push_back(self.num_features); out_shape.push_back(-1); out_shape.push_back(-1)
+        out_shape.append(-1); out_shape.append(self.num_features); out_shape.append(-1); out_shape.append(-1)
 
         var params = List[tensor.Tensor[Float64]]()
         var buffers = List[tensor.Tensor[Float64]]()
 
         if self.affine:
-            params.push_back(self.weight)
-            params.push_back(self.bias_t)
+            params.append(self.weight)
+            params.append(self.bias_t)
         if self.track_running_stats:
-            buffers.push_back(self.running_mean)
-            buffers.push_back(self.running_var)
+            buffers.append(self.running_mean)
+            buffers.append(self.running_var)
 
         s.value.add_params_f64("BatchNorm2d", in_shape, out_shape, params, buffers, True)
 
@@ -614,7 +688,7 @@ struct BatchNorm2d(Module):
 # Dropout
 # -----------------------------------------------------------------------------
 
-struct Dropout(Module):
+struct Dropout(Copyable, Movable):
     var p: Float64
     var inplace: Bool
     var seed: Int
@@ -627,20 +701,20 @@ struct Dropout(Module):
         self.inplace = inplace
         self.seed = seed
 
-    fn forward(self, x, training: Bool = True):
+    fn forward(self, x: tensor.Tensor[Float64], training: Bool = True) -> tensor.Tensor[Float64]:
         if not training:
-            return x
+            return x.copy()
 
         var keep_prob = 1.0 - self.p
         if keep_prob <= 0.0:
-            return x
+            return x.copy()
 
         var shp = x.shape()
         var n = _numel(shp)
         var rng = rng_from_seed(self.seed)
 
         if self.inplace:
-            var xd = x._data
+            var xd = x._data.copy()
             var i = 0
             while i < n:
                 var r = rng.uniform(0.0, 1.0)
@@ -649,11 +723,11 @@ struct Dropout(Module):
                 else:
                     xd[i] = 0.0
                 i = i + 1
-            return x
+            return x.copy()
         else:
             var out = tensor.Tensor[Float64](shp, 0.0)
-            var xd2 = x._data
-            var yd = out._data
+            var xd2 = x._data.copy()
+            var yd = out._data.copy()
             var j = 0
             while j < n:
                 var r2 = rng.uniform(0.0, 1.0)
@@ -662,7 +736,7 @@ struct Dropout(Module):
                 else:
                     yd[j] = 0.0
                 j = j + 1
-            return out
+            return out.copy()
 
     fn __str__(self) -> String:
         var s = String("Dropout(")
@@ -672,15 +746,16 @@ struct Dropout(Module):
         return s
 
     fn summarize(self, s: Pointer[Summarizer]):
-        var in_shape = List[Int](); in_shape.push_back(-1)
-        var out_shape = List[Int](); out_shape.push_back(-1)
+        var in_shape = List[Int](); in_shape.append(-1)
+        var out_shape = List[Int](); out_shape.append(-1)
         s.value.add_leaf("Dropout", in_shape, out_shape)
+
 
 # -----------------------------------------------------------------------------
 # Flatten
 # -----------------------------------------------------------------------------
 
-struct Flatten(Module):
+struct Flatten(Copyable, Movable):
     var start_dim: Int
     var end_dim: Int
 
@@ -705,6 +780,33 @@ struct Flatten(Module):
         return s
 
     fn summarize(self, s: Pointer[Summarizer]):
-        var in_shape = List[Int](); in_shape.push_back(-1)
-        var out_shape = List[Int](); out_shape.push_back(-1)
+        var in_shape = List[Int](); in_shape.append(-1)
+        var out_shape = List[Int](); out_shape.append(-1)
         s.value.add_leaf("Flatten", in_shape, out_shape)
+
+ 
+
+# ----------------------------- Quantized Linear (INT8 weights + float out) ----
+struct QuantLinear(Copyable, Movable):
+    var in_features: Int
+    var out_features: Int
+    var w_q: tensor.Tensor[Int8]        # [out, in]
+    var b_f: tensor.Tensor[Float64]     # [out]
+    var s_w: Float64
+    var s_x: Float64
+
+    fn __init__(out self, in_features: Int, out_features: Int,
+                w_q: tensor.Tensor[Int8], b_f: tensor.Tensor[Float64],
+                s_w: Float64, s_x: Float64):
+        self.in_features = in_features
+        self.out_features = out_features
+        self.w_q = w_q.copy()
+        self.b_f = b_f.copy()
+        self.s_w = s_w
+        self.s_x = s_x
+
+    fn forward(self, x_f32: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        var x_q = quantize_symmetric_int8(x_f32, self.s_x)
+        var y_i32 = matmul_i8_i8_to_i32(x_q, self.w_q.transpose())
+        var sf = self.s_x * self.s_w
+        return dequantize_i32_to_f32_add_bias(y_i32, sf, self.b_f)
