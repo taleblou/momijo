@@ -377,14 +377,14 @@ struct Categorical:
         var ps = List[Float64]()
         var s: Float64 = 0.0
         var i = 0
-        while i < Int(probs.size()):
+        while i < len(probs):
             var v = probs[i]
             if v < 0.0: v = 0.0
             ps.push_back(v)
             s = s + v
             i = i + 1
         if s <= 0.0:
-            var k = Int(ps.size())
+            var k = len(ps)
             if k == 0:
                 ps.push_back(1.0); s = 1.0
             else:
@@ -394,14 +394,14 @@ struct Categorical:
                     j = j + 1
                 s = Float64(k)
         var j2 = 0
-        while j2 < Int(ps.size()):
+        while j2 < len(ps):
             ps[j2] = ps[j2] / s
             j2 = j2 + 1
         var cm = List[Float64]()
-        cm.reserve(Int(ps.size()))
+        cm.reserve(len(ps))
         var acc: Float64 = 0.0
         var t = 0
-        while t < Int(ps.size()):
+        while t < len(ps):
             acc = acc + ps[t]
             cm.push_back(acc)
             t = t + 1
@@ -417,10 +417,10 @@ struct Categorical:
         while i < n:
             var u = rng.next_f64()
             var idx = 0
-            while idx < Int(self.cum.size()) and u > self.cum[idx]:
+            while idx < len(self.cum) and u > self.cum[idx]:
                 idx = idx + 1
-            if idx >= Int(self.cum.size()):
-                idx = Int(self.cum.size()) - 1
+            if idx >= len(self.cum):
+                idx = len(self.cum) - 1
             out.push_back(idx)
             i = i + 1
         return out
@@ -434,7 +434,7 @@ struct Categorical:
         return 0.0 / 0.0
 
     fn log_prob(self, index: Int) -> Float64:
-        if index < 0 or index >= Int(self.probs.size()):
+        if index < 0 or index >= len(self.probs):
             return _Const.NEG_INF()
         var p = self.probs[index]
         if p <= 0.0: return _Const.NEG_INF()
@@ -477,10 +477,10 @@ struct Categorical:
         while i < n_el:
             var u = rng.next_f64()
             var idx = 0
-            while idx < Int(self.cum.size()) and u > self.cum[idx]:
+            while idx < len(self.cum) and u > self.cum[idx]:
                 idx = idx + 1
-            if idx >= Int(self.cum.size()):
-                idx = Int(self.cum.size()) - 1
+            if idx >= len(self.cum):
+                idx = len(self.cum) - 1
             d[i] = Float64(idx)
             i = i + 1
         return out
