@@ -201,3 +201,102 @@ fn predict_with_options(model: PredictableModel, inputs, opts: PredictOptions):
 
 fn predict_with_options(model: InferenceModel, inputs, opts: PredictOptions):
     return model.forward(inputs)
+
+
+# ----------------------------- INT8 helpers (PTQ) -----------------------------
+@always_inline
+fn _clamp_int8(v: Int32) -> Int8:
+    var t = v
+    if t < -128: t = -128
+    if t > 127: t = 127
+    return Int8(t)
+@always_inline
+fn _round_to_i32(v: Float64) -> Int32:
+    # Round half away from zero using add/sub 0.5 then trunc-to-zero cast.
+    var adj = 0.5 if v >= 0.0 else -0.5
+    return Int32(v + adj)
+
+@always_inline
+fn _numel_shape(shp: List[Int]) -> Int:
+    var n = 1
+    var i = 0
+    var L = len(shp)
+    while i < L:
+        n = n * shp[i]
+        i = i + 1
+    return n
+
+# ------------------------ quant/dequant kernels (fixed) ------------------------
+
+fn quantize_symmetric_int8(x: tensor.Tensor[Float64], s: Float64) -> tensor.Tensor[Int8]:
+    # y_q = clamp(round(x / s), int8)
+    # Guard s to avoid div by zero.
+    var scale = s
+    if scale == 0.0:
+        scale = 1.0
+
+    var shp = x.shape()
+    var n = _numel_shape(shp)
+
+    var out = tensor.Tensor[Int8](shp, Int8(0))
+    var i = 0
+    while i < n:
+        var q = _round_to_i32(x._data[i] / scale)
+        out._data[i] = _clamp_int8(q)
+        i = i + 1
+    return out.copy()
+
+fn matmul_i8_i8_to_i32(a: tensor.Tensor[Int8], bt: tensor.Tensor[Int8]) -> tensor.Tensor[Int32]:
+    # a: [N,K], bt: [K,M]  (b transposed)
+    var ash = a.shape()
+    var bsh = bt.shape()
+    if len(ash) != 2 or len(bsh) != 2:
+        # Fallback: return empty [0,0]
+        return tensor.Tensor[Int32]([0, 0], Int32(0))
+
+    var N = ash[0]
+    var K = ash[1]
+    var KM = bsh[0]
+    var M = bsh[1]
+    if K != KM:
+        # Incompatible shapes; return empty
+        return tensor.Tensor[Int32]([0, 0], Int32(0))
+
+    var y = tensor.Tensor[Int32]([N, M], Int32(0))
+
+    var i = 0
+    while i < N:
+        var j = 0
+        while j < M:
+            var acc = Int32(0)
+            var p = 0
+            while p < K:
+                acc = acc + Int32(a._data[i * K + p]) * Int32(bt._data[p * M + j])
+                p = p + 1
+            y._data[i * M + j] = acc
+            j = j + 1
+        i = i + 1
+    return y.copy()
+
+fn dequantize_i32_to_f32_add_bias(
+    y_i32: tensor.Tensor[Int32],
+    sf: Float64,
+    b: tensor.Tensor[Float64]
+) -> tensor.Tensor[Float64]:
+    # y_f32 = y_i32 * sf + b  (bias broadcast along rows)
+    var ysh = y_i32.shape()
+    if len(ysh) != 2:
+        return tensor.Tensor[Float64]([0, 0], 0.0)
+
+    var N = ysh[0]
+    var M = ysh[1]
+    var out = tensor.Tensor[Float64]([N, M], 0.0)
+
+    var i = 0
+    while i < N:
+        var j = 0
+        while j < M:
+            out._data[i * M + j] = Float64(y_i32._data[i * M + j]) * sf + b._data[j]
+            j = j + 1
+        i = i + 1
+    return out.copy()   
