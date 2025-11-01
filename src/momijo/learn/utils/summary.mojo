@@ -239,3 +239,40 @@ fn model_summary(model) -> String:
     var s = Summarizer("Model Summary")
     model.summarize(&s)
     return s.render()
+
+
+
+# ----------------------------- Min/Max Observer -------------------------------
+struct MinMaxObserver(Copyable, Movable):
+    var min_val: Float64
+    var max_val: Float64
+    var initialized: Bool
+
+    fn __init__(out self):
+        self.min_val = 0.0
+        self.max_val = 0.0
+        self.initialized = False
+
+    fn observe(mut self, x: tensor.Tensor[Float64]):
+        var n = x._n
+        if n <= 0: return
+        var i = 0
+        if not self.initialized:
+            self.min_val = x._data[0]
+            self.max_val = x._data[0]
+            self.initialized = True
+            i = 1
+        while i < n:
+            var v = x._data[i]
+            if v < self.min_val: self.min_val = v
+            if v > self.max_val: self.max_val = v
+            i = i + 1
+
+    fn scale_symmetric(self, qmax: Float64 = 127.0) -> Float64:
+        var a = self.min_val
+        var b = self.max_val
+        var m = a
+        if b > m: m = b
+        if -a > m: m = -a
+        if m <= 0.0: return 1.0
+        return m / qmax
