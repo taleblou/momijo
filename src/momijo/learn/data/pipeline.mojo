@@ -41,7 +41,7 @@ fn _arange(n: Int) -> List[Int]:
 # This avoids RNG dependencies at this stage. Later, replace with a PRNG-based
 # Fisher–Yates once randomness utilities are ready.
 fn _pseudo_permute(indices: List[Int], buffer_hint: Int) -> List[Int]:
-    var n = Int(indices.size())
+    var n = len(indices)
     if n <= 1:
         return indices
 
@@ -107,7 +107,7 @@ struct PipelineIter:
 
     # Return whether any further batch can be produced.
     fn has_next(self) -> Bool:
-        if self.pos < Int(self.order.size()):
+        if self.pos < len(self.order):
             return True
         # Current epoch consumed; check if we have more repeats.
         if self._has_more_epoch():
@@ -117,7 +117,7 @@ struct PipelineIter:
     # Produce the next batch of indices. If no more data, returns an empty list.
     fn next_index_batch(mut self) -> List[Int]:
         var empty = List[Int]()
-        var n = Int(self.order.size())
+        var n = len(self.order)
 
         # If current epoch ended, move to next (if allowed)
         if self.pos >= n:
@@ -152,7 +152,7 @@ struct PipelineIter:
         s = s + ", drop_last=" + String(self.drop_last)
         s = s + ", prefetch_n=" + String(self.prefetch_n)
         s = s + ", repeat " + String(self.current_repeat) + "/" + String(self.total_repeats)
-        s = s + ", len=" + String(Int(self.order.size())) + ")"
+        s = s + ", len=" + String(len(self.order)) + ")"
         return s
 
 # -----------------------------------------------------------------------------
