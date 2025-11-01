@@ -85,10 +85,10 @@ fn _pad2d_nchw(
     if pad_h == 0 and pad_w == 0:
         return x
 
-    var n = Int(x.size())
-    var c = Int(x[0].size())
-    var h = Int(x[0][0].size())
-    var w = Int(x[0][0][0].size())
+    var n = len(x)
+    var c = len(x[0])
+    var h = len(x[0][0])
+    var w = len(x[0][0][0])
 
     var hp = h + 2 * pad_h
     var wp = w + 2 * pad_w
@@ -124,21 +124,21 @@ fn conv2d(
 ) -> List[List[List[List[Float64]]]]:
     var cfg = Conv2dConfig(stride, stride, padding, padding, dilation, dilation)
 
-    var N = Int(x.size())
-    var C_in = Int(x[0].size())
-    var H_in = Int(x[0][0].size())
-    var W_in = Int(x[0][0][0].size())
+    var N = len(x)
+    var C_in = len(x[0])
+    var H_in = len(x[0][0])
+    var W_in = len(x[0][0][0])
 
-    var C_out = Int(weight.size())
+    var C_out = len(weight)
     assert C_out > 0
-    assert C_in == Int(weight[0].size())
+    assert C_in == len(weight[0])
 
-    var KH = Int(weight[0][0].size())
-    var KW = Int(weight[0][0][0].size())
+    var KH = len(weight[0][0])
+    var KW = len(weight[0][0][0])
 
     var x_pad = _pad2d_nchw(x, cfg.pad_h, cfg.pad_w)
-    var H_pad = Int(x_pad[0][0].size())
-    var W_pad = Int(x_pad[0][0][0].size())
+    var H_pad = len(x_pad[0][0])
+    var W_pad = len(x_pad[0][0][0])
 
     var H_out = Int(((H_pad - (cfg.dil_h * (KH - 1) + 1)) // cfg.stride_h) + 1)
     var W_out = Int(((W_pad - (cfg.dil_w * (KW - 1) + 1)) // cfg.stride_w) + 1)
@@ -168,7 +168,7 @@ fn conv2d(
                                 kx = kx + 1
                             ky = ky + 1
                         ci = ci + 1
-                    if bias.size() == C_out:
+                    if len(bias) == C_out:
                         acc = acc + bias[co]
                     y[n][co][oy][ox] = acc
                     ox = ox + 1
@@ -196,10 +196,10 @@ fn max_pool2d(
 
     var x_pad = _pad2d_nchw(x, padding, padding)
 
-    var N = Int(x_pad.size())
-    var C = Int(x_pad[0].size())
-    var H = Int(x_pad[0][0].size())
-    var W = Int(x_pad[0][0][0].size())
+    var N = len(x_pad)
+    var C = len(x_pad[0])
+    var H = len(x_pad[0][0])
+    var W = len(x_pad[0][0][0])
 
     var H_out = 0
     var W_out = 0
@@ -650,3 +650,94 @@ fn conv2d_pointwise[T: Copyable & Movable](x: tensor.Tensor[T], w: tensor.Tensor
 fn separable_conv2d[T: Copyable & Movable](x: tensor.Tensor[T], depthwise: tensor.Tensor[T], pointwise: tensor.Tensor[T], stride: Int = 1, padding: Int = 0) -> tensor.Tensor[T]:
     var dw = conv2d_depthwise(x, depthwise, stride, padding)
     return conv2d_pointwise(dw, pointwise)
+
+
+
+
+
+fn _clip(x: Float64, lo: Float64, hi: Float64) -> Float64:
+    var y = x
+    if y < lo: y = lo
+    if y > hi: y = hi
+    return y
+
+# hard-sigmoid: clip(0.2*x + 0.5, 0, 1)
+fn _hardsigmoid(x: Float64) -> Float64:
+    return _clip(0.2 * x + 0.5, 0.0, 1.0)
+
+# hard-tanh: clip(x, -1, 1)
+fn _hardtanh(x: Float64) -> Float64:
+    return _clip(x, -1.0, 1.0)
+
+# Row-wise "ReLU-normalized" softmax (no exp): max(0,s_i)/sum_j max(0,s_j)
+# If all <=0, fall back to uniform.
+fn _rowwise_relu_normalize(mut row: List[Float64]):
+    var n = len(row)
+    var sum_pos = 0.0
+    var i = 0
+    while i < n:
+        if row[i] > 0.0:
+            sum_pos = sum_pos + row[i]
+        else:
+            row[i] = 0.0
+        i = i + 1
+    if sum_pos <= 1e-12:
+        var v = 1.0 / Float64(n)
+        i = 0
+        while i < n:
+            row[i] = v
+            i = i + 1
+        return
+    i = 0
+    while i < n:
+        row[i] = row[i] / sum_pos
+        i = i + 1
+
+# Matrix multiply: [N,D] @ [D,H] -> [N,H] (row-major)
+fn _mm(a: tensor.Tensor[Float64], b: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    var ashp = a.shape(); var bshp = b.shape()
+    var N = ashp[0]; var D = ashp[1]; var DH = bshp[0]; var H = bshp[1]
+    if D != DH:
+        return a  # pass-through on bad shape
+    var out = tensor.zeros([N, H])
+    var ad = a._data; var bd = b._data; var od = out._data
+    var n = 0
+    while n < N:
+        var h = 0
+        while h < H:
+            var acc = 0.0
+            var d = 0
+            while d < D:
+                acc = acc + ad[n*D + d] * bd[d*H + h]
+                d = d + 1
+            od[n*H + h] = acc
+            h = h + 1
+        n = n + 1
+    return out
+
+# Add bias [H] to rows of [N,H]
+fn _add_bias_rows(mut y: tensor.Tensor[Float64], b: tensor.Tensor[Float64]):
+    var sh = y.shape(); var N = sh[0]; var H = sh[1]
+    var yd = y._data; var bd = b._data
+    var n = 0
+    while n < N:
+        var h = 0
+        while h < H:
+            yd[n*H + h] = yd[n*H + h] + bd[h]
+            h = h + 1
+        n = n + 1
+
+# Elementwise activation in-place
+fn _apply_hardsigmoid_inplace(mut y: tensor.Tensor[Float64]):
+    var n = y.numel()
+    var i = 0
+    while i < n:
+        y._data[i] = _hardsigmoid(y._data[i])
+        i = i + 1
+
+fn _apply_hardtanh_inplace(mut y: tensor.Tensor[Float64]):
+    var n = y.numel()
+    var i = 0
+    while i < n:
+        y._data[i] = _hardtanh(y._data[i])
+        i = i + 1
