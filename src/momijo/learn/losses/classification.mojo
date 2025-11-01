@@ -75,13 +75,13 @@ fn _log(x_in: Float64) -> Float64:
 fn _log_sum_exp(row: List[Float64]) -> Float64:
     var m = row[0]
     var i = 1
-    while i < Int(row.size()):
+    while i < len(row):
         if row[i] > m:
             m = row[i]
         i = i + 1
     var s: Float64 = 0.0
     i = 0
-    while i < Int(row.size()):
+    while i < len(row):
         s = s + _exp(row[i] - m)
         i = i + 1
     return m + _log(s + _eps())
@@ -89,10 +89,10 @@ fn _log_sum_exp(row: List[Float64]) -> Float64:
 # Softmax probabilities (row-wise)
 fn _softmax_row(row: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
-    out.reserve(Int(row.size()))
+    out.reserve(len(row))
     var lse = _log_sum_exp(row)
     var i = 0
-    while i < Int(row.size()):
+    while i < len(row):
         out.push_back(_exp(row[i] - lse))
         i = i + 1
     return out
@@ -118,7 +118,7 @@ fn _sigmoid(x: Float64) -> Float64:
 
 # Targets are indices (0..C-1) — logits: [N][C], target_index: [N]
 fn cross_entropy(logits: List[List[Float64]], target_index: List[Int]) -> Float64:
-    var n = Int(logits.size())
+    var n = len(logits)
     if n == 0: return 0.0
     var total: Float64 = 0.0
     var i = 0
@@ -132,7 +132,7 @@ fn cross_entropy(logits: List[List[Float64]], target_index: List[Int]) -> Float6
 
 # Targets are one-hot rows — logits: [N][C], target_one_hot: [N][C]
 fn cross_entropy(logits: List[List[Float64]], target_one_hot: List[List[Float64]]) -> Float64:
-    var n = Int(logits.size())
+    var n = len(logits)
     if n == 0: return 0.0
     var total: Float64 = 0.0
     var i = 0
@@ -142,7 +142,7 @@ fn cross_entropy(logits: List[List[Float64]], target_one_hot: List[List[Float64]
         var lse = _log_sum_exp(row)
         var ce_i: Float64 = 0.0
         var j = 0
-        while j < Int(row.size()):
+        while j < len(row):
             var y = trow[j]
             if y != 0.0:
                 ce_i = ce_i - (y * (row[j] - lse))
@@ -165,7 +165,7 @@ fn _bce_logit_scalar(logit: Float64, target: Float64) -> Float64:
 
 # Vector: logits/targets are length-N
 fn binary_cross_entropy(logits: List[Float64], targets: List[Float64]) -> Float64:
-    var n = Int(logits.size())
+    var n = len(logits)
     if n == 0: return 0.0
     var total: Float64 = 0.0
     var i = 0
@@ -176,7 +176,7 @@ fn binary_cross_entropy(logits: List[Float64], targets: List[Float64]) -> Float6
 
 # Batched: logits/targets are [N][K] (K independent binary tasks per sample)
 fn binary_cross_entropy(logits: List[List[Float64]], targets: List[List[Float64]]) -> Float64:
-    var n = Int(logits.size())
+    var n = len(logits)
     if n == 0: return 0.0
     var total: Float64 = 0.0
     var i = 0
@@ -196,7 +196,7 @@ fn focal_loss_binary_with_logits(
     gamma: Float64 = 2.0,
     alpha: Float64 = 0.25
 ) -> Float64:
-    var n = Int(logits.size())
+    var n = len(logits)
     if n == 0: return 0.0
     var total: Float64 = 0.0
     var i = 0
@@ -219,7 +219,7 @@ fn focal_loss_multiclass_with_logits(
     gamma: Float64 = 2.0,
     alpha: Float64 = 0.25
 ) -> Float64:
-    var n = Int(logits.size())
+    var n = len(logits)
     if n == 0: return 0.0
     var total: Float64 = 0.0
     var i = 0
@@ -240,7 +240,7 @@ fn focal_loss_multiclass_with_logits(
     gamma: Float64 = 2.0,
     alpha: Float64 = 0.25
 ) -> Float64:
-    var n = Int(logits.size())
+    var n = len(logits)
     if n == 0: return 0.0
     var total: Float64 = 0.0
     var i = 0
@@ -248,7 +248,7 @@ fn focal_loss_multiclass_with_logits(
         var probs = _softmax_row(logits[i])
         var trow = target_one_hot[i]
         var j = 0
-        while j < Int(probs.size()):
+        while j < len(probs):
             var y = trow[j]
             if y != 0.0:
                 var pt = probs[j]
