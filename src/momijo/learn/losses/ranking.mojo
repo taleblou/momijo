@@ -63,8 +63,8 @@ fn _sqrt_nr(x: Float64, iters: Int = 8) -> Float64:
 
 # True L2 distance between two Float64 vectors.
 fn _l2_distance(x: List[Float64], y: List[Float64]) -> Float64:
-    var n = Int(x.size())
-    assert(n == Int(y.size()))
+    var n = len(x)
+    assert(n == len(y))
     var s = 0.0
     var i = 0
     while i < n:
@@ -75,7 +75,7 @@ fn _l2_distance(x: List[Float64], y: List[Float64]) -> Float64:
 
 # Reduction over a list of values. "sum" → sum; anything else → mean.
 fn _reduce(values: List[Float64], reduction: String) -> Float64:
-    var n = Int(values.size())
+    var n = len(values)
     if n == 0:
         return 0.0
     var s = 0.0
@@ -100,8 +100,8 @@ fn hinge_loss(
     margin: Float64 = 1.0,
     reduction: String = String("mean")
 ) -> Float64:
-    var n = Int(scores.size())
-    assert(n == Int(labels.size()))
+    var n = len(scores)
+    assert(n == len(labels))
     var vals = List[Float64]()
     vals.reserve(n)
 
@@ -128,9 +128,9 @@ fn triplet_loss(
     margin: Float64 = 1.0,
     reduction: String = String("mean")
 ) -> Float64:
-    var n = Int(anchors.size())
-    assert(n == Int(positives.size()))
-    assert(n == Int(negatives.size()))
+    var n = len(anchors)
+    assert(n == len(positives))
+    assert(n == len(negatives))
 
     var vals = List[Float64]()
     vals.reserve(n)
@@ -140,8 +140,8 @@ fn triplet_loss(
         var a = anchors[i]
         var p = positives[i]
         var nvec = negatives[i]
-        assert(Int(a.size()) == Int(p.size()))
-        assert(Int(a.size()) == Int(nvec.size()))
+        assert(len(a) == len(p))
+        assert(len(a) == len(nvec))
 
         var d_ap = _l2_distance(a, p)
         var d_an = _l2_distance(a, nvec)
@@ -163,8 +163,8 @@ fn triplet_loss_from_dist(
     margin: Float64 = 1.0,
     reduction: String = String("mean")
 ) -> Float64:
-    var n = Int(ap_dists.size())
-    assert(n == Int(an_dists.size()))
+    var n = len(ap_dists)
+    assert(n == len(an_dists))
 
     var vals = List[Float64]()
     vals.reserve(n)
@@ -252,7 +252,7 @@ fn triplet_loss_from_dist(
 fn _tensor2_row_to_list_f64(t: Tensor[Float64], i: Int) -> List[Float64]:
     # --- Path A: using value_slice(i) -> List[Float64] (preferred by Momijo arrays)
     var row = t.value_slice(i)        # adjust if your API returns Tensor; then iterate and push
-    var n = Int(row.size())
+    var n = len(row)
     var out = List[Float64]()
     out.reserve(n)
     var k = 0
