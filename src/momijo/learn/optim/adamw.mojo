@@ -1,56 +1,19 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project:      Momijo
-# Module:       learn.optim.adamw
+# Project:      momijo
 # File:         src/momijo/learn/optim/adamw.mojo
-#
-# Description:
-#   AdamW optimizer (decoupled weight decay) for Momijo Learn.
-#   - Float64 List fallback: runs in demos with no tensor backend.
-#   - Optional tensor overloads using the Momijo tensor facade.
-#   - Public API:
-#       * register_params(params, grads)                 # Float64 lists
-#       * register_params_tensor(params_t, grads_t)      # tensor.Tensor[Float64]
-#       * step()                                         # update registered params
-#       * step_with(params, grads)                       # one-off stateless helper
-#       * zero_grad()                                    # zero registered grads
-#       * set_hyperparams(...) / reset_state()
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
+# Description:  AdamW optimizer for Linear/Conv2d layers (Float64 tensors).
+# Notes:
+#   - Decoupled weight decay (AdamW): p = p - lr * m_hat/sqrt(v_hat+eps) - lr * wd * p
+#   - Matches Momijo layers: Linear.{weight: [out,in], bias_t: [out]}, Conv2d likewise.
+#   - English-only comments. No optionals in signatures.
 
 from collections.list import List
-from momijo.tensor import tensor   # optional tensor overloads
+from momijo.tensor import tensor
+from momijo.learn.nn.layers import Linear
+from momijo.learn.nn.conv import Conv2d
 
-# -----------------------------------------------------------------------------
-# Small scalar helpers (Float64 fallback)
-# -----------------------------------------------------------------------------
-
-@always_inline
-fn _pow_scalar(x: Float64, n: Int) -> Float64:
-    var r = 1.0
-    var i = 0
-    while i < n:
-        r = r * x
-        i = i + 1
-    return r
-
-@always_inline
-fn _sqrt_scalar(x: Float64) -> Float64:
-    # Newton-Raphson; sufficient for optimizer math
-    if x <= 0.0:
-        return 0.0
-    var g = x
-    var i = 0
-    while i < 12:
-        g = 0.5 * (g + x / g)
-        i = i + 1
-    return g
-
-@always_inline
-fn _assert_same_len(a: List[Float64], b: List[Float64]) -> None:
-    assert(Int(a.size()) == Int(b.size()))
+# ----------------------------- small helpers --------------------------------
 
 @always_inline
 fn _numel(shape: List[Int]) -> Int:
@@ -62,280 +25,183 @@ fn _numel(shape: List[Int]) -> Int:
         i = i + 1
     return p
 
-# -----------------------------------------------------------------------------
-# AdamW (stateful)
-# -----------------------------------------------------------------------------
+@always_inline
+fn _pow_scalar(x: Float64, n: Int) -> Float64:
+    var r = 1.0
+    var i = 0
+    while i < n:
+        r = r * x
+        i = i + 1
+    return r
+
+# ------------------------------ AdamW state ----------------------------------
 
 struct AdamW:
     # Hyperparameters
     var lr: Float64
-    var weight_decay: Float64
     var beta1: Float64
     var beta2: Float64
     var eps: Float64
+    var weight_decay: Float64
 
-    # Slots/state for Float64 List fallback
-    var _params: List[Float64]
-    var _grads: List[Float64]
-    var _m: List[Float64]
-    var _v: List[Float64]
-    var _t: Int
-    var _initialized: Bool
-
-    # Tensor-backed state (optional)
-    var _params_t: tensor.Tensor[Float64]
-    var _grads_t: tensor.Tensor[Float64]
-    var _m_t: tensor.Tensor[Float64]
-    var _v_t: tensor.Tensor[Float64]
-    var _tensor_mode: Bool
+    # Moments (allocated lazily on first step per layer shape)
+    var mW: tensor.Tensor[Float64]
+    var vW: tensor.Tensor[Float64]
+    var mB: tensor.Tensor[Float64]
+    var vB: tensor.Tensor[Float64]
+    var t: Int
+    var _init: Bool
 
     fn __init__(
         out self,
         lr: Float64 = 1e-3,
-        weight_decay: Float64 = 1e-2,
         beta1: Float64 = 0.9,
         beta2: Float64 = 0.999,
-        eps: Float64 = 1e-8
+        eps: Float64 = 1e-8,
+        weight_decay: Float64 = 0.0
     ):
         self.lr = lr
-        self.weight_decay = weight_decay
         self.beta1 = beta1
         self.beta2 = beta2
         self.eps = eps
+        self.weight_decay = weight_decay
+        self.mW = tensor.zeros([1, 1])
+        self.vW = tensor.zeros([1, 1])
+        self.mB = tensor.zeros([1])
+        self.vB = tensor.zeros([1])
+        self.t = 0
+        self._init = False
 
-        self._params = List[Float64]()
-        self._grads  = List[Float64]()
-        self._m      = List[Float64]()
-        self._v      = List[Float64]()
-        self._t = 0
-        self._initialized = False
+    fn __copyinit__(out self, other: Self):
+        self.lr = other.lr
+        self.beta1 = other.beta1
+        self.beta2 = other.beta2
+        self.eps = other.eps
+        self.weight_decay = other.weight_decay
+        self.mW = other.mW.copy()
+        self.vW = other.vW.copy()
+        self.mB = other.mB.copy()
+        self.vB = other.vB.copy()
+        self.t = other.t
+        self._init = other._init
 
-        # tensor slots: create empty by default
-        self._params_t = tensor.Tensor[Float64]()
-        self._grads_t  = tensor.Tensor[Float64]()
-        self._m_t      = tensor.Tensor[Float64]()
-        self._v_t      = tensor.Tensor[Float64]()
-        self._tensor_mode = False
+    # Optional setter to adjust hyperparameters (no Optional syntax)
+    fn set_hyperparams(
+        mut self,
+        lr: Float64,
+        beta1: Float64,
+        beta2: Float64,
+        eps: Float64,
+        weight_decay: Float64
+    ):
+        self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.weight_decay = weight_decay
 
-    # -------------------------------------------------------------------------
-    # Hyperparams & housekeeping
-    # -------------------------------------------------------------------------
+    # -------------------------- per-layer steps ------------------------------
 
-    fn set_hyperparams(mut self,
-                       lr: Float64? = None,
-                       weight_decay: Float64? = None,
-                       beta1: Float64? = None,
-                       beta2: Float64? = None,
-                       eps: Float64? = None) -> None:
-        if lr is not None:
-            self.lr = lr.value()
-        if weight_decay is not None:
-            self.weight_decay = weight_decay.value()
-        if beta1 is not None:
-            self.beta1 = beta1.value()
-        if beta2 is not None:
-            self.beta2 = beta2.value()
-        if eps is not None:
-            self.eps = eps.value()
+    fn step_linear(
+        mut self,
+        mut layer: Linear,
+        dW: tensor.Tensor[Float64],
+        db: tensor.Tensor[Float64]
+    ):
+        # Lazy state init on first use (match grad shapes)
+        if not self._init:
+            self.mW = tensor.zeros_like(dW); self.vW = tensor.zeros_like(dW)
+            self.mB = tensor.zeros_like(db); self.vB = tensor.zeros_like(db)
+            self.t = 0
+            self._init = True
 
-    fn reset_state(mut self) -> None:
-        # Clear both state variants
-        self._m = List[Float64]()
-        self._v = List[Float64]()
-        self._m_t = tensor.Tensor[Float64]()
-        self._v_t = tensor.Tensor[Float64]()
-        self._t = 0
+        self.t = self.t + 1
+        var b1 = self.beta1; var b2 = self.beta2
+        var bc1 = 1.0 - _pow_scalar(b1, self.t)
+        var bc2 = 1.0 - _pow_scalar(b2, self.t)
 
-        # Keep bindings; re-init slots to zeros if already registered
-        if self._initialized and self._tensor_mode:
-            var s = self._params_t.shape()
-            self._m_t = tensor.Tensor[Float64](s, 0.0)
-            self._v_t = tensor.Tensor[Float64](s, 0.0)
-        elif self._initialized:
-            var n2 = Int(self._params.size())
-            var i = 0
-            while i < n2:
-                self._m.push_back(0.0)
-                self._v.push_back(0.0)
-                i = i + 1
+        # Moments
+        self.mW = b1 * self.mW + (1.0 - b1) * dW
+        self.vW = b2 * self.vW + (1.0 - b2) * (dW * dW)
+        self.mB = b1 * self.mB + (1.0 - b1) * db
+        self.vB = b2 * self.vB + (1.0 - b2) * (db * db)
 
-    # -------------------------------------------------------------------------
-    # Registration: Float64 lists
-    # -------------------------------------------------------------------------
+        var mW_hat = self.mW / bc1
+        var vW_hat = self.vW / bc2
+        var mB_hat = self.mB / bc1
+        var vB_hat = self.vB / bc2
 
-    fn register_params(mut self, params: List[Float64], grads: List[Float64]) -> None:
-        _assert_same_len(params, grads)
-        self._params = params
-        self._grads  = grads
+        # Adam step (elementwise)
+        var stepW = mW_hat / (vW_hat.sqrt() + self.eps)
+        var newW = layer.weight - self.lr * stepW
+        # Decoupled weight decay
+        if self.weight_decay != 0.0:
+            newW = newW - self.lr * self.weight_decay * layer.weight
+        layer.weight = newW.copy()
 
-        self._m = List[Float64]()
-        self._v = List[Float64]()
-        var n = Int(params.size())
-        var i = 0
-        while i < n:
-            self._m.push_back(0.0)
-            self._v.push_back(0.0)
-            i = i + 1
+        if layer.bias:
+            var stepB = mB_hat / (vB_hat.sqrt() + self.eps)
+            var newB = layer.bias_t - self.lr * stepB
+            if self.weight_decay != 0.0:
+                newB = newB - self.lr * self.weight_decay * layer.bias_t
+            layer.bias_t = newB.copy()
 
-        self._t = 0
-        self._initialized = True
-        self._tensor_mode = False
+    fn step_conv2d(
+        mut self,
+        mut layer: Conv2d,
+        dW: tensor.Tensor[Float64],
+        db: tensor.Tensor[Float64]
+    ):
+        if not self._init:
+            self.mW = tensor.zeros_like(dW); self.vW = tensor.zeros_like(dW)
+            self.mB = tensor.zeros_like(db); self.vB = tensor.zeros_like(db)
+            self.t = 0
+            self._init = True
 
-    # Zero grads for the registered backend
-    fn zero_grad(mut self) -> None:
-        if not self._initialized:
-            return
-        if self._tensor_mode:
-            var g = self._grads_t._data
-            var n = _numel(self._grads_t.shape())
-            var i = 0
-            while i < n:
-                g[i] = 0.0
-                i = i + 1
-            return
-        var n2 = Int(self._grads.size())
-        var j = 0
-        while j < n2:
-            self._grads[j] = 0.0
-            j = j + 1
+        self.t = self.t + 1
+        var b1 = self.beta1; var b2 = self.beta2
+        var bc1 = 1.0 - _pow_scalar(b1, self.t)
+        var bc2 = 1.0 - _pow_scalar(b2, self.t)
 
-    # -------------------------------------------------------------------------
-    # Registration: tensor backend (Float64)
-    # -------------------------------------------------------------------------
+        self.mW = b1 * self.mW + (1.0 - b1) * dW
+        self.vW = b2 * self.vW + (1.0 - b2) * (dW * dW)
+        self.mB = b1 * self.mB + (1.0 - b1) * db
+        self.vB = b2 * self.vB + (1.0 - b2) * (db * db)
 
-    fn register_params_tensor(mut self,
-                              params: tensor.Tensor[Float64],
-                              grads: tensor.Tensor[Float64]) -> None:
-        # Expect identical shapes
-        assert(len(params.shape()) == len(grads.shape()))
-        var s = params.shape()
-        var t = grads.shape()
-        var k = 0
-        while k < len(s):
-            assert(s[k] == t[k])
-            k = k + 1
+        var mW_hat = self.mW / bc1
+        var vW_hat = self.vW / bc2
+        var stepW = mW_hat / (vW_hat.sqrt() + self.eps)
 
-        self._params_t = params
-        self._grads_t  = grads
-        self._m_t = tensor.Tensor[Float64](s, 0.0)
-        self._v_t = tensor.Tensor[Float64](s, 0.0)
+        var newW = layer.weight - self.lr * stepW
+        if self.weight_decay != 0.0:
+            newW = newW - self.lr * self.weight_decay * layer.weight
+        layer.weight = newW
 
-        self._t = 0
-        self._initialized = True
-        self._tensor_mode = True
+        if layer.bias:
+            var mB_hat = self.mB / bc1
+            var vB_hat = self.vB / bc2
+            var stepB = mB_hat / (vB_hat.sqrt() + self.eps)
+            var newB = layer.bias_t - self.lr * stepB
+            if self.weight_decay != 0.0:
+                newB = newB - self.lr * self.weight_decay * layer.bias_t
+            layer.bias_t = newB
 
-    # -------------------------------------------------------------------------
-    # Update (stateful)
-    # -------------------------------------------------------------------------
+    # ------------------------------ utils ------------------------------------
 
-    fn step(mut self) -> None:
-        if not self._initialized:
-            return
+    fn zero_state(mut self):
+        # Reset moments/time, keep hyperparameters
+        self.mW = tensor.zeros([1, 1]); self.vW = tensor.zeros([1, 1])
+        self.mB = tensor.zeros([1]);    self.vB = tensor.zeros([1])
+        self.t = 0
+        self._init = False
 
-        self._t = self._t + 1
-        var t = self._t
-
-        var b1 = self.beta1
-        var b2 = self.beta2
-        var one = 1.0
-
-        var bias_correction1 = one - _pow_scalar(b1, t)
-        var bias_correction2 = one - _pow_scalar(b2, t)
-
-        var lr = self.lr
-        var wd = self.weight_decay
-        var eps = self.eps
-
-        if self._tensor_mode:
-            # Tensor path: raw contiguous buffer
-            var p = self._params_t._data
-            var g = self._grads_t._data
-            var m = self._m_t._data
-            var v = self._v_t._data
-            var n = _numel(self._params_t.shape())
-
-            var i = 0
-            while i < n:
-                var gi = g[i]
-                var m_prev = m[i]
-                var v_prev = v[i]
-
-                var m_t = b1 * m_prev + (one - b1) * gi
-                var v_t = b2 * v_prev + (one - b2) * (gi * gi)
-
-                m[i] = m_t
-                v[i] = v_t
-
-                var m_hat = m_t / bias_correction1
-                var v_hat = v_t / bias_correction2
-                var denom = _sqrt_scalar(v_hat) + eps
-                var step_update = m_hat / denom
-
-                var pi = p[i]
-                pi = pi - lr * step_update
-                if wd != 0.0:
-                    # decoupled weight decay
-                    pi = pi - lr * wd * pi
-                p[i] = pi
-
-                i = i + 1
-            return
-
-        # List[Float64] path
-        var n2 = Int(self._params.size())
-        var j = 0
-        while j < n2:
-            var pj = self._params[j]
-            var gj = self._grads[j]
-
-            var m_prev2 = self._m[j]
-            var v_prev2 = self._v[j]
-
-            var m_t2 = b1 * m_prev2 + (one - b1) * gj
-            var v_t2 = b2 * v_prev2 + (one - b2) * (gj * gj)
-
-            self._m[j] = m_t2
-            self._v[j] = v_t2
-
-            var m_hat2 = m_t2 / bias_correction1
-            var v_hat2 = v_t2 / bias_correction2
-
-            var denom2 = _sqrt_scalar(v_hat2) + eps
-            var step_update2 = m_hat2 / denom2
-
-            pj = pj - lr * step_update2
-            if wd != 0.0:
-                pj = pj - lr * wd * pj
-
-            self._params[j] = pj
-            j = j + 1
-
-    # -------------------------------------------------------------------------
-    # Stateless helper (convenience)
-    # -------------------------------------------------------------------------
-
-    fn step_with(mut self, params: List[Float64], grads: List[Float64]) -> None:
-        # Reinitialize if not ready or shape changed or tensor-mode bound
-        if not self._initialized or self._tensor_mode or Int(self._params.size()) != Int(params.size()):
-            self.register_params(params, grads)
-        else:
-            self._params = params
-            self._grads  = grads
-        self.step()
-
-    # AMP compatibility hook (kept for API symmetry with GradScaler)
-    fn zero_grad_after_step(mut self) -> Bool:
-        return True
-
-    # Optional: pretty string
     fn __str__(self) -> String:
-        var s = "AdamW(lr=" + String(self.lr)
-        s = s + ", wd=" + String(self.weight_decay)
+        var s = String("AdamW(")
+        s = s + "lr=" + String(self.lr)
         s = s + ", beta1=" + String(self.beta1)
         s = s + ", beta2=" + String(self.beta2)
         s = s + ", eps=" + String(self.eps)
-        s = s + ", t=" + String(self._t)
-        s = s + ", tensor_mode="
-        s = s + (String("true") if self._tensor_mode else String("false"))
+        s = s + ", wd=" + String(self.weight_decay)
+        s = s + ", t=" + String(self.t)
         s = s + ")"
         return s
