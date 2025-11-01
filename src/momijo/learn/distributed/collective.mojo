@@ -98,7 +98,7 @@ fn get_rank() -> Int:
 fn _sum_int(xs: List[Int]) -> Int:
     var s: Int = 0
     var i: Int = 0
-    while i < Int(xs.size()):
+    while i < len(xs)):
         s = s + xs[i]
         i = i + 1
     return s
@@ -106,18 +106,18 @@ fn _sum_int(xs: List[Int]) -> Int:
 fn _sum_f64(xs: List[Float64]) -> Float64:
     var s: Float64 = 0.0
     var i: Int = 0
-    while i < Int(xs.size()):
+    while i < len(xs)):
         s = s + xs[i]
         i = i + 1
     return s
 
 # Elementwise ops for lists (same length)
 fn _ewise_int(a: List[Int], b: List[Int], op: ReduceOp) -> List[Int]:
-    assert(Int(a.size()) == Int(b.size()), "List sizes must match for elementwise reduction.")
+    assert(len(a) == len(b), "List sizes must match for elementwise reduction.")
     var out = List[Int]()
-    out.reserve(a.size())
+    out.reserve(len(a))
     var i: Int = 0
-    while i < Int(a.size()):
+    while i < Int(len(a)):
         var v: Int = 0
         if op.code == ReduceOp.sum().code:
             v = a[i] + b[i]
@@ -135,11 +135,11 @@ fn _ewise_int(a: List[Int], b: List[Int], op: ReduceOp) -> List[Int]:
     return out
 
 fn _ewise_f64(a: List[Float64], b: List[Float64], op: ReduceOp) -> List[Float64]:
-    assert(Int(a.size()) == Int(b.size()), "List sizes must match for elementwise reduction.")
+    assert(len(a) == len(b), "List sizes must match for elementwise reduction.")
     var out = List[Float64]()
-    out.reserve(a.size())
+    out.reserve(len(a))
     var i: Int = 0
-    while i < Int(a.size()):
+    while i < Int(len(a)):
         var v: Float64 = 0.0
         if op.code == ReduceOp.sum().code:
             v = a[i] + b[i]
@@ -175,18 +175,18 @@ fn allreduce_sum_f64(x: Float64) -> Float64:
 # Lists (elementwise identity)
 fn allreduce_sum(xs: List[Int]) -> List[Int]:
     var out = List[Int]()
-    out.reserve(xs.size())
+    out.reserve(len(xs))
     var i: Int = 0
-    while i < Int(xs.size()):
+    while i < Int(len(xs)):
         out.push_back(xs[i])
         i = i + 1
     return out
 
 fn allreduce_sum_f64(xs: List[Float64]) -> List[Float64]:
     var out = List[Float64]()
-    out.reserve(xs.size())
+    out.reserve(len(xs))
     var i: Int = 0
-    while i < Int(xs.size()):
+    while i < Int(len(xs)):
         out.push_back(xs[i])
         i = i + 1
     return out
@@ -214,9 +214,9 @@ fn reduce_f64(x: Float64, op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> Float6
 fn reduce_list_int(xs: List[Int], op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> List[Int]:
     assert(dst == 0, "Only rank 0 exists in single-process reduce.")
     var out = List[Int]()
-    out.reserve(xs.size())
+    out.reserve(len(xs))
     var i: Int = 0
-    while i < Int(xs.size()):
+    while i < len(xs):
         out.push_back(xs[i])
         i = i + 1
     return out
@@ -224,9 +224,9 @@ fn reduce_list_int(xs: List[Int], op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -
 fn reduce_list_f64(xs: List[Float64], op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> List[Float64]:
     assert(dst == 0, "Only rank 0 exists in single-process reduce.")
     var out = List[Float64]()
-    out.reserve(xs.size())
+    out.reserve(len(xs))
     var i: Int = 0
-    while i < Int(xs.size()):
+    while i < len(xs):
         out.push_back(xs[i])
         i = i + 1
     return out
