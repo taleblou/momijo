@@ -33,9 +33,9 @@ struct LRRecord:
     fn __str__(self) -> String:
         var s = String("LRRecord(step=") + String(self.step) + String(", epoch=") + String(self.epoch) + String(", lrs=[")
         var i = 0
-        while i < self.lrs.size():
+        while i < len(self.lrs):
             s = s + String(self.lrs[i])
-            if i + 1 < self.lrs.size():
+            if i + 1 < len(self.lrs):
                 s = s + String(", ")
             i = i + 1
         s = s + String("])")
@@ -110,13 +110,13 @@ struct LRMonitor:
     # Accessors
     # -------------------------------------------------------------------------
     fn last(self) -> LRRecord:
-        if self._history.size() == 0:
+        if len(self._history) == 0:
             var empty = List[Float64]()
             return LRRecord(-1, -1, empty)
-        return self._history[self._history.size() - 1]
+        return self._history[len(self._history) - 1]
 
     fn history_len(self) -> Int:
-        return Int(self._history.size())
+        return Int(len(self._history))
 
     fn history_at(self, i: Int) -> LRRecord:
         # Caller must ensure 0 <= i < history_len()
@@ -139,11 +139,11 @@ struct LRMonitor:
         else:
             prefix = prefix + String(epoch) + String("]")
 
-        var suffix = String(" groups=") + String(Int(lrs.size())) + String(" [")
+        var suffix = String(" groups=") + String(len(lrs.)) + String(" [")
         var i = 0
-        while i < lrs.size():
+        while i < len(lrs):
             suffix = suffix + String(lrs[i])
-            if i + 1 < lrs.size():
+            if i + 1 < len(lrs):
                 suffix = suffix + String(", ")
             i = i + 1
         suffix = suffix + String("]")
