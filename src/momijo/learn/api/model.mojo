@@ -122,7 +122,7 @@ struct Model:
             out = out + String("  Optimizer: ") + self.cfg.optimizer_name + String("\n")
             out = out + String("  Loss:      ") + self.cfg.loss_name + String("\n")
             out = out + String("  Metrics:   ")
-            var msz = Int(self.cfg.metric_names.size())
+            var msz = len(self.cfg.metric_names)
             if msz == 0:
                 out = out + String("(none)\n")
             else:
@@ -192,3 +192,7 @@ struct Model:
         s = s + String("name=") + self.name + String(", compiled=")
         s = s + (String("True") if self.compiled else String("False")) + String(")")
         return s
+
+
+
+ 
