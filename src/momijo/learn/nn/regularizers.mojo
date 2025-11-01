@@ -23,7 +23,7 @@ from momijo.tensor import tensor
 
 fn _sum_abs(xs: List[Float64]) -> Float64:
     var s = 0.0
-    var n = Int(xs.size())
+    var n = len(xs)
     var i = 0
     while i < n:
         var v = xs[i]
@@ -34,7 +34,7 @@ fn _sum_abs(xs: List[Float64]) -> Float64:
 
 fn _sum_sq(xs: List[Float64]) -> Float64:
     var s = 0.0
-    var n = Int(xs.size())
+    var n = len(xs)
     var i = 0
     while i < n:
         var v = xs[i]
@@ -44,7 +44,7 @@ fn _sum_sq(xs: List[Float64]) -> Float64:
 
 fn _sum_abs_nested(blocks: List[List[Float64]]) -> Float64:
     var s = 0.0
-    var m = Int(blocks.size())
+    var m = Int(len(blocks))
     var i = 0
     while i < m:
         s = s + _sum_abs(blocks[i])
@@ -53,7 +53,7 @@ fn _sum_abs_nested(blocks: List[List[Float64]]) -> Float64:
 
 fn _sum_sq_nested(blocks: List[List[Float64]]) -> Float64:
     var s = 0.0
-    var m = Int(blocks.size())
+    var m = Int(len(blocks))
     var i = 0
     while i < m:
         s = s + _sum_sq(blocks[i])
@@ -66,13 +66,13 @@ fn _sum_sq_nested(blocks: List[List[Float64]]) -> Float64:
 
 # L1: λ * Σ |w|
 fn l1_penalty(params: List[Float64], weight: Float64) -> Float64:
-    if weight == 0.0 or params.size() == 0:
+    if weight == 0.0 or len(params) == 0:
         return 0.0
     return weight * _sum_abs(params)
 
 # L2: 0.5 * λ * Σ w^2  (set use_half_factor=false for λ * Σ w^2)
 fn l2_penalty(params: List[Float64], weight: Float64, use_half_factor: Bool = True) -> Float64:
-    if weight == 0.0 or params.size() == 0:
+    if weight == 0.0 or len(params) == 0:
         return 0.0
     var base = weight * _sum_sq(params)
     if use_half_factor:
@@ -120,7 +120,7 @@ fn _l2_sum_f64(w: tensor.Tensor[Float64]) -> Float64:
 
 fn _l1_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
     var s = 0.0
-    var n = Int(blocks.size())
+    var n = Int(len(blocks))
     var i = 0
     while i < n:
         s = s + _l1_sum_f32(blocks[i])
@@ -129,7 +129,7 @@ fn _l1_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
 
 fn _l1_sum_f64_list(blocks: List[tensor.Tensor[Float64]]) -> Float64:
     var s = 0.0
-    var n = Int(blocks.size())
+    var n = Int(len(blocks))
     var i = 0
     while i < n:
         s = s + _l1_sum_f64(blocks[i])
@@ -138,7 +138,7 @@ fn _l1_sum_f64_list(blocks: List[tensor.Tensor[Float64]]) -> Float64:
 
 fn _l2_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
     var s = 0.0
-    var n = Int(blocks.size())
+    var n = Int(len(blocks))
     var i = 0
     while i < n:
         s = s + _l2_sum_f32(blocks[i])
@@ -147,7 +147,7 @@ fn _l2_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
 
 fn _l2_sum_f64_list(blocks: List[tensor.Tensor[Float64]]) -> Float64:
     var s = 0.0
-    var n = Int(blocks.size())
+    var n = Int(len(blocks))
     var i = 0
     while i < n:
         s = s + _l2_sum_f64(blocks[i])
@@ -209,18 +209,18 @@ fn elastic_net_penalty_tensor_f64(w: tensor.Tensor[Float64], l1: Float64, l2: Fl
 
 # L1: λ * Σ |w|
 fn l1_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float64) -> Float64:
-    if weight == 0.0 or blocks.size() == 0:
+    if weight == 0.0 or len(blocks) == 0:
         return 0.0
     return weight * _l1_sum_f32_list(blocks)
 
 fn l1_penalty_tensors_f64(blocks: List[tensor.Tensor[Float64]], weight: Float64) -> Float64:
-    if weight == 0.0 or blocks.size() == 0:
+    if weight == 0.0 or len(blocks) == 0:
         return 0.0
     return weight * _l1_sum_f64_list(blocks)
 
 # L2: 0.5 * λ * Σ w^2  (set use_half_factor=false for λ * Σ w^2)
 fn l2_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float64, use_half_factor: Bool = True) -> Float64:
-    if weight == 0.0 or blocks.size() == 0:
+    if weight == 0.0 or len(blocks) == 0:
         return 0.0
     var base = weight * _l2_sum_f32_list(blocks)
     if use_half_factor:
@@ -228,7 +228,7 @@ fn l2_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float64,
     return base
 
 fn l2_penalty_tensors_f64(blocks: List[tensor.Tensor[Float64]], weight: Float64, use_half_factor: Bool = True) -> Float64:
-    if weight == 0.0 or blocks.size() == 0:
+    if weight == 0.0 or len(blocks) == 0:
         return 0.0
     var base = weight * _l2_sum_f64_list(blocks)
     if use_half_factor:
