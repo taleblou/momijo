@@ -1,30 +1,31 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project:      Momijo
-# Module:       learn.optim.schedulers
-# File:         src/momijo/learn/optim/schedulers.mojo
-#
-# Description:
-#   Learning rate schedulers for Momijo Learn (backend-agnostic).
-#   Included:
-#     - StepLR
-#     - ExponentialLR
-#     - MultiStepLR
-#     - PolynomialLR
-#     - CosineAnnealingLR
-#     - CosineAnnealingWarmRestarts
-#     - LinearWarmup
-#     - WarmupThen (warmup + main)
-#     - ChainedLR
-#     - ReduceLROnPlateau
-#
-# Author(s):    Morteza Taleblou & Mitra Daneshmand
-# Website:      https://taleblou.ir/
-# Repository:   https://github.com/taleblou/momijo
+# Project: momijo
+# File: src/momijo/learn/optim/sgd.mojo
+# Description: Plain SGD optimizer for Linear layers.
+
+from momijo.tensor import tensor
+from momijo.learn.nn.layers import Linear
 
 from collections.list import List
+from momijo.learn.nn.conv import Conv2d
 
-# -----------------------------------------------------------------------------
+struct SGD:
+    var lr: Float64
+    fn __init__(out self, lr: Float64 = 0.01): self.lr = lr
+    fn __copyinit__(out self, other: Self): self.lr = other.lr
+    fn step_linear(mut self, mut layer: Linear, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
+        layer.weight = layer.weight - (dW * self.lr)
+        layer.bias = layer.bias - (db * self.lr)
+
+
+
+fn step_conv2d(mut self, mut layer: Conv2d, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
+    layer.weight = layer.weight - (dW * self.lr)
+    layer.bias   = layer.bias   - (db * self.lr)
+
+
+#-----------------------------------------------------------------------------
 # Tiny numeric helpers (no stdlib.math dependency)
 # -----------------------------------------------------------------------------
 
@@ -231,7 +232,7 @@ struct MultiStepLR:
         # milestones strictly increasing, non-negative
         var i = 0
         var prev = -1
-        while i < Int(milestones.size()):
+        while i < len(milestones):
             var m = milestones[i]
             assert(m >= 0)
             assert(m > prev)
@@ -249,7 +250,7 @@ struct MultiStepLR:
     fn _compute_lr(self, epoch: Int) -> Float64:
         var count = 0
         var i = 0
-        var n = Int(self.milestones.size())
+        var n = len(self.milestones)
         while i < n:
             if epoch >= self.milestones[i]:
                 count = count + 1
@@ -281,7 +282,7 @@ struct MultiStepLR:
         var s = String("{'type':'MultiStepLR'")
         s = s + ",'base_lr':" + String(self.base_lr)
         s = s + ",'gamma':" + String(self.gamma)
-        s = s + ",'milestones':" + String(Int(self.milestones.size()))
+        s = s + ",'milestones':" + String(len(self.milestones))
         s = s + ",'last_epoch':" + String(self.last_epoch)
         s = s + ",'current_lr':" + String(self.current_lr) + "}"
         return s
@@ -652,7 +653,7 @@ struct ChainedLR:
     var current_lr: Float64
 
     fn __init__(out self, schedulers: List[CosineAnnealingLR], spans: List[Int]):
-        assert(Int(schedulers.size()) == Int(spans.size()))
+        assert(len(schedulers) == len(spans))
         self.schedulers = schedulers
         self.spans = spans
         self.last_epoch = -1
@@ -665,7 +666,7 @@ struct ChainedLR:
         # returns (which, local_t)
         var acc = 0
         var i = 0
-        var n = Int(self.spans.size())
+        var n = len(self.spans)
         while i < n:
             var sp = self.spans[i]
             if sp < 0:
@@ -702,7 +703,7 @@ struct ChainedLR:
 
     fn load_state_dict(mut self, state: String):
         self.last_epoch = -1
-        if Int(self.schedulers.size()) > 0:
+        if len(self.schedulers) > 0:
             self.current_lr = self.schedulers[0].get_lr()
 
 # -----------------------------------------------------------------------------
