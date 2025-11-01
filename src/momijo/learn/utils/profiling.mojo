@@ -208,7 +208,7 @@ struct LabelProfiler:
 
     fn _find_index(self, label: String) -> Int:
         var i = 0
-        var n = Int(self.labels.size())
+        var n = len(self.labels)
         while i < n:
             if self.labels[i] == label:
                 return i
@@ -238,7 +238,7 @@ struct LabelProfiler:
     fn summary(self) -> List[String]:
         var out = List[String]()
         var i = 0
-        var n = Int(self.labels.size())
+        var n = len(self.labels)
         while i < n:
             var name = self.labels[i]
             var st = self.stats[i]
@@ -255,7 +255,7 @@ struct LabelProfiler:
         var lines = self.summary()
         var s = "LabelProfiler:\n"
         var i = 0
-        var n = Int(lines.size())
+        var n = len(lines)
         while i < n:
             s = s + lines[i] + "\n"
             i = i + 1
@@ -383,7 +383,7 @@ struct TrainingLoopProfiler:
 
     fn _find_index(self, label: String) -> Int:
         var i = 0
-        var n = Int(self.labels.size())
+        var n = len(self.labels)
         while i < n:
             if self.labels[i] == label:
                 return i
@@ -394,7 +394,7 @@ struct TrainingLoopProfiler:
         var idx = self._find_index(label)
         if idx < 0:
             self._add_label(label)
-            idx = Int(self.labels.size()) - 1
+            idx = len(self.labels) - 1
         self.current_label_idx = idx
         self.current_start_ns = t_ns
 
@@ -428,7 +428,7 @@ struct TrainingLoopProfiler:
 
     fn clear(mut self):
         var i = 0
-        var n = Int(self.stats.size())
+        var n = len(self.stats)
         while i < n:
             var st = self.stats[i]
             st.reset()
@@ -443,7 +443,7 @@ struct TrainingLoopProfiler:
     fn summary_lines(self) -> List[String]:
         var out = List[String]()
         var i = 0
-        var n = Int(self.labels.size())
+        var n = len(self.labels)
         while i < n:
             var name = self.labels[i]
             var st = self.stats[i]
@@ -461,7 +461,7 @@ struct TrainingLoopProfiler:
         var lines = self.summary_lines()
         var s = "TrainingLoopProfiler:\n"
         var i = 0
-        var n = Int(lines.size())
+        var n = len(lines)
         while i < n:
             s = s + lines[i] + "\n"
             i = i + 1
