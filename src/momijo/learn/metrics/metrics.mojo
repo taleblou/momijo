@@ -1,19 +1,28 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project:      Momijo
-# Module:       momijo.learn.metrics
-# File:         src/momijo/learn/metrics.mojo
-#
-# Description:
-#   Classification and image-quality metrics.
-#
-# Notes:
-#   - No 'let' and no 'assert'.
-#   - English-only comments.
-#   - Scalar returns follow Tensor[Float64] shaped as [1] to match library convention.
+# Project: momijo
+# File: src/momijo/learn/metrics/metrics.mojo
+# Description: Minimal accuracy approximation via soft argmax.
 
 from collections.list import List
 from momijo.tensor.tensor import Tensor
+from momijo.learn.losses.losses import softmax
+
+fn _row_sum(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    var C = x.shape()[1]
+    return tensor.matmul(x, tensor.ones([C,1]))
+
+fn accuracy_approx(logits: tensor.Tensor[Float64], target_onehot: tensor.Tensor[Float64]) -> Float64:
+    var probs = softmax(logits)
+    var k = 64.0
+    var w = tensor.exp(probs * k)
+    var p = w / _row_sum(w)  # [N,C], ~one-hot
+    var correct = _row_sum(p * target_onehot)
+    var N = probs.shape()[0]
+    var total = tensor.matmul(tensor.ones([N,1]).transpose(), correct)
+    return total.item() / Float64(N)
+
+
 
 # --- helpers ---------------------------------------------------------
 
