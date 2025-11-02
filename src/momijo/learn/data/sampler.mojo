@@ -138,7 +138,7 @@ struct DistributedSampler:
     fn set_world_size(mut self, world_size: Int):
         assert(world_size > 0)
         self.world_size = world_size
-        # caller should ensure rank stays valid
+        # caller should if rank stays valid
 
     # Return the indices assigned to this replica for a given epoch.
     fn epoch_indices(self, epoch: Int = 0) -> List[Int]:
@@ -169,7 +169,7 @@ struct DistributedSampler:
             # exact partition (tail dropped)
             num_samples = n // self.world_size
             total_size = num_samples * self.world_size
-            # truncate base if needed
+            # truncate base  
             while len(base) > total_size:
                 # pop from end
                 base.pop()
