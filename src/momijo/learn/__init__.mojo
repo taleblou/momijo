@@ -37,10 +37,8 @@ from momijo.learn.nn.layernorm import LayerNorm1d
 from momijo.learn.nn.functional import conv2d, max_pool2d
 
 # Activations (export softmax from activations ONLY to avoid collision with losses)
-from momijo.learn.nn.activations import relu, gelu, sigmoid, softmax
-# If you also have log_softmax in activations, uncomment next line and
-# make sure it is NOT imported from losses anywhere else.
-# from momijo.learn.nn.activations import log_softmax
+from momijo.learn.nn.activations import relu, gelu, sigmoid, softmax 
+ # from momijo.learn.nn.activations import log_softmax
 
 # -----------------------------------------------------------------------------
 # Losses (do NOT re-export softmax/log_softmax here to avoid name clashes)
