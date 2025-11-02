@@ -130,7 +130,7 @@ fn _ewise_int(a: List[Int], b: List[Int], op: ReduceOp) -> List[Int]:
         else:
             # avg is ambiguous elementwise without global count; default to sum.
             v = a[i] + b[i]
-        out.push_back(v)
+        out.append(v)
         i = i + 1
     return out
 
@@ -151,7 +151,7 @@ fn _ewise_f64(a: List[Float64], b: List[Float64], op: ReduceOp) -> List[Float64]
             v = (a[i] if a[i] < b[i] else b[i])
         else:
             v = a[i] + b[i]
-        out.push_back(v)
+        out.append(v)
         i = i + 1
     return out
 
@@ -178,7 +178,7 @@ fn allreduce_sum(xs: List[Int]) -> List[Int]:
     out.reserve(len(xs))
     var i: Int = 0
     while i < Int(len(xs)):
-        out.push_back(xs[i])
+        out.append(xs[i])
         i = i + 1
     return out
 
@@ -187,7 +187,7 @@ fn allreduce_sum_f64(xs: List[Float64]) -> List[Float64]:
     out.reserve(len(xs))
     var i: Int = 0
     while i < Int(len(xs)):
-        out.push_back(xs[i])
+        out.append(xs[i])
         i = i + 1
     return out
 
@@ -217,7 +217,7 @@ fn reduce_list_int(xs: List[Int], op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -
     out.reserve(len(xs))
     var i: Int = 0
     while i < len(xs):
-        out.push_back(xs[i])
+        out.append(xs[i])
         i = i + 1
     return out
 
@@ -227,6 +227,6 @@ fn reduce_list_f64(xs: List[Float64], op: ReduceOp = ReduceOp.sum(), dst: Int = 
     out.reserve(len(xs))
     var i: Int = 0
     while i < len(xs):
-        out.push_back(xs[i])
+        out.append(xs[i])
         i = i + 1
     return out
