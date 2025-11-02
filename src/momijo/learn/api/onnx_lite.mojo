@@ -94,12 +94,11 @@ fn export_onnx_lite[M: Copyable & Movable](
     return export_onnx_lite(model, input_shape, input_name, output_name, opset)
 
 # --------------------------- Emitters -----------------------------------------
-# Each returns (out_name, node_json_fragment).
-# Provide overloads per type you want to support.
+# Each returns (out_name, node_json_fragment). 
 
 # Default fallback for unknown types:
 fn emit_onnx_lite[T: Copyable & Movable](model: T, in_name: String) -> (String, String):
-    # No nodes emitted; pass-through. An Identity will be added if needed.
+    # No nodes emitted; pass-through. An Identity will be added  
     return (in_name, String(""))
 
 # Linear
