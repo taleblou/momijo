@@ -74,7 +74,7 @@ fn _append_segment(mut s: String,
         s += String("[") + String(p2x) + String(",") + String(p2y) + String("], null")
         is_first = False
 
-# Add this tiny helper near the top of the file (outside the struct), or inside if you prefer:
+# Add this tiny helper near the top of the file (outside the struct), 
 fn _format_scaled_6(scaled: Int) -> String:
     # scaled represents a fixed-point value with 6 decimals, i.e., value * 1_000_000
     var one_million = 1000000
@@ -502,7 +502,7 @@ struct EasyOption:
             obj += String(", 'label':{ 'show':true, 'position':'top', 'formatter':") + _json_str(label_fmt) + String(" }")
         obj += String(" }")
 
-        # Ensure xAxis is category with these labels (demo usually sets it explicitly, but this helps)
+        # if xAxis is category with these labels (demo usually sets it explicitly, but this helps)
         # NOTE: If the demo already set x-axis, this won't override it.
         var lbl_json = String("[")
         var j = 0
@@ -591,7 +591,7 @@ struct EasyOption:
         line_width: Int = 2,
         marker_radius: Int = 5
     ):
-        # Ensure x-axis categories are set
+        # if x-axis categories are set
         var lbl = String("[")
         var i = 0
         while i < len(xcats):
@@ -661,7 +661,7 @@ struct EasyOption:
         line_width: Int = 2,
         cap_width_px: Int = 12
     ):
-        # Ensure x-axis categories exist (caller can override later if needed)
+        # if x-axis categories exist 
         var lbl = String("[")
         var i = 0
         while i < len(xcats):
@@ -1420,8 +1420,7 @@ struct EasyOption:
         var obj = String("{ 'name':") + _json_str(name) + String(", 'type':'pictorialBar'")
         obj += String(", 'symbol':") + _json_str(symbol)
         obj += String(", 'symbolSize':[") + String(symbol_size_w) + String(",") + String(symbol_size_h) + String("]")
-        obj += String(", 'symbolOffset':[") + String(symbol_offset_x) + String(",") + String(symbol_offset_y) + String("]")
-        # symbolRepeat: allow 'auto' or explicit text; if you pass 'true' use raw true
+        obj += String(", 'symbolOffset':[") + String(symbol_offset_x) + String(",") + String(symbol_offset_y) + String("]") 
         if symbol_repeat == "true":
             obj += String(", 'symbolRepeat':true")
         else:
@@ -1556,8 +1555,7 @@ struct EasyOption:
                String("'borderColor':") + _json_str(up_border) + String(", ") +
                String("'borderColor0':") + _json_str(down_border) +
                String(" }")
-
-        # (Optional) You can add markPoint/markLine via add_series_json extras if needed.
+ 
 
         obj += String(" }")
         self.inner.add_series_json(obj)
@@ -1969,8 +1967,7 @@ struct EasyOption:
         return data_json
 
     # Add a Treemap series.
-    # - Provide either your own `data_json` (hierarchical) or use `build_treemap_flat(...)`.
-    # - `levels_json` lets you pass ECharts levels config (array JSON) for styles/visual mapping.
+    # - Provide either your own `data_json` (hierarchical) or use `build_treemap_flat(...)`. 
     fn add_treemap_series(mut self,
                           name: String,
                           data_json: String,
@@ -2036,8 +2033,7 @@ struct EasyOption:
         obj += String(" }")
         return obj
 
-    # Add a Tree series. 'root' must be a single JSON object (a node).
-    # Common options are exposed; you can extend by add_extra_kv if needed.
+    # Add a Tree series. 'root' must be a single JSON object (a node). 
     fn add_tree_series(mut self,
                        name: String,
                        root: String,
@@ -2200,14 +2196,12 @@ struct EasyOption:
             negatives.append(0)
             cum.append(prev)
 
-        # 2) Save cumulative for tooltips (inject as custom KV on the option root)
-        #    You can access it in JS formatter via `option._cum`.
+        # 2) Save cumulative for tooltips (inject as custom KV on the option root) 
         var cum_json = _json_array_int(cum)
         self._extra_kv.append(String("'_cum': ") + cum_json)
 
         # 3) x/y axes (value-value label styling handled by caller as needed)
-        #    NOTE: We only set X categories if the caller hasn't set them already.
-        #    If you prefer, feel free to override after calling this function.
+        #    NOTE: We only set X categories if the caller hasn't set them already. 
         var x_json = String("{ 'type':'category', 'name':'', 'axisLabel':{ 'color':'#333' }, 'data':") +
                      _json_array_str(cats) + String(" }")
         self.inner.set_xaxis_json(x_json)
@@ -2428,7 +2422,7 @@ struct EasyOption:
 
 
     # Build Empirical CDF (ECDF) or Survival(=1-ECDF) from raw samples.
-    # - samples: raw observations (integers). You fully control pre-processing upstream.
+    # - samples: raw observations (integers).  
     # - survival=True yields S(x)=1-ECDF(x).
     # - normalized=True outputs probabilities in [0,1]; False => cumulative counts.
     # - step_style: 'end'|'start'|'middle' (ECharts line.step). Default 'end' (right-continuous ECDF).
