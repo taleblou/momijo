@@ -5,8 +5,7 @@
 #
 # Description:  Classification metrics for Momijo Learn.
 #               Provides accuracy (from labels or logits/probabilities) and F1-score
-#               for binary and multiclass settings (macro averaging). Backend-agnostic:
-#               works over plain Lists for now; later you can wire momijo.tensor ops.
+#               for binary and multiclass settings (macro averaging). Backend-agnostic: 
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
@@ -70,9 +69,9 @@ fn confusion_matrix_from_labels(y_pred: List[Int], y_true: List[Int], n_classes:
         var row = List[Int]()
         var c = 0
         while c < n_classes:
-            row.push_back(0)
+            row.append(0)
             c = c + 1
-        cm.push_back(row)
+        cm.append(row)
         r = r + 1
     var n = len(y_true)
     var i = 0
@@ -110,7 +109,7 @@ fn accuracy(y_pred: List[List[Float64]], y_true: List[Int]) -> Float64:
     var preds = List[Int]()
     var i = 0
     while i < n:
-        preds.push_back(argmax_index(y_pred[i]))
+        preds.append(argmax_index(y_pred[i]))
         i = i + 1
     return accuracy(preds, y_true)
 
@@ -197,6 +196,6 @@ fn f1_score(y_pred: List[List[Float64]], y_true: List[Int]) -> Float64:
     var labels = List[Int]()
     var i = 0
     while i < n:
-        labels.push_back(argmax_index(y_pred[i]))
+        labels.append(argmax_index(y_pred[i]))
         i = i + 1
     return f1_score(labels, y_true)
