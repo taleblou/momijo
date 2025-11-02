@@ -91,7 +91,7 @@ fn fill(img: Image, color_i: List[Int]) -> Image:
     if len(col_u8) == 1:
         return full_like(img, col_u8[0])
 
-    # Ensure packed HWC UInt8 before writing raw bytes
+    # if packed HWC UInt8 before writing raw bytes
     var out = img.copy()
 
     var h = out.height()
@@ -342,7 +342,7 @@ fn bf_match_hamming(
     if _descriptor_is_null(a) or _descriptor_is_null(b):
         return out.copy()
 
-    # Ensure rows are uniform length (typical ORB=32 bytes)
+    # if rows are uniform length (typical ORB=32 bytes)
     var La = _row_len_uniform(a)
     var Lb = _row_len_uniform(b)
     if (La < 0) or (Lb < 0):
