@@ -89,7 +89,7 @@ fn _gaussian_blur_impl(img: Image, kx: Int, ky: Int, sigma: Float64) -> Image:
     if H <= 0 or W <= 0 or C <= 0:
         return Image.new_hwc_u8(1, 1, 1, UInt8(0))
 
-    # Ensure packed HWC UInt8 for predictable memory layout
+    # if packed HWC UInt8 for predictable memory layout
     var src = img.ensure_packed_hwc_u8(True)
 
     # Resolve per-axis sigma (if user passed 0, derive from ksize)
@@ -250,9 +250,9 @@ fn _sqrt64(x: Float64) -> Float64:
     return g
 
 # Computes gradient magnitude from gx, gy (use channel 0), output UInt8 in [0..255].
-# Works on packed HWC/UInt8; will convert inputs if needed.
+# Works on packed HWC/UInt8; will convert inputs  
 fn magnitude_u8(gx: Image, gy: Image) -> Image:
-    # Ensure packed HWC/UInt8 for safe pixel access
+    # if packed HWC/UInt8 for safe pixel access
     var ax = gx.ensure_packed_hwc_u8(True)
     var ay = gy.ensure_packed_hwc_u8(True)
 
