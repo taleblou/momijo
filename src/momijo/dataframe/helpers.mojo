@@ -503,7 +503,7 @@ fn print_df(df: DataFrame, rows: Int, mode: String = String("head")):
 
 # Align column names
 fn align_columns(left: DataFrame, right: DataFrame) -> (DataFrame, DataFrame):
-    """Ensure both frames have the same column set and order.
+    """if both frames have the same column set and order.
     Missing columns in either frame are created and filled with empty strings.
     The column order in both outputs follows the union order: first left's columns,
     then any additional columns from right in their original order.
@@ -526,7 +526,7 @@ fn align_columns(left: DataFrame, right: DataFrame) -> (DataFrame, DataFrame):
             all_cols.append(name2)
         j += 1
 
-# Ensure left_copy has all columns
+# if left_copy has all columns
     var i2 = 0
     while i2 < len(all_cols):
         var col = all_cols[i2]
@@ -548,7 +548,7 @@ fn align_columns(left: DataFrame, right: DataFrame) -> (DataFrame, DataFrame):
             left_copy.cols.append(filler)
         i2 += 1
 
-# Ensure right_copy has all columns
+# if right_copy has all columns
     var j2 = 0
     while j2 < len(all_cols):
         var col2 = all_cols[j2]
@@ -578,7 +578,7 @@ fn align_columns(left: DataFrame, right: DataFrame) -> (DataFrame, DataFrame):
 
 # Align row counts
 fn align_rows(left: DataFrame, right: DataFrame) -> (DataFrame, DataFrame):
-    """Ensure both frames have the same number of rows by padding with empty strings.
+    """if both frames have the same number of rows by padding with empty strings.
     The function returns copies and never mutates inputs.
     """
     var left_copy = left.copy()
