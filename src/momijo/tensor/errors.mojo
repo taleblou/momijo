@@ -158,7 +158,7 @@ fn __zeroed_value_for_T[T: Copyable & Movable]() -> T:
 fn fail(msg: String) -> None:
     print(String("ERROR: ") + msg)
 
-# ---------- Require/Ensure (assert-free) ----------
+# ---------- Require/if (assert-free) ----------
 @always_inline
 fn require(cond: Bool, msg: String) -> Bool:
     if not cond:
