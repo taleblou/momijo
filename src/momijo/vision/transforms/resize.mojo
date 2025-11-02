@@ -178,7 +178,7 @@ fn resize_nearest(src: Tensor, out_h: Int, out_w: Int) -> Tensor:
 # (Ignores out_c but validates consistency if provided.)
 # ----------------------------
 fn resize_nearest_u8_hwc(src: Tensor, out_h: Int, out_w: Int, out_c: Int) -> Tensor:
-    # Keep behavior identical to 3-arg version; ensure channel count matches
+    # Keep behavior identical to 3-arg version; if channel count matches
     if out_c != src.channels():
         # We don't support channel change here—preserve source C.
         assert(False, "resize_nearest_u8_hwc: changing channels is not supported")
