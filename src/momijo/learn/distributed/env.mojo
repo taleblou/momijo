@@ -11,7 +11,7 @@
 
 # -----------------------------------------------------------------------------
 # Compat shim: getenv_compat(key) -> Optional[String]
-# اگر ابزار شما از sys.env پشتیبانی دارد، فقط بدنه را عوض کنید:
+
 #   from sys.env import getenv
 #   @always_inline
 #   fn getenv_compat(key: String) -> Optional[String]:
@@ -40,7 +40,7 @@ fn _parse_int_opt(s: String) -> Optional[Int]:
 
     var acc: Int = 0
     while i < len(s):
-        # ch از نوع StringSlice است؛ مقایسه‌ی مستقیم با لیتـرال‌های String مجاز است
+
         var ch = s[i]
         var d: Optional[Int] = None
 
@@ -57,7 +57,7 @@ fn _parse_int_opt(s: String) -> Optional[Int]:
         else:
             return None
 
-        # d قطعی است
+
         acc = acc * 10 + d.value()
         i = i + 1
 
