@@ -539,7 +539,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         col.rename(name)
 
         # FIX: insert-or-replace path (نه replace-only)
-        self.set_column(col)   # ← به‌جای self.set_column(name, col)
+        self.set_column(col)  
   
 
     # Replace a column by positional index from a string list (preserve target tag).
@@ -588,7 +588,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
                 var pos = rhs.find_col(nm)
                 if pos >= 0:
                     var src = rhs.cols[pos].copy()
-                    src.rename(nm)                   # ایمن‌تر
+                    src.rename(nm)                   
                     self.set_column(src)             # ← insert-or-replace
             i += 1
 
@@ -643,7 +643,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         if idx < len(self.col_names):
             self.col_names[idx] = new_name
         if idx < len(self.names):
-            self.names[idx] = new_name      # ← همگام‌سازی names
+            self.names[idx] = new_name     
 
     fn set_column(mut self, name: String, src: Column) -> None:
         var found = -1
@@ -658,7 +658,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         col.rename(name)
 
         if found < 0:
-            # INSERT when not found (قبلاً: early return)
+            # INSERT when not found 
             self.col_names.append(name)
             self.names.append(name)
             self.cols.append(col.copy())
@@ -1416,7 +1416,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     # Dispatches by dtype/tag and deep-copies buffers.
     # --------------------------------------------------------------
     fn from_series(mut self, src: Series) -> None:
-        # Prefer dtype() if available; fall back to tag if needed.
+        # Prefer dtype() if available; fall back to tag  
         var dt = src.dtype()
 
         if dt.is_string():
@@ -1667,8 +1667,7 @@ fn _dtype_name_for(col: Column) -> String:
     # If your Column has predicates, use them:
     # bool / int64 / float64 / string
     var t = String("string")
-    # NOTE: guard calls in case these helpers exist in your project.
-    # If they don't, you can switch to checking a 'tag' field if exposed.
+    # NOTE: guard calls in case these helpers exist in your project. 
     if col.is_bool():
         t = String("bool")
     elif col.is_i64():
@@ -1913,8 +1912,7 @@ fn reset_index(df: DataFrame) -> DataFrame:
 
     # 4) decide whether to insert an index column
     var need_insert_index = True
-
-    # if we already have a label column (e.g., "city") and index_name is empty,
+ 
     # skip inserting synthetic "index"
     if (not has_idx_name) and has_city_col:
         need_insert_index = False
