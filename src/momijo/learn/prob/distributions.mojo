@@ -154,7 +154,7 @@ struct Uniform:
         var i = 0
         while i < n:
             var u = rng.next_f64()
-            out.push_back(self.a + self.width * u)
+            out.append(self.a + self.width * u)
             i = i + 1
         return out
 
@@ -218,7 +218,7 @@ struct Bernoulli:
         var i = 0
         while i < n:
             var u = rng.next_f64()
-            out.push_back(1 if u < self.p else 0)
+            out.append(1 if u < self.p else 0)
             i = i + 1
         return out
 
@@ -316,7 +316,7 @@ struct Binomial:
             while t < self.n:
                 if rng.next_f64() < self.p: s = s + 1
                 t = t + 1
-            out.push_back(s)
+            out.append(s)
             i = i + 1
         return out
 
@@ -380,13 +380,13 @@ struct Categorical:
         while i < len(probs):
             var v = probs[i]
             if v < 0.0: v = 0.0
-            ps.push_back(v)
+            ps.append(v)
             s = s + v
             i = i + 1
         if s <= 0.0:
             var k = len(ps)
             if k == 0:
-                ps.push_back(1.0); s = 1.0
+                ps.append(1.0); s = 1.0
             else:
                 var j = 0
                 while j < k:
@@ -403,7 +403,7 @@ struct Categorical:
         var t = 0
         while t < len(ps):
             acc = acc + ps[t]
-            cm.push_back(acc)
+            cm.append(acc)
             t = t + 1
         self.probs = ps
         self.cum = cm
@@ -421,7 +421,7 @@ struct Categorical:
                 idx = idx + 1
             if idx >= len(self.cum):
                 idx = len(self.cum) - 1
-            out.push_back(idx)
+            out.append(idx)
             i = i + 1
         return out
 
@@ -452,7 +452,7 @@ struct Categorical:
         while i < k:
             var v = d[i]
             if v < 0.0: v = 0.0
-            ps.push_back(v)
+            ps.append(v)
             s = s + v
             i = i + 1
         if s <= 0.0:
@@ -530,7 +530,7 @@ struct Normal:
                 s = s + rng.next_f64()
                 k = k + 1
             s = s - 6.0
-            out.push_back(self.mu + self.std * s)
+            out.append(self.mu + self.std * s)
             i = i + 1
         return out
 
