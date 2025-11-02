@@ -58,8 +58,7 @@ struct Column(Copyable, Movable):
     # ------------------------------------------------------------------
     # Constructors
     # ------------------------------------------------------------------
-    fn __init__(out self):
-        # Default to empty string column (safer for printing). Change to F64 if you prefer.
+    fn __init__(out self): 
         self.tag = ColumnTag.STR()
         self.f64 = SeriesF64()
         self.i64 = SeriesI64()
@@ -485,8 +484,7 @@ struct Column(Copyable, Movable):
             return False
 
         return False
-
-    # Alias so you can write: if col.is_none(): ...
+ 
     fn is_none(self) -> Bool:
         return self.has_none()
 
