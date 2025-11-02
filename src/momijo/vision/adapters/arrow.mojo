@@ -17,15 +17,14 @@ from momijo.vision.dtypes import DType, dtype_bytes
 
 # -----------------------------------------------------------------------------
 # Core unsafe view: wraps an existing raw buffer as a Tensor without copying.
-# Caller must ensure that:
+# Caller must if that:
 #   - 'ptr' stays alive for the lifetime of the returned Tensor.
 #   - 'nbytes' covers the accessible range for the provided shape/strides/dtype.
 #   - 's0/s1/s2' are logical strides in ELEMENTS (not bytes).
 # -----------------------------------------------------------------------------
 fn unsafe_view_from_raw_u8(ptr: UnsafePointer[UInt8], nbytes: Int,
                            h: Int, w: Int, c: Int,
-                           s0: Int, s1: Int, s2: Int, dt: DType) -> Tensor:
-    # Quick sanity checks (assert-based; remove if you prefer pure unsafe):
+                           s0: Int, s1: Int, s2: Int, dt: DType) -> Tensor: 
     assert(h > 0 and w > 0 and c > 0, "unsafe_view_from_raw_u8: bad shape")
     assert(nbytes > 0, "unsafe_view_from_raw_u8: nbytes must be > 0")
     assert(s0 > 0 and s1 > 0 and s2 > 0, "unsafe_view_from_raw_u8: bad strides")
