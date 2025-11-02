@@ -139,8 +139,7 @@ fn datetime_year(df0: DataFrame, col: String, take: Int) -> String:
     while i < n:
         # NOTE: read string cell via column API
         var s = String(df0.cols[idx].get_string(i))
-
-        # If you truly want only the year part (first 4 chars), replace the next line accordingly.
+ 
         # For now we keep the whole string if length >= 4 to match prior behavior.
         var year = String("")
         if len(s) >= 4:
@@ -237,8 +236,7 @@ fn datetime_year_df(df0: DataFrame, col: String, take: Int) -> DataFrame:
     return _make_single_string_frame(years, "year")
 
 
-# ---------- Minimal helper to build a 1-column (string) DataFrame ----------
-# Replace internals with your project's canonical constructors if you have them.
+# ---------- Minimal helper to build a 1-column (string) DataFrame ---------- 
 
 fn _make_single_string_frame(values: List[String], name: String) -> DataFrame:
     # Build a SeriesStr
@@ -253,7 +251,7 @@ fn _make_single_string_frame(values: List[String], name: String) -> DataFrame:
 
     # Wrap into a Column (string-tag)
     var col = Column()
-    col.set_string_series(s)        # <- if you have a setter; otherwise set tag/s directly
+    col.set_string_series(s)        
 
     # Assemble DataFrame with a single column
     var out = DataFrame()
