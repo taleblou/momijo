@@ -111,7 +111,7 @@ struct ZeroStage1:
         var out = List[Float64]()
         var i = sr.start
         while i < sr.end:
-            out.push_back(xs[i])
+            out.append(xs[i])
             i = i + 1
         return out
 
@@ -121,7 +121,7 @@ struct ZeroStage1:
         var out = List[Int]()
         var i = sr.start
         while i < sr.end:
-            out.push_back(xs[i])
+            out.append(xs[i])
             i = i + 1
         return out
 
@@ -249,7 +249,7 @@ fn _zeros_f64(n: Int) -> List[Float64]:
     var out = List[Float64]()
     var i = 0
     while i < n:
-        out.push_back(0.0)
+        out.append(0.0)
         i = i + 1
     return out
 
@@ -258,7 +258,7 @@ fn _zeros_i32(n: Int) -> List[Int]:
     var out = List[Int]()
     var i = 0
     while i < n:
-        out.push_back(0)
+        out.append(0)
         i = i + 1
     return out
 
