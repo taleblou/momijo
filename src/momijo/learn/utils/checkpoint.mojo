@@ -1,103 +1,163 @@
 # MIT License
 # SPDX-License-Identifier: MIT
-# Project: momijo
-# File: src/momijo/learn/utils/checkpoint.mojo
-# Description: Stateless checkpoint (Linear-only) -> (header JSON string, flat blob).
+# Project:      momijo
+# File:         src/momijo/learn/utils/checkpoint.mojo
+# Description:  Stateless checkpoint (Linear + Conv2d) -> (header JSON string, flat blob).
 
 from momijo.tensor import tensor
-from momijo.learn.api.sequential import Sequential
+from momijo.learn.api.sequential import Sequential, NNSequential
 from momijo.learn.nn.conv import Conv2d
 
 from pathlib.path import Path
 from collections.list import List
 
+# ------------------------------------------------------------------------------
+# Build a flat tensor blob of parameters in traversal order, with a compact JSON
+# header describing per-layer param sizes. Supports Linear and Conv2d.
+# Returns: (header_json, flat_blob[Float64])
+# ------------------------------------------------------------------------------
 fn make_checkpoint(net: Sequential) -> (String, tensor.Tensor[Float64]):
-    var count = 0; var i = 0
-    while i < net.len():
-        var m = net.get(i)
-        if m.tag == 0: count += m.linear.weight.numel() + m.linear.bias.numel()
-            elif m.tag == 7: count += m.conv2d.weight.numel() + m.conv2d.bias.numel()
-        i += 1
-    var flat = tensor.zeros([count])
-    var header = String("{\"params\":[")
-    i = 0; var k = 0
-    while i < net.len():
+    var total = 0
+    var i = 0
+    var n = net.len()
+    while i < n:
         var m = net.get(i)
         if m.tag == 0:
-            var W = m.linear.weight; var B = m.linear.bias
-            var nW = W.numel(); var nB = B.numel()
+            # Linear: weight + (optional) bias_t
+            total = total + m.linear.weight.numel()
+            total = total + m.linear.bias_t.numel()
+        elif m.tag == 7:
+            # Conv2d: weight + (optional) bias
+            total = total + m.conv2d.weight.numel()
+            total = total + m.conv2d.bias.numel()
+        i = i + 1
+
+    var flat = tensor.zeros([total])
+
+    var header = String("{\"params\":[")
+    var first = True
+
+    i = 0
+    var k = 0
+    while i < n:
+        var m2 = net.get(i)
+        if m2.tag == 0:
+            # Linear
+            var W = m2.linear.weight
+            var B = m2.linear.bias_t
+            var nW = W.numel()
+            var nB = B.numel()
+
+            # copy W
             var j = 0
-            while j < nW: flat._data[k + j] = W._data[j]; j += 1
-            k += nW; j = 0
-            while j < nB: flat._data[k + j] = B._data[j]; j += 1
-            k += nB
-            var s = String("{\"type\":\"Linear\",\"w\":"+String(nW)+",\"b\":"+String(nB)+"}")
-            header = header + s
-            if i < net.len() - 1: header = header + ","
-        i += 1
-    header = header + "]}"
+            while j < nW:
+                flat._data[k + j] = W._data[j]
+                j = j + 1
+            k = k + nW
+
+            # copy B (may be zero-length)
+            j = 0
+            while j < nB:
+                flat._data[k + j] = B._data[j]
+                j = j + 1
+            k = k + nB
+
+            # header entry
+            if not first:
+                header = header + String(",")
+            header = header + String("{\"type\":\"Linear\",\"w\":") + String(nW) + String(",\"b\":") + String(nB) + String("}")
+            first = False
+
+        elif m2.tag == 7:
+            # Conv2d
+            var Wc = m2.conv2d.weight
+            var Bc = m2.conv2d.bias
+            var nWc = Wc.numel()
+            var nBc = Bc.numel()
+
+            # copy Wc
+            var j2 = 0
+            while j2 < nWc:
+                flat._data[k + j2] = Wc._data[j2]
+                j2 = j2 + 1
+            k = k + nWc
+
+            # copy Bc (may be zero-length)
+            j2 = 0
+            while j2 < nBc:
+                flat._data[k + j2] = Bc._data[j2]
+                j2 = j2 + 1
+            k = k + nBc
+
+            # header entry
+            if not first:
+                header = header + String(",")
+            header = header + String("{\"type\":\"Conv2d\",\"w\":") + String(nWc) + String(",\"b\":") + String(nBc) + String("}")
+            first = False
+        i = i + 1
+
+    header = header + String("]}")
     return (header, flat)
 
+# ------------------------------------------------------------------------------
+# Apply a flat tensor blob back into net (Linear + Conv2d) in traversal order.
+# Ignores header structure (relies on the same ordering and sizes).
+# Returns: True on success.
+# ------------------------------------------------------------------------------
 fn apply_checkpoint(mut net: Sequential, header: String, blob: tensor.Tensor[Float64]) -> Bool:
-    var i = 0; var k = 0
-    while i < net.len():
+    _ = header
+    var i = 0
+    var k = 0
+    var n = net.len()
+
+    while i < n:
         var m = net.get(i)
         if m.tag == 0:
-            var nW = m.linear.weight.numel(); var nB = m.linear.bias.numel()
+            # Linear
+            var nW = m.linear.weight.numel()
+            var nB = m.linear.bias_t.numel()
+
             var j = 0
-            while j < nW: m.linear.weight._data[j] = blob._data[k + j]; j += 1
-            k += nW; j = 0
-            while j < nB: m.linear.bias._data[j] = blob._data[k + j]; j += 1
-            k += nB
+            while j < nW:
+                m.linear.weight._data[j] = blob._data[k + j]
+                j = j + 1
+            k = k + nW
+
+            j = 0
+            while j < nB:
+                m.linear.bias_t._data[j] = blob._data[k + j]
+                j = j + 1
+            k = k + nB
+
             net.set(i, m)
-        i += 1
+
+        elif m.tag == 7:
+            # Conv2d
+            var nWc = m.conv2d.weight.numel()
+            var nBc = m.conv2d.bias.numel()
+
+            var j2 = 0
+            while j2 < nWc:
+                m.conv2d.weight._data[j2] = blob._data[k + j2]
+                j2 = j2 + 1
+            k = k + nWc
+
+            j2 = 0
+            while j2 < nBc:
+                m.conv2d.bias._data[j2] = blob._data[k + j2]
+                j2 = j2 + 1
+            k = k + nBc
+
+            net.set(i, m)
+        i = i + 1
+
     return True
 
-
-# Append Conv2d params as well
-i = 0
-while i < net.len():
-    var m = net.get(i)
-    if m.tag == 7:
-        var Wc = m.conv2d.weight; var Bc = m.conv2d.bias
-        var nWc = Wc.numel(); var nBc = Bc.numel()
-        var j2 = 0
-        while j2 < nWc: flat._data[k + j2] = Wc._data[j2]; j2 += 1
-        k += nWc; j2 = 0
-        while j2 < nBc: flat._data[k + j2] = Bc._data[j2]; j2 += 1
-        k += nBc
-    i += 1
-
-
-# Apply Conv2d
-i = 0; k = 0
-# Re-count Linear sizes to move k
-while i < net.len():
-    var t = net.get(i)
-    if t.tag == 0:
-        k += t.linear.weight.numel() + t.linear.bias.numel()
-    i += 1
-i = 0
-while i < net.len():
-    var m2 = net.get(i)
-    if m2.tag == 7:
-        var nWc = m2.conv2d.weight.numel(); var nBc = m2.conv2d.bias.numel()
-        var j3 = 0
-        while j3 < nWc: m2.conv2d.weight._data[j3] = blob._data[k + j3]; j3 += 1
-        k += nWc; j3 = 0
-        while j3 < nBc: m2.conv2d.bias._data[j3] = blob._data[k + j3]; j3 += 1
-        k += nBc
-        net.set(i, m2)
-    i += 1
-
-
-
-# ------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Internal helpers (no-raise, defensive where possible)
-# ------------------------------------------------------------
-
-# Minimal JSON string escaper (quotes, backslash, newline, tab)
+# ------------------------------------------------------------------------------
 fn _escape_json_string(s: String) -> String:
+    # Minimal JSON string escaper (quotes, backslash, newline, tab)
     var out = String("")
     var i = 0
     while i < s.__len__():
@@ -115,22 +175,40 @@ fn _escape_json_string(s: String) -> String:
         i = i + 1
     return out
 
-# Placeholder timestamp; keep deterministic for tests
 fn _now_iso8601() -> String:
+    # Deterministic timestamp for tests
     return String("1970-01-01T00:00:00Z")
 
-fn _ensure_parent_dir(p: Path) -> None:
-    var parent = p.parent()
-    if not parent.exists():
-        # try to create parents; ignore failures for now
-        parent.mkdir(parents=True)
-
+# Non-raising write; no parent-mkdir (portable)
 fn _write_text(p: Path, s: String) -> None:
-    _ensure_parent_dir(p)
-    p.write_text(s)
+    try:
+        p.write_text(s)
+    except e:
+        pass
 
+# Non-raising read; returns "" on failure
 fn _read_text(p: Path) -> String:
-    return p.read_text()
+    if not p.exists():
+        return String("")
+    try:
+        return p.read_text()
+    except e:
+        return String("")
+
+# Safe substring for String
+fn _substr(s: String, start_idx: Int, end_idx: Int) -> String:
+    var n = s.__len__()
+    var a = start_idx
+    var b = end_idx
+    if a < 0: a = 0
+    if b > n: b = n
+    if b <= a: return String("")
+    var out = String("")
+    var i = a
+    while i < b:
+        out = out + String(s[i])
+        i = i + 1
+    return out
 
 # Derived sibling paths for a given base path string
 fn _header_path(base: String) -> Path:
@@ -142,7 +220,7 @@ fn _state_path(base: String) -> Path:
 fn _blob_path(base: String) -> Path:
     return Path(base + String(".bin"))
 
-# Tiny extractor for `"state":"<...>"` from header JSON
+# Tiny extractors from header JSON (string find; no full JSON parse)
 fn _extract_state_path_from_header(header_json: String) -> String:
     var key = String("\"state\":\"")
     var idx = header_json.find(key)
@@ -152,9 +230,8 @@ fn _extract_state_path_from_header(header_json: String) -> String:
     var end = header_json.find(String("\""), start)
     if end < 0:
         return String("")
-    return header_json.slice(start, end)
+    return _substr(header_json, start, end)
 
-# Optional: tiny extractor for `"model_class":"<...>"` (not required for load)
 fn _extract_model_class_from_header(header_json: String) -> String:
     var key = String("\"model_class\":\"")
     var idx = header_json.find(key)
@@ -164,33 +241,21 @@ fn _extract_model_class_from_header(header_json: String) -> String:
     var end = header_json.find(String("\""), start)
     if end < 0:
         return String("")
-    return header_json.slice(start, end)
+    return _substr(header_json, start, end)
 
-# ------------------------------------------------------------
-# Public API
-# ------------------------------------------------------------
-
-# Save a model state to disk with MNP-like layout.
-# Writes:
-#   - <path>.json        : header JSON
-#   - <path>.state.json  : state JSON (as provided by model.state_dict())
-#
-# Contract for model:
-#   - state_dict(self) -> String            # JSON string
-#   - load_state_dict(mut self, String)     # for future load
-fn save_state_dict(model, path: String) -> None:
+# ------------------------------------------------------------------------------
+# Public API for state JSON (header + state JSON; blob reserved for future)
+# Sequential-only (simple, non-raising wrappers)
+# ------------------------------------------------------------------------------
+fn save_state_dict(model: Sequential, path: String) -> None:
     var base_path = String(path)
     var header_path = _header_path(base_path)
     var state_path  = _state_path(base_path)
-    var blob_path   = _blob_path(base_path)      # reserved for future Float32 blob
+    var blob_path   = _blob_path(base_path)
 
-    # Pull model state as JSON string (model is responsible for JSON correctness)
     var state_json = model.state_dict()
-
-    # If your model exposes a class/name accessor, replace "Model" below accordingly
     var model_class = String("Model")
 
-    # Compose header JSON
     var header_json =
         String("{") +
         String("\"format\":\"MNP\",") +
@@ -202,25 +267,35 @@ fn save_state_dict(model, path: String) -> None:
             String("\"blob\":\"")  + _escape_json_string(blob_path.__str__())  + String("\"") +
         String("},") +
         String("\"blob_meta\":{") +
-            String("\"dtype\":\"float32\",") +   # reserved for future
+            String("\"dtype\":\"float32\",") +
             String("\"endian\":\"little\",") +
             String("\"total_elems\":0") +
         String("}") +
         String("}")
 
-    # Write header and state
     _write_text(header_path, header_json)
     _write_text(state_path, state_json)
 
-    # Future: when tensor storage is ready, write concatenated Float32 to blob_path
-    # and update blob_meta.total_elems plus per-tensor offsets in the header.
 
-# Load a model state saved by `save_state_dict`.
-# Behavior:
-#   1) If <path>.json exists, parse it and load referenced <state> JSON.
-#   2) Else, if `path` itself is a file, treat it as the state JSON file directly.
-# Returns True on success, False otherwise.
-fn load_state_dict(model, path: String) -> Bool:
+# 2-arg: save_state_dict(NNSequential, path)
+fn save_state_dict(model: NNSequential, path: String) -> None:
+    # delegate to Sequential version
+    save_state_dict(model.seq, path)
+
+# 3-arg: save_state_dict(NNSequential, dir, stem)
+fn save_state_dict(model: NNSequential, dir_: String, stem: String) -> None:
+    var base = _join_dir_stem(dir_, stem)
+    save_state_dict(model.seq, base)
+
+
+# Keep both exists_checkpoint arities:
+# 1-arg already exists: fn exists_checkpoint(path: String) -> Bool
+# Add 2-arg: exists_checkpoint(dir, stem)
+fn exists_checkpoint(dir_: String, stem: String) -> Bool:
+    var base = _join_dir_stem(dir_, stem)
+    return exists_checkpoint(base)
+
+fn load_state_dict(mut model: Sequential, path: String) -> Bool:
     var base_path = String(path)
     var header = _header_path(base_path)
 
@@ -230,19 +305,16 @@ fn load_state_dict(model, path: String) -> Bool:
         if state_str.__len__() == 0:
             return False
         var state_path = Path(state_str)
-
         if not state_path.exists():
-            # If absolute path moved, try local sibling: <base>.state.json
             var local_state = _state_path(base_path)
             if not local_state.exists():
                 return False
             state_path = local_state
-
         var state_json = _read_text(state_path)
         model.load_state_dict(state_json)
         return True
 
-    # Fallback: no header; maybe user passed the state file directly
+    # Fallback: maybe `path` is the state JSON directly
     var direct = Path(base_path)
     if direct.exists():
         var state_json2 = _read_text(direct)
@@ -251,11 +323,21 @@ fn load_state_dict(model, path: String) -> Bool:
 
     return False
 
-# ------------------------------------------------------------
-# Optional helpers (header inspection)
-# ------------------------------------------------------------
 
-# Reads `<path>.json` and returns model_class if present; else returns "".
+# 2-arg: load_state_dict(NNSequential, path)
+fn load_state_dict(mut model: NNSequential, path: String) -> Bool:
+    return load_state_dict( model.seq, path)
+
+# 3-arg: load_state_dict(NNSequential, dir, stem)
+fn load_state_dict(mut model: NNSequential, dir_: String, stem: String) -> Bool:
+    var base = _join_dir_stem(dir_, stem)
+    return load_state_dict( model.seq, base)
+
+fn load_state_dict(mut model: Sequential, dir_: String, stem: String) -> Bool:
+    var base = _join_dir_stem(dir_, stem)
+    return load_state_dict( model, base)
+    
+# Reads `<path>.json` and returns model_class if present; else "".
 fn read_model_class_from_header(path: String) -> String:
     var header = _header_path(path)
     if not header.exists():
@@ -263,7 +345,7 @@ fn read_model_class_from_header(path: String) -> String:
     var header_json = _read_text(header)
     return _extract_model_class_from_header(header_json)
 
-# Returns True if a valid header and state file are present (not parsing state).
+# Returns True if a valid header and state file are present.
 fn exists_checkpoint(path: String) -> Bool:
     var header = _header_path(path)
     if not header.exists():
@@ -275,6 +357,30 @@ fn exists_checkpoint(path: String) -> Bool:
     var state_path = Path(state_str)
     if state_path.exists():
         return True
-    # fallback to sibling
     var local_state = _state_path(path)
     return local_state.exists()
+
+# Convenience: build base path from (dir, stem) and reuse exists_checkpoint(base)
+fn exists_checkpoint_at(dir_: String, stem: String) -> Bool:
+    var base = dir_
+    if base.__len__() > 0:
+        var last = base[base.__len__() - 1]
+        if last != String("/")[0]:
+            base = base + String("/")
+    base = base + stem
+    return exists_checkpoint(base)
+
+
+# ------------------------------------------------------------------------------
+# Convenience overloads: dir + stem  → build base path and reuse core API
+# Place these at the end of the file.
+# ------------------------------------------------------------------------------
+
+fn _join_dir_stem(dir_: String, stem: String) -> String:
+    var base = dir_
+    if base.__len__() > 0:
+        var last = base[base.__len__() - 1]
+        if last != String("/")[0]:
+            base = base + String("/")
+    return base + stem
+  
