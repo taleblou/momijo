@@ -40,7 +40,7 @@ fn s_to_ns(seconds: Float64) -> UInt64:
     var s = seconds
     if s < 0.0:
         s = 0.0
-    # Clamp to UInt64 range is implicit in typical workloads; add guards if needed.
+    # Clamp to UInt64 range is implicit in typical workloads; add guards  
     return UInt64(s * 1_000_000_000.0)
 
 # -----------------------------------------------------------------------------
@@ -222,10 +222,10 @@ struct LabelProfiler:
     fn add_lap_ns(mut self, label: String, lap_ns: UInt64):
         var idx = self._find_index(label)
         if idx < 0:
-            self.labels.push_back(label)
+            self.labels.append(label)
             var st = LapStats()
             st.add_lap(lap_ns)
-            self.stats.push_back(st)
+            self.stats.append(st)
             return
         var cur = self.stats[idx]
         cur.add_lap(lap_ns)
@@ -247,7 +247,7 @@ struct LabelProfiler:
             line = line + ", mean_s=" + String(st.mean_s())
             line = line + ", min_s=" + String(st.min_s())
             line = line + ", max_s=" + String(st.max_s())
-            out.push_back(line)
+            out.append(line)
             i = i + 1
         return out
 
@@ -311,7 +311,7 @@ struct SMA:
         self.buf = List[UInt64]()
         var i = 0
         while i < cap:
-            self.buf.push_back(UInt64(0))
+            self.buf.append(UInt64(0))
             i = i + 1
 
     fn reset(mut self):
@@ -375,11 +375,11 @@ struct TrainingLoopProfiler:
         self._add_label("misc")
 
     fn _add_label(mut self, name: String):
-        self.labels.push_back(name)
+        self.labels.append(name)
         var st = LapStats()
-        self.stats.push_back(st)
+        self.stats.append(st)
         var sm = SMA(self.window)
-        self.smas.push_back(sm)
+        self.smas.append(sm)
 
     fn _find_index(self, label: String) -> Int:
         var i = 0
@@ -453,7 +453,7 @@ struct TrainingLoopProfiler:
             line = line + ", total_s=" + String(st.total_s())
             line = line + ", mean_s=" + String(st.mean_s())
             line = line + ", sma_s=" + String(sm.mean_s())
-            out.push_back(line)
+            out.append(line)
             i = i + 1
         return out
 
