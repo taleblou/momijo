@@ -296,7 +296,7 @@ fn find_contours(img: Image, external_only: Bool = False) -> List[List[(Int, Int
                 # Order boundary points into a contour polyline
                 var contour = _order_boundary(comp_boundary, W, H)
 
-                # external_only hook (placeholder): implement hierarchy filtering if needed
+                # external_only hook (placeholder): implement hierarchy filtering  
                 if len(contour) > 0:
                     contours.append(contour.copy())
             x += 1
