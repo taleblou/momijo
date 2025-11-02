@@ -80,8 +80,7 @@ struct Graph:
     fn node_at(self, i: Int) -> OpNode:
         return self._nodes[i]
 
-    fn nodes(self) -> List[OpNode]:
-        # Return a shallow copy to avoid external mutation; adjust if you want a view.
+    fn nodes(self) -> List[OpNode]: 
         var out = List[OpNode]()
         var i = 0
         var n = len(self._nodes)
