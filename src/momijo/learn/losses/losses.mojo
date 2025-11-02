@@ -106,7 +106,7 @@ fn mse_loss(
     var C = y_pred.shape()[1]
     var ones_n1_T = tensor.ones([N, 1]).transpose()  # (1,N)
     var total = ones_n1_T.matmul(row)         # (1,1)
-    return _scalar(total) / Float64(N * C)    # ← به‌جای total.item()
+    return _scalar(total) / Float64(N * C)   
 
 
 
