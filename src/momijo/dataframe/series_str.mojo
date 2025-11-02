@@ -109,7 +109,7 @@ struct SeriesStr(Copyable, Movable):
     # ---------------------------------------------------------------------
     # Resize / mutation
     # ---------------------------------------------------------------------
-    # Ensure logical length = n (truncates or pads with empty strings).
+    # if logical length = n (truncates or pads with empty strings).
     fn resize(mut self, n: Int) -> None:
         var cur = len(self.data)
         if n <= cur:
