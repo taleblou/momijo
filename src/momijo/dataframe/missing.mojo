@@ -457,7 +457,7 @@ fn fillna_value(frame: DataFrame, col: String, value: String) -> DataFrame:
 
 # ---------- fillna_value(Float64) ----------
 fn fillna_value(frame: DataFrame, col: String, value: Float64) -> DataFrame:
-    # Ensure F64 type if it's currently string
+    # if F64 type if it's currently string
     var out = coerce_str_to_f64(frame, col)
     var idx = out.col_index(col)
     if idx < 0:
