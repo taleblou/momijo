@@ -68,7 +68,7 @@ struct _RunningStats:
         self.metric_sums = List[Float64]()
         var i = 0
         while i < n_metrics:
-            self.metric_sums.push_back(0.0)
+            self.metric_sums.append(0.0)
             i = i + 1
 
     fn update(mut self, loss_val: Float64, metric_vals: List[Float64]):
@@ -89,12 +89,12 @@ struct _RunningStats:
         if self.count == 0:
             var i = 0
             while i < len(self.metric_sums):
-                avgs.push_back(0.0)
+                avgs.append(0.0)
                 i = i + 1
             return avgs
         var i2 = 0
         while i2 < len(self.metric_sums):
-            avgs.push_back(self.metric_sums[i2] / Float64(self.count))
+            avgs.append(self.metric_sums[i2] / Float64(self.count))
             i2 = i2 + 1
         return avgs
 
@@ -160,7 +160,7 @@ struct Evaluator:
                 var i = 0
                 while i < n_metrics:
                     var mv = _safe_metric(metric_fns[i], pred, tgt_opt)
-                    metric_vals.push_back(mv)
+                    metric_vals.append(mv)
                     i = i + 1
             else:
                 # Use forward + external loss_fn + metrics
@@ -179,7 +179,7 @@ struct Evaluator:
                     var j = 0
                     while j < n_metrics:
                         var mv2 = _safe_metric(metric_fns[j], pred2, Optional.any(y))
-                        metric_vals.push_back(mv2)
+                        metric_vals.append(mv2)
                         j = j + 1
 
             stats.update(loss_val, metric_vals)
@@ -207,7 +207,7 @@ struct Evaluator:
             names = List[String]()
             var k = 0
             while k < n_metrics:
-                names.push_back(String("m") + String(k))
+                names.append(String("m") + String(k))
                 k = k + 1
         result.metric_names = names
         result.metric_avgs = stats.metrics_avg()
