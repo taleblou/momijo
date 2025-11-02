@@ -1398,14 +1398,14 @@ fn take[T: ImplicitlyCopyable & Copyable & Movable](
     # num elements
     var n = numel(out_shape)
     if n == 0:
-        # بساز با data خالی
+
         var empty = List[T]()
         return Tensor[T](empty, out_shape.copy()).copy()
 
     # flat buffer with dummy init copied from x
     var flat = List[T]()
     flat.reserve(n)
-    var init_val = x._data[x._offset]          # از دادهٔ موجود می‌گیریم
+    var init_val = x._data[x._offset]        
     var ii = 0
     while ii < n:
         flat.append(init_val)
