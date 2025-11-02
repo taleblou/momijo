@@ -29,7 +29,7 @@ from momijo.tensor.dtype import can_cast
 from momijo.tensor.dtype import to_code
 from momijo.tensor.dtype import from_code
 from momijo.tensor.dtype import from_name
-from momijo.tensor.dtype import itemsize_for_code  # if needed by callers
+from momijo.tensor.dtype import itemsize_for_code  
 
 # ----------------------------- Creation (Float64 backends) --------------------
 # If your codebase currently provides only *_f64 variants, expose ergonomic names:
@@ -53,7 +53,7 @@ from momijo.tensor.creation import arange_f64 as arange
 
 # ----------------------------- Axis operations --------------------------------
 from momijo.tensor.axis import moveaxis
-from momijo.tensor.axis import moveaxes  # multi-axis variant if you need it
+from momijo.tensor.axis import moveaxes   
 from momijo.tensor.axis import swapaxes
 from momijo.tensor.axis import roll      # (x, shift, axis)
 # Optional specialized helpers:
@@ -71,8 +71,7 @@ from momijo.tensor.transform import transpose
 # ----------------------------- Math / Reductions ------------------------------
 from momijo.tensor.math import mean
 
-from momijo.tensor.math import and_t,complex,complex_abs,complex_real,complex_imag,mean
-# If you later expose sum/min/max generics, re-export them here similarly:
+from momijo.tensor.math import and_t,complex,complex_abs,complex_real,complex_imag,mean 
 # from momijo.tensor.math import sum,analytic_jacobian,numeric_jacobian,f_vec
 # from momijo.tensor.math import min
 # from momijo.tensor.math import max
