@@ -31,7 +31,7 @@ fn _sqrt_pos_f64(x: Float64) -> Float64:
 
 @always_inline
 fn _exp_f64(x: Float64) -> Float64:
-    # سری تیلور تا 12 جمله؛ برای اکتیواسیون کافی‌ست.
+
     var term = 1.0
     var sum = 1.0
     var k = 1
@@ -99,12 +99,24 @@ fn _maximum_scalar(x: tensor.Tensor[Float64], a: Float64) -> tensor.Tensor[Float
         y._data[i] = v if v > a else a
         i = i + 1
     return y.copy()
+# elementwise max(x, a)
+fn _maximum_scalar(x: tensor.GradTensor, a: Float64) -> tensor.GradTensor:
+    var y = tensor.Tensor[Float64](x.shape(), 0.0)
+    var n = _numel(x.shape())
+    var i = 0
+    while i < n:
+        var v = x._data[i]
+        y._data[i] = v if v > a else a
+        i = i + 1
+    return y.copy()
 
 # ---------- activations ----------
 struct ReLU(Copyable, Movable):
     fn __init__(out self): pass
     fn __copyinit__(out self, other: Self): pass
     fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        return _maximum_scalar(x, 0.0)
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
         return _maximum_scalar(x, 0.0)
 
 struct LeakyReLU(Copyable, Movable):
@@ -116,12 +128,28 @@ struct LeakyReLU(Copyable, Movable):
         var neg = x - pos
         return pos + (neg * self.slope)
 
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
+        var pos = _maximum_scalar(x, 0.0)
+        var neg = x - pos
+        return pos + (neg * self.slope)
+
 struct Sigmoid(Copyable, Movable):
     fn __init__(out self): pass
     fn __copyinit__(out self, other: Self): pass
     fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
-        # σ(x) = 1 / (1 + exp(-x)) با exp تقریبی
+
         var y = tensor.Tensor[Float64](x.shape(), 0.0)
+        var n = _numel(x.shape())
+        var i = 0
+        while i < n:
+            var v = x._data[i]
+            var e = _exp_f64(-v)
+            y._data[i] = 1.0 / (1.0 + e)
+            i = i + 1
+        return y.copy()
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
+
+        var y = tensor.GradTensor(x.shape(), 0.0)
         var n = _numel(x.shape())
         var i = 0
         while i < n:
@@ -137,6 +165,18 @@ struct Tanh(Copyable, Movable):
     fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         # tanh(x) = (e^x - e^{-x})/(e^x + e^{-x})
         var y = tensor.Tensor[Float64](x.shape(), 0.0)
+        var n = _numel(x.shape())
+        var i = 0
+        while i < n:
+            var v = x._data[i]
+            var ex = _exp_f64(v)
+            var em = _exp_f64(-v)
+            y._data[i] = (ex - em) / (ex + em)
+            i = i + 1
+        return y.copy()
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
+        # tanh(x) = (e^x - e^{-x})/(e^x + e^{-x})
+        var y = tensor.GradTensor(x.shape(), 0.0)
         var n = _numel(x.shape())
         var i = 0
         while i < n:
@@ -218,6 +258,34 @@ struct BatchNorm1d(Copyable, Movable):
 
         return (xm * invstd) * self.gamma + self.beta          # broadcasting row-wise
 
+    fn forward(mut self, x: tensor.GradTensor) -> tensor.GradTensor:
+        # x: [N, C]
+        var shp = x.shape()
+        if len(shp) != 2 or shp[1] != self.num_features:
+            return x.copy()
+
+        var N = shp[0]; var C = shp[1]
+        if N <= 0: return x.copy()
+
+        var mean = self._col_sum(x) / Float64(N)               # [1, C]
+        var xm = x - mean                                      # broadcast row
+        var varv = self._col_sum(xm * xm) / Float64(N)         # [1, C]
+
+        # update running stats
+        var c = 0
+        while c < C:
+            self.running_mean._data[c] = (self.running_mean._data[c] * (1.0 - self.momentum)) + (mean._data[c] * self.momentum)
+            self.running_var._data[c]  = (self.running_var._data[c]  * (1.0 - self.momentum)) + (varv._data[c] * self.momentum)
+            c = c + 1
+
+        # invstd = 1 / sqrt(var + eps)
+        var invstd = tensor.GradTensor([1, C], 0.0)
+        c = 0
+        while c < C:
+            invstd._data[c] = 1.0 / _sqrt_pos_f64(varv._data[c] + self.eps)
+            c = c + 1
+
+        return (xm * invstd) * self.gamma + self.beta          # broadcasting row-wise
 
 fn _fill_uniform_(mut t: tensor.Tensor[Float64],
                   low: Float64,
@@ -226,7 +294,7 @@ fn _fill_uniform_(mut t: tensor.Tensor[Float64],
     var n = _numel(t.shape())
     var i = 0
     while i < n:
-        t._data[i] = rng.uniform(low, high)    # مستقیم روی بافر
+        t._data[i] = rng.uniform(low, high)   
         i = i + 1
 
 fn _xavier_uniform_(mut t: tensor.Tensor[Float64], mut rng: RNG):
@@ -293,6 +361,16 @@ struct Linear(Copyable, Movable):
 
         
     fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        var shp = x.shape()
+        if len(shp) != 2 or shp[1] != self.in_features:
+            return x.copy()
+
+        var y = x.matmul(self.weight.transpose())
+        if self.bias:
+            y = y + self.bias_t
+        return y.copy()
+        
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
         var shp = x.shape()
         if len(shp) != 2 or shp[1] != self.in_features:
             return x.copy()
@@ -414,6 +492,76 @@ struct Conv2d(Copyable, Movable):
         self.bias_t = other.bias_t.copy()
 
     fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        # Naive NCHW convolution with groups, stride, padding, dilation.
+        var shp = x.shape()
+        if len(shp) != 4 or shp[1] != self.in_channels:
+            # pass-through when incompatible
+            return x.copy()
+
+        var N = shp[0]; var C = shp[1]; var H = shp[2]; var W = shp[3]
+        var K  = self.kernel_size
+        var S  = self.stride
+        var P  = self.padding
+        var D  = self.dilation
+        var G  = self.groups
+        var OC = self.out_channels
+        var ICG = C // G                 # in-channels per group
+        var OCG = OC // G                # out-channels per group
+
+        # Output spatial dims (floor division)
+        var OH = (H + 2 * P - D * (K - 1) - 1) // S + 1
+        var OW = (W + 2 * P - D * (K - 1) - 1) // S + 1
+        if OH <= 0 or OW <= 0:
+            return x.copy()
+
+        var yshape = List[Int]()
+        yshape.append(N); yshape.append(OC); yshape.append(OH); yshape.append(OW)
+        var y = tensor.zeros(yshape)
+
+        var xd = x._data.copy()
+        var yd = y._data.copy()
+        var wd = self.weight._data.copy()
+        var bd = self.bias_t._data.copy()
+
+        var n = 0
+        while n < N:
+            var oc = 0
+            while oc < OC:
+                var g = oc // OCG
+                var ic_base = g * ICG
+                var oh = 0
+                while oh < OH:
+                    var ow = 0
+                    while ow < OW:
+                        var acc = 0.0
+                        var icg = 0
+                        while icg < ICG:
+                            var ic = ic_base + icg
+                            var kh = 0
+                            while kh < K:
+                                var ih = oh * S - P + kh * D
+                                var kw = 0
+                                while kw < K:
+                                    var iw = ow * S - P + kw * D
+                                    if ih >= 0 and ih < H and iw >= 0 and iw < W:
+                                        # x index
+                                        var x_idx = _idx_nchw(n, ic, ih, iw, C, H, W)
+                                        # w index: [oc, icg, kh, kw] in row-major
+                                        var w_idx = (((oc * ICG) + icg) * K + kh) * K + kw
+                                        acc = acc + xd[x_idx] * wd[w_idx]
+                                    kw = kw + 1
+                                kh = kh + 1
+                            icg = icg + 1
+                        if self.bias:
+                            acc = acc + bd[oc]
+                        yd[_idx_nchw(n, oc, oh, ow, OC, OH, OW)] = acc
+                        ow = ow + 1
+                    oh = oh + 1
+                oc = oc + 1
+            n = n + 1
+        return y.copy()
+
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
         # Naive NCHW convolution with groups, stride, padding, dilation.
         var shp = x.shape()
         if len(shp) != 4 or shp[1] != self.in_channels:
@@ -657,6 +805,98 @@ struct BatchNorm2d(Copyable, Movable):
 
     return y.copy()
 
+
+    fn forward(self, x: tensor.GradTensor, training: Bool = True) -> tensor.GradTensor:
+        # Only Float64 with [N,C,H,W]
+        var shp = x.shape()
+        if len(shp) != 4 or shp[1] != self.num_features:
+            return x
+
+        var N = shp[0]; var C = shp[1]; var H = shp[2]; var W = shp[3]
+        var count = Float64(N * H * W)
+        if count <= 0.0:
+            return x
+
+        var xd = x._data
+        var gamma = self.weight._data
+        var beta  = self.bias_t._data
+        var rm    = self.running_mean._data
+        var rv    = self.running_var._data
+
+        var yshape = List[Int](); yshape.append(N); yshape.append(C); yshape.append(H); yshape.append(W)
+        var y = tensor.GradTensor(yshape, 0.0)
+        var yd = y._data
+
+        var c = 0
+        while c < C:
+            var mean_c = 0.0
+            var var_c  = 1.0
+
+            if training:
+                var sum = 0.0
+                var n0 = 0
+                while n0 < N:
+                    var h0 = 0
+                    while h0 < H:
+                        var w0 = 0
+                        while w0 < W:
+                            sum = sum + xd[_idx_nchw(n0, c, h0, w0, C, H, W)]
+                            w0 = w0 + 1
+                        h0 = h0 + 1
+                    n0 = n0 + 1
+                mean_c = sum / count
+
+                var sq = 0.0
+                var n1 = 0
+                while n1 < N:
+                    var h1 = 0
+                    while h1 < H:
+                        var w1 = 0
+                        while w1 < W:
+                            var v = xd[_idx_nchw(n1, c, h1, w1, C, H, W)] - mean_c
+                            sq = sq + v * v
+                            w1 = w1 + 1
+                        h1 = h1 + 1
+                    n1 = n1 + 1
+                var_c = sq / count
+
+                if self.track_running_stats:
+                    var m = self.momentum
+                    rm[c] = (1.0 - m) * rm[c] + m * mean_c
+                    rv[c] = (1.0 - m) * rv[c] + m * var_c
+            else:
+                if self.track_running_stats:
+                    mean_c = rm[c]
+                    var_c  = rv[c]
+                else:
+                    mean_c = 0.0
+                    var_c  = 1.0
+
+            
+            var inv = 1.0 / _sqrt_pos_f64(var_c + self.eps)
+
+            var g = 1.0
+            var b = 0.0
+            if self.affine:
+                g = gamma[c]
+                b = beta[c]
+
+            var n2 = 0
+            while n2 < N:
+                var h2 = 0
+                while h2 < H:
+                    var w2 = 0
+                    while w2 < W:
+                        var xval = xd[_idx_nchw(n2, c, h2, w2, C, H, W)]
+                        var z = (xval - mean_c) * inv
+                        yd[_idx_nchw(n2, c, h2, w2, C, H, W)] = z * g + b
+                        w2 = w2 + 1
+                    h2 = h2 + 1
+                n2 = n2 + 1
+            c = c + 1
+
+    return y.copy()
+
     fn __str__(self) -> String:
         var s = String("BatchNorm2d(")
         s = s + "num_features=" + String(self.num_features)
@@ -702,6 +942,43 @@ struct Dropout(Copyable, Movable):
         self.seed = seed
 
     fn forward(self, x: tensor.Tensor[Float64], training: Bool = True) -> tensor.Tensor[Float64]:
+        if not training:
+            return x.copy()
+
+        var keep_prob = 1.0 - self.p
+        if keep_prob <= 0.0:
+            return x.copy()
+
+        var shp = x.shape()
+        var n = _numel(shp)
+        var rng = rng_from_seed(self.seed)
+
+        if self.inplace:
+            var xd = x._data.copy()
+            var i = 0
+            while i < n:
+                var r = rng.uniform(0.0, 1.0)
+                if r < keep_prob:
+                    xd[i] = xd[i] / keep_prob
+                else:
+                    xd[i] = 0.0
+                i = i + 1
+            return x.copy()
+        else:
+            var out = tensor.Tensor[Float64](shp, 0.0)
+            var xd2 = x._data.copy()
+            var yd = out._data.copy()
+            var j = 0
+            while j < n:
+                var r2 = rng.uniform(0.0, 1.0)
+                if r2 < keep_prob:
+                    yd[j] = xd2[j] / keep_prob
+                else:
+                    yd[j] = 0.0
+                j = j + 1
+            return out.copy()
+
+    fn forward(self, x: tensor.GradTensor, training: Bool = True) -> tensor.GradTensor:
         if not training:
             return x.copy()
 
@@ -806,6 +1083,11 @@ struct QuantLinear(Copyable, Movable):
         self.s_x = s_x
 
     fn forward(self, x_f32: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        var x_q = quantize_symmetric_int8(x_f32, self.s_x)
+        var y_i32 = matmul_i8_i8_to_i32(x_q, self.w_q.transpose())
+        var sf = self.s_x * self.s_w
+        return dequantize_i32_to_f32_add_bias(y_i32, sf, self.b_f)
+    fn forward(self, x_f32: tensor.GradTensor) -> tensor.GradTensor:
         var x_q = quantize_symmetric_int8(x_f32, self.s_x)
         var y_i32 = matmul_i8_i8_to_i32(x_q, self.w_q.transpose())
         var sf = self.s_x * self.s_w
