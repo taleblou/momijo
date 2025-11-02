@@ -224,7 +224,7 @@ fn histogram(img: Image) -> List[Int]:
 
 # Computes a per-pixel histogram for a grayscale image (channel 0).
 # If the image has multiple channels, it uses channel 0.
-# Works on packed HWC/UInt8; converts if needed.
+# Works on packed HWC/UInt8; converts 
 fn histogram(img: Image, bins: Int = 256) -> List[Int]:
     var base = img.ensure_packed_hwc_u8(True)
 
@@ -563,7 +563,7 @@ struct ColorJitter:
         var c = x_in.channels()
         assert(h > 0 and w > 0 and c > 0, "ColorJitter: bad input shape")
 
-        # Ensure we have a packed HWC source
+        # if we have a packed HWC source
         var x = x_in
         if not (x.stride2() == 1 and x.stride1() == c and x.stride0() == w * c):
             x = x_in.copy_to_packed_hwc()
@@ -739,9 +739,7 @@ fn _u8_3d_to_image(rgb: List[List[List[UInt8]]]) -> Image:
     return img.copy()
 
 # Overload: CLAHE on Image by adapting to existing list-based implementation.
-# Assumes you already have: fn clahe_color_bgr(rgb: List[List[List[UInt8]]],
-#                                             clip_limit: Float64 = 2.0,
-#                                             tile: Int = 8) -> List[List[List[UInt8]]]
+ 
 fn clahe_color_bgr(img: Image, clip_limit: Float64 = 2.0, tile: Int = 8) -> Image:
     var rgb = _image_to_u8_3d(img)
     var enhanced = clahe_color_bgr(rgb, clip_limit, tile)   # resolves to the list-based overload
