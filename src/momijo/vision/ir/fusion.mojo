@@ -31,8 +31,7 @@ fn _node_ow(n: OpNode) -> Int:
 fn _make_resize(oh: Int, ow: Int) -> OpNode:
     # Adjust this ctor to your real OpNode constructor if different.
     return OpNode(OpKind.ResizeNearest, oh, ow)
-
-# In some IR versions you may need: g.set_nodes(nodes: List[OpNode])
+ 
 fn _set_nodes(mut g: Graph, nodes: List[OpNode]):
     # Prefer a setter if available; otherwise assign to the backing field.
     g._nodes = nodes
