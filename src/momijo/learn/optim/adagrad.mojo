@@ -128,7 +128,7 @@ struct Adagrad:
         if n > cur:
             var i = cur
             while i < n:
-                self._accumulators.push_back(self.initial_accumulator_value)
+                self._accumulators.append(self.initial_accumulator_value)
                 i = i + 1
 
     # params[i] <- params[i] - lr * g[i] / (sqrt(acc[i])+eps)
@@ -264,14 +264,14 @@ struct Adagrad:
         var n = len(params_f64)
         assert(n == len(grads_f64))
 
-        # Ensure accumulator slots
+        # if accumulator slots
         var cur = len(self._acc_tensors_f64)
         if n > cur:
             var i = cur
             while i < n:
                 var shp = params_f64[i - cur].shape() if i >= cur else params_f64[i].shape()
                 var acc0 = tensor.Tensor[Float64](shp, self.initial_accumulator_value)
-                self._acc_tensors_f64.push_back(acc0)
+                self._acc_tensors_f64.append(acc0)
                 i = i + 1
 
         var i2 = 0
@@ -301,7 +301,7 @@ struct Adagrad:
             while i < n:
                 var shp = params_f32[i - cur].shape() if i >= cur else params_f32[i].shape()
                 var acc0 = tensor.Tensor[Float32](shp, Float32(self.initial_accumulator_value))
-                self._acc_tensors_f32.push_back(acc0)
+                self._acc_tensors_f32.append(acc0)
                 i = i + 1
 
         var i2 = 0
