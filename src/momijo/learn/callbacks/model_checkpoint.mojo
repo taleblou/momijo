@@ -65,7 +65,7 @@ struct ModelCheckpoint:
         self.last_path_written = String("")
         self.best_path_written = String("")
 
-        # Try to ensure destination directory exists (best-effort, no hard failure).
+        # Try to if destination directory exists (best-effort, no hard failure).
         _ensure_dir(self.dirpath)
 
     # Configure which metric to monitor and whether larger is better.
