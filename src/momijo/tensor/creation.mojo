@@ -1432,8 +1432,7 @@ fn normal(mean: Float64, std: Float64, shape: List[Int], seed: Optional[Int] = N
     z = z.mul_scalar(std)                     # scale by std
     z = z.add_scalar(mean)                    # shift by mean
     return z.copy()
-
-# Optional: Float32 variant if you need it elsewhere
+ 
 @always_inline
 fn normal_f32(mean: Float32, std: Float32, shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float32]:
     var z64 = _randn_shape_f64(shape, seed)        # sample in f64 for stability
