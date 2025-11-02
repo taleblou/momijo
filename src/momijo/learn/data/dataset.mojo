@@ -222,7 +222,7 @@ struct TupleDataset[A: Copyable & Movable, B: Copyable & Movable](Copyable, Mova
 
     @staticmethod
     fn from_lists(x: List[A], y: List[B]) -> TupleDataset[A, B]:
-        # Ensure aligned lengths without assert: trim to min length
+        # if aligned lengths without assert: trim to min length
         var nx = len(x)
         var ny = len(y)
         var m = nx if nx < ny else ny
