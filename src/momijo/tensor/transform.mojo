@@ -1151,7 +1151,7 @@ fn sliding_window_step[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T],
 #                               Generic view ops
 # ============================================================================
 
-# as_strided: unsafe view; caller must ensure validity.
+# as_strided: unsafe view; caller must if validity.
 fn as_strided[T: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[T], size: List[Int], stride: List[Int], storage_offset: Int = 0
 ) -> Tensor[T]:
@@ -1295,7 +1295,7 @@ fn size[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Int:
 
 fn contiguous[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
     if is_row_major_contiguous(x._shape, x._strides):
-        # already contiguous: return a header-clone that aliases data (or use x.copy() if you want a deep copy)
+        # already contiguous: return a header-clone that aliases data (or use x.copy()  
         return clone_header_share_data[T](x, x._shape.copy(), x._strides.copy())
 
     var n = numel(x._shape)
@@ -1357,7 +1357,7 @@ fn contiguous[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tenso
             d = d - 1
         lin = lin + 1
 
-    # ensure caller gets a tensor with its own header/buffer (optional; remove .copy() if aliasing is okay)
+    # if caller gets a tensor with its own header/buffer (optional; 
     return out.copy()
 # -----------------------------------------------------------------------------
 # Internal: compute the target strides for a reshape *without copy*.
@@ -1551,8 +1551,7 @@ fn _resize_like_with_pad_core[T: ImplicitlyCopyable & Copyable & Movable](
     while i < nmin:
         data.append(c._data[i])
         i += 1
-
-    # Pad if needed (repeat last or zero if source empty)
+ 
     if n_tgt > nmin:
         var fill = data[nmin - 1] if nmin > 0 else from_f64(0.0)
         var r = n_tgt - nmin
@@ -1901,7 +1900,7 @@ fn view[T: ImplicitlyCopyable & Copyable & Movable](
         return x.copy()
 
     # -------------------------------------------------
-    # 5) Ensure row-major contiguity (zero-copy if possible)
+    # 5) if row-major contiguity (zero-copy if possible)
     # -------------------------------------------------
     # If x is already row-major contiguous, avoid copying.
     # Otherwise, materialize a contiguous base using flatten(x).
