@@ -51,7 +51,7 @@ fn pack_f64_to_bytes(x: tensor.Tensor[Float64]) -> tensor.Tensor[UInt8]:
 # Public: unpack ASCII CSV bytes to Float64 tensor.
 fn unpack_bytes_to_f64(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
     var s = _u8_to_string(b)
-    var vals = List[Float64]()   # جمع‌آوری مقادیر
+    var vals = List[Float64]()  
     var cur = String("")
     var L = len(s)
     var i = 0
@@ -73,7 +73,7 @@ fn unpack_bytes_to_f64(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
         except _:
             vals.append(0.0)
 
-    # تبدیل لیست به تنسر Float64
+
     return tensor.Tensor[Float64](vals)
 
 # ------------ Binary fast-path wrappers (fallback to CSV if unavailable) ------------
