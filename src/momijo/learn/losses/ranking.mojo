@@ -110,7 +110,7 @@ fn hinge_loss(
         var y = Float64(_to_sign(labels[i]))
         var s = scores[i]
         var v = margin - y * s
-        vals.push_back(_max0(v))
+        vals.append(_max0(v))
         i = i + 1
 
     return _reduce(vals, reduction)
@@ -146,7 +146,7 @@ fn triplet_loss(
         var d_ap = _l2_distance(a, p)
         var d_an = _l2_distance(a, nvec)
         var v = d_ap - d_an + margin
-        vals.push_back(_max0(v))
+        vals.append(_max0(v))
         i = i + 1
 
     return _reduce(vals, reduction)
@@ -174,15 +174,14 @@ fn triplet_loss_from_dist(
         var ap = ap_dists[i]
         var an = an_dists[i]
         var v = ap - an + margin
-        vals.push_back(_max0(v))
+        vals.append(_max0(v))
         i = i + 1
 
     return _reduce(vals, reduction)
 
 # =============================================================================
 # Tensor adapters
-# =============================================================================
-# The adapters below let you call the same losses with Tensor inputs.
+# ============================================================================= 
 # They convert Tensors to Lists and delegate to the List backend, keeping
 # the loss implementations simple and testable.
 #
@@ -207,7 +206,7 @@ fn _tensor1_to_list_f64(t: Tensor[Float64]) -> List[Float64]:
     out.reserve(n)
     var i = 0
     while i < n:
-        out.push_back(_tget1(t, i))
+        out.append(_tget1(t, i))
         i = i + 1
     return out
 
@@ -217,7 +216,7 @@ fn _tensor1_to_list_i32(t: Tensor[Int32]) -> List[Int]:
     out.reserve(n)
     var i = 0
     while i < n:
-        out.push_back(Int(_tget1(t, i)))
+        out.append(Int(_tget1(t, i)))
         i = i + 1
     return out
 
@@ -257,17 +256,16 @@ fn _tensor2_row_to_list_f64(t: Tensor[Float64], i: Int) -> List[Float64]:
     out.reserve(n)
     var k = 0
     while k < n:
-        out.push_back(row[k])
+        out.append(row[k])
         k = k + 1
     return out
-
-    # --- Path B (if you need bracket indexing):
+ 
     # var d = _tcols2(t)              # implement a helper returning D
     # var out = List[Float64]()
     # out.reserve(d)
     # var j = 0
     # while j < d:
-    #     out.push_back(t[i, j])      # or t.index2(i, j)
+    #     out.append(t[i, j])      # or t.index2(i, j)
     #     j = j + 1
     # return out
 
@@ -293,9 +291,9 @@ fn triplet_loss(
 
     var i = 0
     while i < n:
-        a_list.push_back(_tensor2_row_to_list_f64(anchors, i))
-        p_list.push_back(_tensor2_row_to_list_f64(positives, i))
-        n_list.push_back(_tensor2_row_to_list_f64(negatives, i))
+        a_list.append(_tensor2_row_to_list_f64(anchors, i))
+        p_list.append(_tensor2_row_to_list_f64(positives, i))
+        n_list.append(_tensor2_row_to_list_f64(negatives, i))
         i = i + 1
 
     return triplet_loss(a_list, p_list, n_list, margin, reduction)
