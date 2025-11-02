@@ -202,8 +202,7 @@ struct Categorical(Copyable, Movable):
 #         i += 1
 #     return (cats, codes)
 
-# Column-level overload with options
-# Helper: works when you already have a Column object
+# Column-level overload with options 
 # Convert a string column to categorical integer codes and append as a new column.
 # - If `categories` is non-empty: use its order to map; unseen values → -1.
 # - Else: build categories on the fly by first occurrence order.
@@ -282,10 +281,8 @@ fn to_category(df: DataFrame,
 
     # Assemble SeriesI64 (or Int) and set into frame (replace or append)
     var s = SeriesI64()
-    s.set_name(new_name)
-    # If SeriesI64 expects Int64 values, ensure you push Int64; otherwise Int is fine:
-    s.data = codes.copy()   # deep copy semantics for List[Int]
-    # Optionally set validity to all true if you track it.
+    s.set_name(new_name) 
+    s.data = codes.copy()   # deep copy semantics for List[Int] 
     # s.valid = Bitmap.full(nrows, True)
 
     # If a column named new_name exists, replace it; else append.
