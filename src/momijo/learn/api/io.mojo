@@ -51,7 +51,7 @@ fn _normalize_and_default_ext(path: String) -> Path:
     var out_p = parent / with_ext
     return out_p
 
-# Best-effort: ensure parent directory exists without throwing.
+# Best-effort: if parent directory exists without throwing.
 fn _ensure_parent_dir(path_obj: Path):
     var parent = path_obj.parent()
     if parent.as_string() == String(""):
@@ -70,7 +70,7 @@ fn _ensure_parent_dir(path_obj: Path):
 # -----------------------------------------------------------------------------
 # Requirements on `model` (duck-typed path):
 #   - model.state_dict() -> String
-# Prefer saving the architecture config at higher levels if needed.
+# Prefer saving the architecture config at higher levels 
 
 fn save_model(model, path: String):
     var p = _normalize_and_default_ext(path)
@@ -107,8 +107,7 @@ fn save_model_ok(model: SerializableModel, path: String) -> Bool:
 # Public API: Load
 # -----------------------------------------------------------------------------
 # Behavior (generic path):
-#   - Creates a generic Model() container and asks checkpoint utils to populate it.
-#     This is a safe fallback when you do not have a concrete architecture type.
+#   - Creates a generic Model() container and asks checkpoint utils to populate it. 
 #   - In production, prefer constructing the exact model then calling its
 #     load_state_dict(...) yourself to guarantee shape/topology compatibility.
 
