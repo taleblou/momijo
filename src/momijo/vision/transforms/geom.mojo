@@ -88,8 +88,7 @@ fn flip(img: Image, axis: Int = 0) -> Image:
     return Image.new_hwc_u8(img.height(), img.width(), img.channels(), UInt8(0))
 
 # --- optional: affine (shape-only stub) ---
-# Expects 2x3 row-major matrix: [a00, a01, a02, a10, a11, a12]
-# Uncomment when you wire real resampler.
+# Expects 2x3 row-major matrix: [a00, a01, a02, a10, a11, a12] 
 # from collections.list import List
 # fn affine(img: Image, matrix: List[Float64]) -> Image:
 #     if len(matrix) != 6:
@@ -187,7 +186,7 @@ fn _rotate_nearest_hwc_u8(src: Tensor, angle_deg: Float64) -> Tensor:
     var c = src.channels()
     assert(h > 0 and w > 0 and c > 0, "random_rotation: bad input shape")
 
-    # Ensure packed source for simpler addressing
+    # if packed source for simpler addressing
     var x = src
     if not (x.stride2() == 1 and x.stride1() == c and x.stride0() == w * c):
         x = src.copy_to_packed_hwc()
@@ -841,7 +840,7 @@ fn copy_make_border(
     border: BorderSpec = BorderSpec.CONSTANT(0),
     value: List[UInt8] = []
 ) -> Image:
-    # Ensure readable packed HWC/UInt8
+    # if readable packed HWC/UInt8
     var base = src.ensure_packed_hwc_u8(True)
 
     var h = base.height()
