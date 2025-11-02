@@ -157,8 +157,7 @@ struct EarlyStopping:
 
     # -------------------------------------------------------------------------
     # Epoch end hooks
-    # -------------------------------------------------------------------------
-    # Use this when you DO NOT need to snapshot model weights.
+    # ------------------------------------------------------------------------- 
     fn on_epoch_end(mut self, epoch: Int, current_value: Float64) -> Bool:
         if self._is_improved(current_value):
             self.best_score = current_value
@@ -187,8 +186,7 @@ struct EarlyStopping:
             return True
 
         return False
-
-    # Use this when you WANT to snapshot/restore model weights.
+ 
     fn on_epoch_end_with_model(mut self, epoch: Int, current_value: Float64, model: StatefulModel) -> Bool:
         if self._is_improved(current_value):
             self.best_score = current_value
