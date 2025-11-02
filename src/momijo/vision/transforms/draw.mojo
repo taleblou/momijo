@@ -3,7 +3,7 @@
 # Project: momijo.vision | File: src/momijo/vision/transforms/draw.mojo
 
 from momijo.vision.image import Image
-from momijo.vision.dtypes import DType  # for explicit checks if needed
+from momijo.vision.dtypes import DType  # for explicit checks 
 from momijo.vision.transforms.array import full
 from momijo.vision.transforms.features import Keypoint, keypoint_xy, len_keypoints
  
@@ -174,7 +174,7 @@ fn _clamp(v: Int, lo: Int, hi: Int) -> Int:
     return v
 
 fn _put_color(dst: Image, y: Int, x: Int, color: List[UInt8]):
-    # Writes color, broadcasting if needed
+    # Writes color, broadcasting  
     var c = dst.channels()
     if len(color) == 0:
         var ch = 0
@@ -218,7 +218,7 @@ fn _rectangle_core(src: Image,
     if x_min > x_max or y_min > y_max:
         return src.copy()
 
-    # Clone first, then ensure packed HWC/u8
+    # Clone first, then if packed HWC/u8
     var dst = src.ensure_packed_hwc_u8(True).clone()
  
 
@@ -473,8 +473,7 @@ fn _color_from_list_u8(color: List[UInt8]) -> (UInt8, UInt8, UInt8):
     return (b, g, r)
 
 
-# --------- Point converters (assumed provided) ----------
-# If you already have these in your codebase, keep using them.
+# --------- Point converters (assumed provided) ---------- 
 # Here are minimal stand-ins to avoid ambiguity:
 
 @always_inline
@@ -937,8 +936,7 @@ fn draw_matches(
     matches: List[(Int, Int)]
 ) -> Image:
     var k1 = _drop_score(kps1)
-    var k2 = _drop_score(kps2)
-    # Call the existing (Int,Int) version you already implemented
+    var k2 = _drop_score(kps2) 
     return draw_matches(img1, k1, img2, k2, matches)
 
 
@@ -969,7 +967,7 @@ fn draw_matches(
     kps1: List[(Int, Int)],
     img2: Image,
     kps2: List[(Int, Int)],
-    matches: List[(Int, Int, Int)]     # ← سه‌تایی‌ها
+    matches: List[(Int, Int, Int)]    
 ) -> Image:
     var pairs = List[(Int, Int)]()
     var i = 0
@@ -977,7 +975,6 @@ fn draw_matches(
         var (qi, ti, _) = matches[i]
         pairs.append((qi, ti))
         i = i + 1
-    # صدا زدن نسخه‌ی موجود که جفت‌ها را می‌گیرد
     return draw_matches(img1, kps1, img2, kps2, pairs)
 
 # اگر keypoints از نوع (Int, Int, Float32) هستند:
@@ -986,7 +983,7 @@ fn draw_matches(
     kps1: List[(Int, Int, Float32)],
     img2: Image,
     kps2: List[(Int, Int, Float32)],
-    matches: List[(Int, Int, Int)]     # ← سه‌تایی‌ها
+    matches: List[(Int, Int, Int)]   
 ) -> Image:
     # drop score از keypoints
     var k1 = List[(Int, Int)]()
