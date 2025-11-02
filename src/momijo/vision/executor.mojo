@@ -34,7 +34,7 @@ fn _node_ow(n: OpNode) -> Int:
     # return n.ow()    # if available
     return n._ow
 
-# Ensure the tensor is packed HWC/UInt8. If already in desired form:
+# if the tensor is packed HWC/UInt8. If already in desired form:
 # - when copy_if_needed=True, return a *clone* (defensive copy)
 # - when copy_if_needed=False, return a shallow copy of the same storage
 @always_inline
@@ -51,7 +51,7 @@ fn _apply_node(cur: Tensor, n: OpNode) -> Tensor:
 
     # --- ResizeNearest (HWC/UInt8 only) ---
     if kind == OpKind.ResizeNearest:
-        # Ensure input layout/dtype expectations
+        # if input layout/dtype expectations
         var src = _ensure_packed_hwc_u8(cur, False)
         var oh = _node_oh(n)
         var ow = _node_ow(n)
