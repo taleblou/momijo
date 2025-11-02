@@ -66,8 +66,7 @@ struct Model:
         self.compiled = False
         self.cfg = CompileConfig()
         self.training = True
-
-    # Preferred constructor when you already have an nn.Module.
+ 
     fn __init__(out self, net: Module, name: String = String("Model")):
         self.name = name
         self.net = net
@@ -104,12 +103,10 @@ struct Model:
 
     # Train/eval mode flags on the facade (and potentially on the wrapped Module).
     fn train(mut self):
-        self.training = True
-        # If Module exposes train(), you can invoke it here in future revisions.
+        self.training = True 
 
     fn eval(mut self):
-        self.training = False
-        # If Module exposes eval(), you can invoke it here in future revisions.
+        self.training = False 
 
     # --------------------------- I/O & state --------------------------
 
@@ -177,7 +174,13 @@ struct Model:
     fn forward(self, x: Tensor[Float64]) -> Tensor[Float64]:
         return self.net.forward(x)
 
-    # If needed later, additional overloads (e.g., List[Tensor[...]] or UInt8) can be added.
+
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
+        # Delegate to the wrapped module; assumes compatible signature.
+        return self.net.forward(x)
+
+    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
+        return self.net.forward(x) 
 
     fn predict(self, inputs: Tensor[Float32]) -> Tensor[Float32]:
         return self.forward(inputs)
