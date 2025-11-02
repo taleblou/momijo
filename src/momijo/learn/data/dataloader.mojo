@@ -188,7 +188,7 @@ fn gather_and_collate[U: Copyable & Movable](
     var i = 0
     var m = len(idxs)
     while i < m:
-        batch.push_back(fetch(idxs[i]))
+        batch.append(fetch(idxs[i]))
         i = i + 1
 
     var out = collate(batch)
