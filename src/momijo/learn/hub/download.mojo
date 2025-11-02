@@ -54,8 +54,7 @@ struct DownloadOptions:
 # -----------------------------------------------------------------------------
 # Minimal FS shims (replace these with your project's real FS utils)
 # -----------------------------------------------------------------------------
-# NOTE:
-#  - Keep these tiny wrappers in one place so you can swap to your FS layer.
+# NOTE: 
 #  - If your project already has write_all_bytes/read_all_bytes etc., call them here.
 
 fn _exists(p: Path) -> Bool:
@@ -64,13 +63,11 @@ fn _exists(p: Path) -> Bool:
     return p.exists()
 
 fn _mkdirs(p: Path):
-    # Create directory hierarchy if not present.
-    # If you have mkdirs(String(...)) in your project, call it here.
+    # Create directory hierarchy if not present. 
     # Fallback: do nothing if Path API handles auto-create on write.
     pass
 
-fn _remove(p: Path):
-    # If you have remove_file(String(p)), call it here.
+fn _remove(p: Path): 
     # This shim silently ignores errors to keep behavior side-effect free.
     pass
 
@@ -109,11 +106,11 @@ fn _hex_of_u64(x: UInt64) -> String:
     var buf = List[UInt8]()
     var n = x
     if n == 0:
-        buf.push_back(UInt8(digits[0].ord()))
+        buf.append(UInt8(digits[0].ord()))
     else:
         while n > 0:
             var idx = Int(n & 0xF)
-            buf.push_back(UInt8(digits[idx].ord()))
+            buf.append(UInt8(digits[idx].ord()))
             n = n >> 4
         # reverse
         var i: Int = 0
@@ -191,16 +188,16 @@ fn _sha256(data: List[UInt8]) -> String:
     var msg = List[UInt8]()
     var i: Int = 0
     while i < len(data):
-        msg.push_back(data[i])
+        msg.append(data[i])
         i = i + 1
-    msg.push_back(UInt8(0x80))
+    msg.append(UInt8(0x80))
     while ((len(msg) % 64) != 56):
-        msg.push_back(UInt8(0x00))
+        msg.append(UInt8(0x00))
     var bit_len: UInt64 = UInt64(len(data)) * UInt64(8)
     var s: Int = 56
     while s >= 0:
         var b = UInt8((bit_len >> UInt64(s)) & UInt64(0xff))
-        msg.push_back(b)
+        msg.append(b)
         s = s - 8
 
     # Process chunks
@@ -212,13 +209,13 @@ fn _sha256(data: List[UInt8]) -> String:
         while t < 16:
             var off = chunk + (t * 4)
             var val = (UInt32(msg[off]) << 24) | (UInt32(msg[off+1]) << 16) | (UInt32(msg[off+2]) << 8) | UInt32(msg[off+3])
-            w.push_back(val)
+            w.append(val)
             t = t + 1
         while t < 64:
             var s0 = _rotr32(w[t-15], 7) ^ _rotr32(w[t-15], 18) ^ (w[t-15] >> 3)
             var s1 = _rotr32(w[t-2], 17) ^ _rotr32(w[t-2], 19) ^ (w[t-2] >> 10)
             var val2 = (w[t-16] &+ s0 &+ w[t-7] &+ s1)
-            w.push_back(val2)
+            w.append(val2)
             t = t + 1
 
         var a = h0
@@ -267,10 +264,10 @@ fn _sha256(data: List[UInt8]) -> String:
     var k: Int = 0
     while k < 8:
         var v = hs[k]
-        digest.push_back(UInt8((v >> 24) & 0xff))
-        digest.push_back(UInt8((v >> 16) & 0xff))
-        digest.push_back(UInt8((v >> 8) & 0xff))
-        digest.push_back(UInt8(v & 0xff))
+        digest.append(UInt8((v >> 24) & 0xff))
+        digest.append(UInt8((v >> 16) & 0xff))
+        digest.append(UInt8((v >> 8) & 0xff))
+        digest.append(UInt8(v & 0xff))
         k = k + 1
     return _hex_of_bytes(digest)
 
@@ -353,7 +350,7 @@ fn cached_download(url: String, path: String, opts: DownloadOptions = DownloadOp
             return dst
         _remove(dst)  # evict and re-fetch
 
-    # 2) Ensure parent dir
+    # 2) if parent dir
     var parent = dst.parent()
     _mkdirs(parent)
 
