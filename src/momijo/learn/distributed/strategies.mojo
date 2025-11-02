@@ -185,7 +185,7 @@ struct DistributedDataParallel:
             var state = String("")          # receive buffer
             state = broadcast(state, src)
             self._model.load_state_dict(state)
-        barrier()  # ensure all ranks aligned
+        barrier()  # if all ranks aligned
 
     # ------------------------------
     # Gradient sync (generic & Tensor)
@@ -222,8 +222,7 @@ struct DistributedDataParallel:
         found_inf: Bool = False,
         average: Bool = True
     ):
-        var reduced = self.allreduce_gradients(grad_blob)
-        # If you pass average=True and have a Tensor grad_blob, prefer:
+        var reduced = self.allreduce_gradients(grad_blob) 
         #   var reduced_t = self.allreduce_tensor_keep(grad_tensor, average=True)
         if not found_inf:
             optimizer.step()
