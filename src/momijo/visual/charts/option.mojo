@@ -83,7 +83,7 @@ struct Option:
     var grid: String                  # JSON object
 
     # 5. Axes & coordinate systems
-    var xAxis: String                 # JSON object (or array JSON if you pass it so)
+    var xAxis: String                 # JSON object  
     var yAxis: String                 # JSON object
     var singleAxis: String            # JSON object
     var radar: String                 # JSON object
