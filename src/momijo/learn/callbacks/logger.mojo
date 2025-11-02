@@ -90,14 +90,14 @@ struct CSVLogger:
         self.include_header = include_header
         self.buffer = List[String]()
         if include_header:
-            self.buffer.push_back(String("step,message"))
+            self.buffer.append(String("step,message"))
 
     fn log(mut self, step: Int, msg: String):
         var fields = List[String]()
-        fields.push_back(String(step))   # Int -> String
-        fields.push_back(msg)
+        fields.append(String(step))   # Int -> String
+        fields.append(msg)
         var row = _join_csv(fields)
-        self.buffer.push_back(row)
+        self.buffer.append(row)
 
     fn to_string(self) -> String:
         return _lines_join(self.buffer)
@@ -105,7 +105,7 @@ struct CSVLogger:
     fn clear(mut self):
         self.buffer = List[String]()
         if self.include_header:
-            self.buffer.push_back(String("step,message"))
+            self.buffer.append(String("step,message"))
 
     # Writer: a callable that accepts a single String (e.g., a file writer or stdout writer)
     fn flush_with(self, writer):
@@ -131,12 +131,12 @@ struct CSVTableLogger:
         var i = 0
         var n = len(columns)
         while i < n:
-            self.columns.push_back(columns[i])
+            self.columns.append(columns[i])
             i = i + 1
 
         if include_header:
             var header = _join_csv(self.columns)
-            self.buffer.push_back(header)
+            self.buffer.append(header)
 
     # Log using values aligned with schema order (len(values) must equal len(columns)).
     fn log_row(mut self, values: List[String]):
@@ -145,7 +145,7 @@ struct CSVTableLogger:
             # Mismatched row length; ignore safely.
             return
         var row = _join_csv(values)
-        self.buffer.push_back(row)
+        self.buffer.append(row)
 
     # Log with name/value pairs. pairs: ["name1","value1","name2","value2", ...]
     fn log_pairs(mut self, pairs: List[String]):
@@ -155,7 +155,7 @@ struct CSVTableLogger:
 
         var i = 0
         while i < ncols:
-            temp.push_back(String(""))
+            temp.append(String(""))
             i = i + 1
 
         var m = len(pairs)
@@ -184,9 +184,9 @@ struct CSVTableLogger:
     # Convenience for common schema ["step","name","value"].
     fn log_scalar(mut self, step: Int, name: String, value: String):
         var row = List[String]()
-        row.push_back(String(step))
-        row.push_back(name)
-        row.push_back(value)
+        row.append(String(step))
+        row.append(name)
+        row.append(value)
         self.log_row(row)
 
     fn to_string(self) -> String:
@@ -196,7 +196,7 @@ struct CSVTableLogger:
         self.buffer = List[String]()
         if self.include_header:
             var header = _join_csv(self.columns)
-            self.buffer.push_back(header)
+            self.buffer.append(header)
 
     fn flush_with(self, writer):
         writer(self.to_string())
