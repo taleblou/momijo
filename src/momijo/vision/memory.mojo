@@ -119,7 +119,7 @@ fn free_i64(ptr: UnsafePointer[Int64]):
 # --------------------------------
 
 fn memcpy_u8(dst: UnsafePointer[UInt8], src: UnsafePointer[UInt8], nbytes: Int):
-    # Simple forward copy; the caller must ensure non-overlapping regions.
+    # Simple forward copy; the caller must if non-overlapping regions.
     var i = 0
     while i < nbytes:
         dst[i] = src[i]
@@ -152,7 +152,7 @@ fn memcmp_u8(a: UnsafePointer[UInt8], b: UnsafePointer[UInt8], nbytes: Int) -> I
     return 0
 
 fn pointer_add_u8(p: UnsafePointer[UInt8], offset_bytes: Int) -> UnsafePointer[UInt8]:
-    # Return a pointer advanced by offset_bytes. Caller must ensure bounds.
+    # Return a pointer advanced by offset_bytes. Caller must if bounds.
     return p + offset_bytes
 
 # --------------------------------
