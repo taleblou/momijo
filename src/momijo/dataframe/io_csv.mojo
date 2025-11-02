@@ -3,7 +3,6 @@ from collections.dict import Dict
 from pathlib.path import Path
 from momijo.dataframe.io_bytes import string_to_bytes, u8_to_char
 from momijo.dataframe.frame import DataFrame
-# از df_from_pairs استفاده نمی‌کنیم تا به ColPair وابسته نشویم
 
 # --- Internal helpers ---
 @always_inline
