@@ -72,7 +72,7 @@ struct LRMonitor:
     # Trainer hooks (to be called by your Trainer/Engine)
     # -------------------------------------------------------------------------
     fn on_train_start(mut self):
-        # Reserved for warmup/header printing if needed.
+        # Reserved for warmup/header printing  
         pass
 
     fn on_batch_end(mut self, step: Int, epoch: Int, lrs: List[Float64]):
@@ -90,7 +90,7 @@ struct LRMonitor:
     # -------------------------------------------------------------------------
     fn record_step(mut self, step: Int, epoch: Int, lrs: List[Float64]):
         var rec = LRRecord(step, epoch, lrs)
-        self._history.push_back(rec)
+        self._history.append(rec)
         self._last_logged_step = step
         self._last_logged_epoch = epoch
         if self.print_to_stdout:
@@ -100,7 +100,7 @@ struct LRMonitor:
     fn record_epoch(mut self, epoch: Int, lrs: List[Float64]):
         # Convention: step = -1 for epoch-level entries
         var rec = LRRecord(-1, epoch, lrs)
-        self._history.push_back(rec)
+        self._history.append(rec)
         self._last_logged_epoch = epoch
         if self.print_to_stdout:
             var line = LRMonitor.format_line(String("epoch"), -1, epoch, lrs)
@@ -119,7 +119,7 @@ struct LRMonitor:
         return Int(len(self._history))
 
     fn history_at(self, i: Int) -> LRRecord:
-        # Caller must ensure 0 <= i < history_len()
+        # Caller must if 0 <= i < history_len()
         return self._history[i]
 
     fn reset(mut self):
