@@ -55,7 +55,7 @@ from collections.dict import Dict
 from collections.list import List
 
 
-# -------------------- Minimal DType facade (extend if you have one) --------------------
+# -------------------- Minimal DType facade   --------------------
 # MIT License
 # SPDX-License-Identifier: MIT
 # Project: momijo.dataframe
@@ -410,8 +410,7 @@ fn Series(values: List[Optional[Int]], dtype: DType) -> List[String]:
  
  
 
-# ---------------- Int64 (nullable) ----------------
-# If your Int is 64-bit already, you can omit this and rely on the Int overload above.
+# ---------------- Int64 (nullable) ---------------- 
 # Keep it if you’ve split Int32/Int64 separately in your API.
 fn Series(values: List[Optional[Int64]], dtype: DType) -> List[String]:
     var _ = _ensure_nullable(dtype)
@@ -937,7 +936,7 @@ fn df_from_columns(columns: List[String], data: List[List[String]]) -> DataFrame
 
 # ColPair: struct with fields .name: String and .values: List[String]
 
-# Ensure names are non-empty and unique by adding suffixes when needed. 
+# if names are non-empty and unique by adding suffixes when needed. 
 # ---------- Helpers (keep English-only comments) ----------
 fn _ensure_unique_names(raw: List[String]) -> List[String]:
     var out = List[String]()
@@ -1210,7 +1209,7 @@ fn df_describe(df: DataFrame) -> String:
     return s
 
 # Rename / index helpers
-# NOTE: 'Dict' is assumed available in project context; adjust import if needed.
+# NOTE: 'Dict' is assumed available in project context;  
 fn df_rename(df: DataFrame, mapping: Dict[String, String], axis_name: String) -> DataFrame:
     var out = df.copy()
     var i = 0
@@ -1586,7 +1585,7 @@ fn col_i64_with_valid(name: String, data: List[Int], valid: Bitmap) -> Column:
 
     # wrap into Column
     var c = Column()
-    c.set_i64_series(s)        # NOTE: ensure this setter exists per your Column API
+    c.set_i64_series(s)        # NOTE: if this setter exists per your Column API
     return c.copy()
 
 
@@ -1613,7 +1612,7 @@ fn col_bool_with_valid(name: String, data: List[Bool], valid: Bitmap) -> Column:
 
     # wrap into Column
     var c = Column()
-    c.set_bool_series(s)       # NOTE: ensure this setter exists per your Column API
+    c.set_bool_series(s)       # NOTE: if this setter exists per your Column API
     return c.copy()
 
 
@@ -2180,8 +2179,7 @@ fn rename(
     return out.copy()
 
  
-# Convert a string column to normalized ISO date strings (YYYY-MM-DD).
-# If you have a real datetime dtype, replace the SeriesStr part with your datetime series.
+# Convert a string column to normalized ISO date strings (YYYY-MM-DD). 
 fn to_datetime(frame: DataFrame, col: String, fmt: String = String("%Y-%m-%d")) -> DataFrame:
     var out = frame.copy()
 
@@ -2214,22 +2212,19 @@ fn to_datetime(frame: DataFrame, col: String, fmt: String = String("%Y-%m-%d")) 
 
         if ok:
             vals.append(_iso_date(y, m, d))  # always YYYY-MM-DD with zero padding
-        else:
-            # Fallback: keep original (or choose to mark invalid if you track validity)
+        else: 
             vals.append(raw)
         r += 1
 
     # Rebuild a fresh SeriesStr and set it into the column (deep copy, no aliasing)
     var s = SeriesStr()
     s.set_name(col)
-    s.data = vals.copy()
-    # Optional: if you maintain validity bitmap, mark all True here
+    s.data = vals.copy() 
     # s.valid = Bitmap.full(n, True)
 
-    # Requires your Column to have this setter (you mentioned adding it earlier)
+    # Requires your Column to have this setter 
     out.cols[j].set_string_series(s)
-
-    # Optional: if you keep a dtype vector alongside columns, update it to "datetime"
+ 
     # out.dtypes[j] = String("datetime")
 
     return out
@@ -2771,10 +2766,7 @@ fn range(start: Int, stop: Int, step: Int = 1, dtype: DType = DType.INT32()) -> 
             v += eff_step
 
     return out.copy()
-
-# -----------------------------------------------------------------------------
-# If you also need float or string ranges, add these helpers:
-# -----------------------------------------------------------------------------
+ 
 @always_inline
 fn range_f64(start: Int, stop: Int, step: Int = 1) -> List[Float64]:
     var eff_step = step
