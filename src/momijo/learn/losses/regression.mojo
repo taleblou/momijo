@@ -20,7 +20,7 @@ from collections.list import List
 # --- Optional Tensor integration (adapters only; safe no-op if unused) -------
 # Import exact facades; adjust paths if your project structure differs.
 from momijo.tensor.tensor import Tensor
-from momijo.tensor.dtypes import Float32, Float64  # dtype facades if needed
+from momijo.tensor.dtypes import Float32, Float64  # dtype facades  
 
 # Convert Tensor to flat List[Float64].
 # Assumptions (pick whichever exists in your tensor API):
@@ -43,7 +43,7 @@ fn _tensor_to_list_f64(t: Tensor[Float64]) raises -> List[Float64]:
     out.reserve(n)
     var i = 0
     while i < n:
-        # Try common indexer names; adjust if needed:
+        # Try common indexer names; adjust 
         try:
             out.append(flat.get1d(i))
         except _:
