@@ -201,8 +201,8 @@ fn explained_variance(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
 
     var i = 0
     while i < n:
-        t_true.push_back(y_true[i])
-        t_err.push_back(y_true[i] - y_pred[i])
+        t_true.append(y_true[i])
+        t_err.append(y_true[i] - y_pred[i])
         i = i + 1
 
     var mu_true = _mean(t_true)
