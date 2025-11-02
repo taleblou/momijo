@@ -78,7 +78,7 @@ fn _string_to_u8(s: String) -> tensor.Tensor[UInt8]:
     while i < n:
         var code: Int = 0
         try:
-            code = Int(s[i])               # ممکن است raise کند
+            code = Int(s[i])               
         except _:
             code = 63                      # '?'
         if code < 0: code = 0
@@ -91,7 +91,7 @@ fn _string_to_u8(s: String) -> tensor.Tensor[UInt8]:
 fn _csv_to_floats(bytes: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
     var s = _u8_to_string(bytes) 
 
-    # 1) پارس CSV داخل یک لیست
+
     var vals = List[Float64]()
     var cur = String("")
     var L = len(s)
@@ -195,7 +195,7 @@ fn load_into(mut net: Sequential, base: String) -> Bool:
 fn save_linear(m: Linear, base: String) -> Bool:
     var hp = _header_path(base)
     var bp = _blob_path(base)
-    # هدر حداقلی (متن غیرخالی)
+
     var header = String("{\"type\":\"Linear\",\"in\":") + String(m.in_features) +
                  String(",\"out\":") + String(m.out_features) + String("}")
     var blob = _flatten_linear(m)
