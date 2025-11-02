@@ -65,8 +65,8 @@ fn register_model(name: String, constructor_path: String) -> Bool:
         if reg.ctor_paths[idx] != constructor_path:
             reg.ctor_paths[idx] = constructor_path
         return False
-    reg.names.push_back(name)
-    reg.ctor_paths.push_back(constructor_path)
+    reg.names.append(name)
+    reg.ctor_paths.append(constructor_path)
     return True
 
 # Check if a model name exists.
@@ -89,7 +89,7 @@ fn list_models() -> List[String]:
     var i = 0
     var n = len(reg)
     while i < n:
-        out.push_back(reg.names[i])
+        out.append(reg.names[i])
         i = i + 1
     return out
 
@@ -123,7 +123,7 @@ fn dump_registry() -> (List[String], List[String]):
     var i = 0
     var n = len(reg)
     while i < n:
-        names_copy.push_back(reg.names[i])
-        paths_copy.push_back(reg.ctor_paths[i])
+        names_copy.append(reg.names[i])
+        paths_copy.append(reg.ctor_paths[i])
         i = i + 1
     return (names_copy, paths_copy)
