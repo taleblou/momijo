@@ -161,7 +161,7 @@ fn iou_loss_mc(preds_per_class: List[List[Float64]],
 # - clip(x, lo, hi) exists for Tensor[Float32]/Tensor[Float64]
 # - sum(x) returns scalar of same element type
 # - Elementwise multiply uses '*'
-# - Scalar math works with Float32/Float64 (promote to Float64 for final ratio if needed)
+# - Scalar math works with Float32/Float64  
 # =============================================================================
 
 # ---- Binary Dice (Tensor Float64) --------------------------------------------
