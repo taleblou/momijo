@@ -140,7 +140,7 @@ fn write_jpeg(path: String, t_in: Tensor, quality: Int = 90) -> Bool:
     if q < 1: q = 1
     if q > 100: q = 100
 
-    # Ensure packed HWC/u8
+    # if packed HWC/u8
     var t = t_in.copy()
     if not t.is_contiguous_hwc_u8():
         t = t.copy_to_packed_hwc()
@@ -216,7 +216,6 @@ fn write_jpeg(path: String, t_in: Tensor, quality: Int = 90) -> Bool:
         p0 = String("output.jpg")
     var ok = _write_file_raw(p0, out_buf, used)
 
-    # If "wb" fails on این رانتایم، _write_file_raw خودش fallback به "w" دارد.
     if not ok:
         # Try basename
         var base = _basename(p0)
