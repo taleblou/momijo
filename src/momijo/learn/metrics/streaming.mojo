@@ -28,8 +28,7 @@
 
 # -----------------------------------------------------------------------------
 # Optional imports (kept precise, no wildcard)
-# -----------------------------------------------------------------------------
-# If you later want Tensor overloads for batch updates, keep these imports.
+# ----------------------------------------------------------------------------- 
 from momijo.tensor.tensor import Tensor
 
 # -----------------------------------------------------------------------------
@@ -271,8 +270,7 @@ struct WeightedStreamingMetric:
             return 0.0
         return self._mean
 
-    # Weighted population variance: m2 / W
-    # For unbiased weighted sample variance you need "effective sample size";
+    # Weighted population variance: m2 / W 
     # here we return the population-style variance by default.
     fn variance(self) -> Float64:
         if self._w_sum <= 0.0:
