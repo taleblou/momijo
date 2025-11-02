@@ -33,7 +33,7 @@ fn _arange(n: Int) -> List[Int]:
     var idxs = List[Int]()
     var i = 0
     while i < n:
-        idxs.push_back(i)
+        idxs.append(i)
         i = i + 1
     return idxs
 
@@ -60,7 +60,7 @@ fn _pseudo_permute(indices: List[Int], buffer_hint: Int) -> List[Int]:
     while i < n:
         # i * step modulo n
         var j = (i * step) % n
-        out.push_back(indices[j])
+        out.append(indices[j])
         i = i + 1
     return out
 
@@ -139,7 +139,7 @@ struct PipelineIter:
         var batch = List[Int]()
         var i = start
         while i < end:
-            batch.push_back(self.order[i])
+            batch.append(self.order[i])
             i = i + 1
 
         self.pos = end
