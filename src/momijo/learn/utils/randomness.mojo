@@ -12,8 +12,7 @@
 #   - SeedBundle helper to derive multiple consistent seeds from one base seed
 #   - seed_all(seed) kept as a backend-agnostic compatibility shim (no globals)
 #
-# Design notes:
-#   - No globals. You create RNG instances explicitly from a seed and pass them
+# Design notes: 
 #     around. This makes determinism and testing straightforward.
 #   - All floating output uses open interval (0,1) where appropriate to avoid
 #     log(0) issues downstream (e.g. Box–Muller).
@@ -163,15 +162,15 @@ struct RNG:
 
     # Uniform integers in [low, high) with rejection to avoid modulo bias
     fn randint(mut self, low: Int, high: Int) -> Int:
-        # guard: empty range ⇒ فقط low را برگردان
+
         if high <= low:
             return low
 
         var span_u = UInt64(high - low)
-        # max_u = 2^64-1  (wraparound با 0-1)
+        # max_u = 2^64-1  
         var max_u = UInt64(0) - UInt64(1)
         # threshold = max_u - ((max_u + 1) % span_u)
-        # هر x <= threshold را می‌پذیریم تا بایاس تقسیم حذف شود
+ 
         var threshold = max_u - ((max_u + UInt64(1)) % span_u)
 
         while True:
@@ -181,7 +180,7 @@ struct RNG:
 
     # Uniform Float64 in [low, high)
     fn uniform(mut self, low: Float64 = 0.0, high: Float64 = 1.0) -> Float64:
-        # guard: اگر بازه نامعتبر بود، low را بده
+
         if high <= low:
             return low
         var r = self.next_f64_open01()
@@ -189,7 +188,7 @@ struct RNG:
 
     # Standard normal via Box–Muller (with 1-sample cache)
     fn normal(mut self, mean: Float64 = 0.0, std: Float64 = 1.0) -> Float64:
-        # guard: واریانس منفی را هندل کن
+
         if std < 0.0:
             std = -std
 
@@ -200,7 +199,7 @@ struct RNG:
         var u1 = self.next_f64_open01()
         var u2 = self.next_f64_open01()
 
-        # guard: u1 باید >0 باشد
+
         if u1 <= 5e-324:
             u1 = 5e-324
 
@@ -210,8 +209,7 @@ struct RNG:
         var tau = 6.283185307179586
         var angle = tau * u2
 
-        # فرض بر این است که _cos_sin_combo(angle, True/False) موجود است:
-        # True ⇒ cos, False ⇒ sin (یا هر نگاشتی که شما تعریف کرده‌اید)
+
         var z0 = r * _cos_sin_combo(angle, True)
         var z1 = r * _cos_sin_combo(angle, False)
 
@@ -245,7 +243,7 @@ struct RNG:
         var idx = List[Int]()
         var i = 0
         while i < n:
-            idx.push_back(i)
+            idx.append(i)
             i = i + 1
         self.shuffle(idx)
         return idx
@@ -253,13 +251,13 @@ struct RNG:
    # Choice without replacement from [0..n-1], returns k unique indices. 
     fn choice_k(mut self, n: Int, k: Int) -> List[Int]:
         var out = List[Int]()
-        if n <= 0:           # هیچ آیتمی برای انتخاب نیست
+        if n <= 0:        
             return out
         var kk = k
         if kk < 0: kk = 0
         if kk > n: kk = n
 
-        # فرض: self.permutation(n) یک لیست از 0..n-1 با ترتیب تصادفی می‌دهد.
+
         var idx = self.permutation(n)
         var i = 0
         while i < kk:
@@ -394,11 +392,11 @@ struct SeedBundle:
 
     fn to_list(self) -> List[UInt64]:
         var xs = List[UInt64]()
-        xs.push_back(self.global)
-        xs.push_back(self.data)
-        xs.push_back(self.model)
-        xs.push_back(self.aug)
-        xs.push_back(self.loader)
+        xs.append(self.global)
+        xs.append(self.data)
+        xs.append(self.model)
+        xs.append(self.aug)
+        xs.append(self.loader)
         return xs
 
 # Primary constructor helpers
@@ -415,8 +413,7 @@ fn derived_rngs(seed: Int) -> (RNG, RNG, RNG, RNG, RNG):
 # Compatibility shim: seed_all
 # -----------------------------------------------------------------------------
 # This function intentionally does NOT set any global state (Momijo policy).
-# It exists to mirror common ML libraries. Use it to produce a deterministic
-# bundle of RNGs that you pass to your components explicitly.
+# It exists to mirror common ML libraries. Use it to produce a deterministic 
 
 fn seed_all(seed: Int):
     var _ = seed
