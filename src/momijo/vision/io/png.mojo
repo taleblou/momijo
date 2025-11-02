@@ -36,7 +36,7 @@ fn _to_hwc_u8(packed: Image) -> (Int, Int, Int, List[UInt8]):
             x += 1
         y += 1
 
-    return (H, W, C, out.copy())  # ← نیازی به .copy() نیست
+    return (H, W, C, out.copy()) 
 
 
 
