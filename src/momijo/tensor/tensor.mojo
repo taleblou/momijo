@@ -731,8 +731,7 @@ fn clone_sel(x: IndexSel) -> IndexSel:
     return IndexSel(x.tag, x.i, x.start, x.stop, x.step, x.idxs)
 
 # ---------------------------------------------------------------------------
-# Sample 1D slice execution (only if your select(...) doesn't handle SLICE)
-# Remove if you already have a correct select().
+# Sample 1D slice execution (only if your select(...) doesn't handle SLICE) 
 # ---------------------------------------------------------------------------
 
 @always_inline
@@ -1785,7 +1784,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return self.select(sels)
 
     # --------------------------------------
-    # Helper (reuse if you already have it)
+    # Helper 
     # --------------------------------------
     @always_inline
     fn self._trip_from_slice( axis: Int, s: Slice) -> (Int, Int, Int):
@@ -2601,7 +2600,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var view = self.select(sels)   # view over self
         _copy_view_broadcast(view, rhs)
 
-    # Convenience: normalized 1D slice for a given axis (you already have _trip_from_slice)
+    # Convenience: normalized 1D slice for a given axis  
     @always_inline
     fn _trip_from_slice_axis(self: Tensor[T], axis: Int, s: Slice) -> (Int, Int, Int):
         var n = self._axis_len(axis)
@@ -2868,7 +2867,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         if len_ax == 0:
             base_idx = 0
         else:
-            # Ensure base index is within [0 .. n_ax-1] to keep offset sane
+            # if base index is within [0 .. n_ax-1] to keep offset sane
             if base_idx < 0: base_idx = 0
             if base_idx >= n_ax and n_ax > 0: base_idx = n_ax - 1
 
@@ -3425,8 +3424,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # existing same-type overloads must already exist:
     # fn set_union(self: Tensor[Int], other: Tensor[Int]) -> Tensor[Int]: ...
     # fn set_union(self: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Float64]: ...
-
-    # ---- Int → Int (already have the Int unique pipeline) ----
+ 
     @always_inline
     fn set_union(self: Tensor[Int], other: Tensor[Int]) -> Tensor[Int]:
         var u1 = setops_sorted_unique_int(self)   # -> List[Int] sorted-unique
@@ -5535,7 +5533,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         # ---------------- High-performance appends on Tensor._data ---------------- #
     @always_inline
     fn _reserve_extra(mut self, extra: Int) -> None:
-        # Ensure capacity for 'extra' more elements.
+        # if capacity for 'extra' more elements.
         if extra <= 0: return
         self._data.reserve(len(self._data) + extra)
 
