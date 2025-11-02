@@ -788,7 +788,6 @@ fn write_planeT: ImplicitlyCopyable & Copyable & Movable](
 fn write_plane(
     mut a: Tensor[Float64], dim: Int, index: Int, rhs: Tensor[Int]
 ) -> None:
-    # a: (B, M, N) ، فقط وقتی dim == 2 (بعد آخر) می‌نویسیم
     var shp = a.shape()
     if len(shp) != 3: return
     var B = shp[0]; var M = shp[1]; var N = shp[2]
@@ -809,10 +808,9 @@ fn write_plane(
 
     var i = 0
     while i < B:
-        # row شکلش (M,) یا (1,) است
+
         var row = rhs.index_axis(0, i)
 
-        # دسترسی امن به اسکالر از row (با درنظرگرفتن آفست و استراید)
         var row_off = row._offset
         var row_st0 = row._strides[0]
 
@@ -824,11 +822,10 @@ fn write_plane(
             else:
                 jj = j
 
-            # مقدار Int اسکالر از row
             var rij = row._data[row_off + jj * row_st0]
             var v = Float64(rij)
 
-            # نوشتن در صفحه‌ی dim==2 در a (با درنظرگرفتن offset)
+
             var lin = a_off + i * s0 + j * s1 + index * s2
             a._data[lin] = v
 
@@ -845,7 +842,7 @@ fn is_contiguous(shape: List[Int], strides: List[Int], row_major: Bool = True) -
     if row_major:
         return is_row_major_contiguous(shape, strides)
     else:
-        # Only row-major supported in this helper set; add col-major if needed.
+        # Only row-major supported in this helper set; add col-major 
         return False
 
 fn is_contiguous_tensor[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Bool:
@@ -2501,8 +2498,7 @@ fn get_slice(s: IndexSel) -> Tuple[Int, Int, Int]:
 @always_inline 
 fn get_fancy_list(s: IndexSel) -> List[Int]: 
     return s.idxs.copy()
-
-# Strides helper (assumes you already have compute_row_major_strides)
+ 
 @always_inline
 fn mk_strides(shape: List[Int]) -> List[Int]:
     return compute_row_major_strides(shape)
@@ -3671,7 +3667,7 @@ fn digit_from_one_char(ch: String) -> (Bool, Int):
     if ch == "9": return (True, 9)
     return (False, 0)
 
-# Convert StringSlice to owned String (همون که قبلاً داشتی)
+# Convert StringSlice to owned String
 @always_inline
 fn to_string_owned(x: StringSlice) -> String:
     return String(x)
