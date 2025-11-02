@@ -1386,10 +1386,8 @@ fn _zero_of[T: ImplicitlyCopyable & Copyable & Movable]() -> T:
     if T is UInt8:   return unsafe_bitcast[T](UInt8(0))
 
     if T is Bool:    return unsafe_bitcast[T](Bool(False))
-
-    # Fallback: if you have other scalar types, add cases above.
-    # As a last resort, prefer first-term initialization in your kernels
-    # (e.g., acc = a*b; loop from j=1) so you never need a "typed zero".
+ 
+    # As a last resort, prefer first-term initialization in your kernels 
     return unsafe_bitcast[T](Int(0))
 # ================================================================
 # Core kernel in Float64: A[..., M, N] @ x[..., N] -> [..., M]
@@ -1433,7 +1431,6 @@ fn matmul_core_vec(A: Tensor[Float64], x: Tensor[Float64]) -> Tensor[Float64]:
             i = i + 1
         return Tensor[Float64](y, [M])
 
-    # ---- generic 2D@1D بدون broadcast (خیلی مهم: قبل از هر broadcast) ----
     var sAm = A._strides[0]
     var sAn = A._strides[1]
     var sXn = x._strides[0]
