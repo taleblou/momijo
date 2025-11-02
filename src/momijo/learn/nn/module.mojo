@@ -174,6 +174,25 @@ struct Module(Copyable, Movable):
             i = i + 1
         return out.copy()
 
+    fn forward(mut self, x: tensor.GradTensor) -> tensor.GradTensor:
+        if self.tag == 0: return self.linear.forward(x)
+        if self.tag == 1: return self.relu.forward(x)
+        if self.tag == 2: return self.lrelu.forward(x)
+        if self.tag == 3: return self.sigmoid.forward(x)
+        if self.tag == 4: return self.tanh.forward(x)
+        if self.tag == 5: return self.bn1d.forward(x)
+        if self.tag == 6: return self.dropout.forward(x)
+        if self.tag == 7: return self.conv2d.forward(x)
+        if self.tag == 8: return self.maxpool2d.forward(x)
+        # container/generic: forward through children in order if any
+        var out = x.copy()
+        var i = 0
+        while i < len(self.children):
+            var m = self.children[i].copy()
+            out = m.forward(out)
+            self.children[i]= m.copy()
+            i = i + 1
+        return out.copy()
     # --------------------------------
     # Composition / registration
     # --------------------------------
@@ -197,24 +216,24 @@ struct Module(Copyable, Movable):
     fn register_parameter(mut self, name: String, value: tensor.Tensor[Float64], requires_grad: Bool = True):
         var i = 0
         while i < len(self.param_names):
-            if self.param_names.__getitem__(i) == name:
+            if self.param_names[i] == name:
                 self.param_values.__setitem__(i, value)
                 self.param_requires_grad.__setitem__(i, requires_grad)
                 return
             i = i + 1
-        self.param_names.push_back(name)
-        self.param_values.push_back(value)
-        self.param_requires_grad.push_back(requires_grad)
+        self.param_names.append(name)
+        self.param_values.append(value)
+        self.param_requires_grad.append(requires_grad)
 
     fn register_buffer(mut self, name: String, value: tensor.Tensor[Float64]):
         var i = 0
         while i < len(self.buffer_names):
-            if self.buffer_names.__getitem__(i) == name:
+            if self.buffer_names[i] == name:
                 self.buffer_values.__setitem__(i, value)
                 return
             i = i + 1
-        self.buffer_names.push_back(name)
-        self.buffer_values.push_back(value)
+        self.buffer_names.append(name)
+        self.buffer_values.append(value)
 
     fn add_parameter(mut self, name: String, value: tensor.Tensor[Float64], requires_grad: Bool = True):
         self.register_parameter(name, value, requires_grad)
@@ -229,7 +248,7 @@ struct Module(Copyable, Movable):
         self.training = True
         var i = 0
         while i < len(self.children):
-            var c = self.children.__getitem__(i).copy()
+            var c = self.children[i].copy()
             c.train()
             self.children.__setitem__(i, c)
             i = i + 1
@@ -239,7 +258,7 @@ struct Module(Copyable, Movable):
         self.training = False
         var i = 0
         while i < len(self.children):
-            var c = self.children.__getitem__(i).copy()
+            var c = self.children[i].copy()
             c.eval()
             self.children.__setitem__(i, c)
             i = i + 1
@@ -265,18 +284,18 @@ struct Module(Copyable, Movable):
 
         var i = 0
         while i < len(self.param_names):
-            var key = self.param_names.__getitem__(i)
+            var key = self.param_names[i]
             var full = prefix
             if prefix.__len__() > 0:
                 full += String(".")
             full += key
-            out.push_back(full)
+            out.append(full)
             i = i + 1
 
         var j = 0
         while j < len(self.children):
-            var cname = self.child_names.__getitem__(j)
-            var child = self.children.__getitem__(j)
+            var cname = self.child_names[j]
+            var child = self.children[j]
             var child_prefix = prefix
             if child_prefix.__len__() > 0:
                 child_prefix += String(".")
@@ -285,7 +304,7 @@ struct Module(Copyable, Movable):
             var sub = child.named_parameters(child_prefix)
             var k = 0
             while k < len(sub):
-                out.push_back(sub.__getitem__(k))
+                out.append(sub[k])
                 k = k + 1
             j = j + 1
         return out
@@ -295,18 +314,18 @@ struct Module(Copyable, Movable):
 
         var i = 0
         while i < len(self.buffer_names):
-            var key = self.buffer_names.__getitem__(i)
+            var key = self.buffer_names[i]
             var full = prefix
             if prefix.__len__() > 0:
                 full += String(".")
             full += key
-            out.push_back(full)
+            out.append(full)
             i = i + 1
 
         var j = 0
         while j < len(self.children):
-            var cname = self.child_names.__getitem__(j)
-            var child = self.children.__getitem__(j)
+            var cname = self.child_names[j]
+            var child = self.children[j]
             var child_prefix = prefix
             if child_prefix.__len__() > 0:
                 child_prefix += String(".")
@@ -315,7 +334,7 @@ struct Module(Copyable, Movable):
             var sub = child.named_buffers(child_prefix)
             var k = 0
             while k < len(sub):
-                out.push_back(sub.__getitem__(k))
+                out.append(sub[k])
                 k = k + 1
             j = j + 1
         return out
@@ -329,34 +348,34 @@ struct Module(Copyable, Movable):
         # params
         var i = 0
         while i < len(self.param_names):
-            var k = self.param_names.__getitem__(i)
-            var v = self.param_values.__getitem__(i)
+            var k = self.param_names[i].copy()
+            var v = self.param_values[i].copy()
             var full = prefix
             if prefix.__len__() > 0:
                 full += String(".")
             full += k
             var line = String("\"") + _json_escape(full) + String("\":\"") + _json_escape(_tensor_summary(v)) + String("\"")
-            lines.push_back(line)
+            lines.append(line)
             i = i + 1
 
         # buffers
         var b = 0
         while b < len(self.buffer_names):
-            var k2 = self.buffer_names.__getitem__(b)
-            var v2 = self.buffer_values.__getitem__(b)
+            var k2 = self.buffer_names[b].copy()
+            var v2 = self.buffer_values[b].copy()
             var full2 = prefix
             if prefix.__len__() > 0:
                 full2 += String(".")
             full2 += k2
             var line2 = String("\"") + _json_escape(full2) + String("\":\"") + _json_escape(_tensor_summary(v2)) + String("\"")
-            lines.push_back(line2)
+            lines.append(line2)
             b = b + 1
 
         # recurse
         var j = 0
         while j < len(self.children):
-            var cname = self.child_names.__getitem__(j)
-            var child = self.children.__getitem__(j)
+            var cname = self.child_names[j].copy()
+            var child = self.children[j].copy()
             var child_prefix = prefix
             if child_prefix.__len__() > 0:
                 child_prefix += String(".")
@@ -365,18 +384,18 @@ struct Module(Copyable, Movable):
             var sub = child._pairs_flat(child_prefix)
             var k = 0
             while k < len(sub):
-                lines.push_back(sub.__getitem__(k))
+                lines.append(sub[k])
                 k = k + 1
             j = j + 1
 
-        return lines
+        return lines.copy()
 
     fn state_dict(self) -> String:
         var pairs = self._pairs_flat(String(""))
         var sb = String("{")
         var i = 0
         while i < len(pairs):
-            sb += pairs.__getitem__(i)
+            sb += pairs[i]
             if i + 1 < len(pairs):
                 sb += String(",")
             i = i + 1
@@ -386,33 +405,12 @@ struct Module(Copyable, Movable):
     fn load_state_dict(mut self, state: String):
         # Placeholder: validate braces only; real parser to be added when tensor IO stabilizes.
         if state.__len__() < 2: return
-        var first = state.__getitem__(0)
-        var last = state.__getitem__(state.__len__() - 1)
+        var first = state[0]
+        var last = state[state.__len__() - 1]
         if not (first == String("{") and last == String("}")): return
         return
 
-# -----------------------
-# Small helpers (string)
-# -----------------------
-@always_inline
-fn _json_escape(s: String) -> String:
-    # Minimal escape for quotes and backslashes.
-    var out = String("")
-    var i = 0
-    while i < s.__len__():
-        var ch = s.__getitem__(i)
-        if ch == String("\""): out += String("\\\"")
-        elif ch == String("\\"): out += String("\\\\")
-        else: out += ch
-        i = i + 1
-    return out
-
-@always_inline
-fn _tensor_summary(t: tensor.Tensor[Float64]) -> String:
-    # Very small, allocation-safe-ish summary: shape and first value (if any)
-    var shape_str = t.shape_str()       # assume Tensor implements a shape_str()
-    var prefix = String("Tensor") + shape_str
-    return prefix
+ 
 
 # -----------------------------
 # Minimal JSON string escaping
@@ -421,7 +419,7 @@ fn _json_escape(s: String) -> String:
     var out = String("")
     var i = 0
     while i < s.__len__():
-        var ch = s.__getitem__(i)
+        var ch = s[i]
         if ch == String("\\"):
             out += String("\\\\")
         elif ch == String("\""):
@@ -448,7 +446,7 @@ fn _tensor_summary(t: tensor.Tensor[Float64]) -> String:
     var nd = t.ndim()
     var d = 0
     while d < nd:
-        s += String(t.shape_dim(d))
+        s += String(t.shape().__str__())
         if d + 1 < nd:
             s += String(",")
         d = d + 1
