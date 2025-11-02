@@ -179,7 +179,7 @@ struct Image(Copyable, Movable):
     fn is_contiguous_hwc_u8(self) -> Bool:
         return self.is_hwc() and self.is_u8() and self._tensor.is_contiguous_hwc_u8()
  
-    # Ensure packed HWC/UInt8; clone if already packed and copy_if_needed=True.
+    # if packed HWC/UInt8; clone if already packed and copy_if_needed=True.
     # Image -> HWC UInt8 packed (copy-based, no channel swap)
     # Always returns a valid HWC-UInt8 image with strides=(W*C, C, 1) in RGB order.
     # Packed HWC UInt8 سازگار و ایمن
@@ -395,7 +395,7 @@ struct Image(Copyable, Movable):
     # Pretty-print full image data as a table of pixel tokens per row.
     # max_rows/max_cols <= 0 means "no limit".
     fn dump_table(self, max_rows: Int = 0, max_cols: Int = 0):
-        # Ensure we are in HWC/UInt8 contiguous to simplify pointer math
+        # if we are in HWC/UInt8 contiguous to simplify pointer math
         var img = self.ensure_packed_hwc_u8(False)
 
         var H = img.height()
@@ -501,8 +501,7 @@ fn _is_packed_hwc_u8(img: Image) -> Bool:
     var C = img.channels()
     if H <= 0 or W <= 0 or C <= 0:
         return False
-
-    # If you have packed_hwc_strides(W,H,C) use that; else read tensor strides:
+ 
     var s0 = img._tensor._shape0
     var s1 = img._tensor._shape1
     var s2 = img._tensor._shape2
