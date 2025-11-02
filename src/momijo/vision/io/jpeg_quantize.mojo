@@ -41,8 +41,7 @@ fn quantize_block(dct: UnsafePointer[Int],
 # -------- Zigzag mapping --------
 # IMPORTANT:
 # The table below maps: zigzag index 'z' -> natural index 'n'.
-# That is, n = ZIGZAG[z]. This is the form used by most JPEG code paths.
-# If you need the inverse mapping (natural -> zigzag), use inverse builder below.
+# That is, n = ZIGZAG[z]. This is the form used by most JPEG code paths. 
 
 @always_inline
 fn _zigzag_table_noalloc() -> List[Int]:
