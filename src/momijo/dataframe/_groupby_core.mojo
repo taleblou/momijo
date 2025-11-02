@@ -1414,7 +1414,7 @@ fn pivot_table(frame: DataFrame,
         while cj2 < len(cols_unique):
             var mstr = String("")
             if counts[ri][cj2] > 0:
-                # NOTE: current behavior = mean; extend with 'agg' later if needed
+                # NOTE: current behavior = mean; extend with 'agg' later 
                 var m = sums[ri][cj2] / Float64(counts[ri][cj2])
                 mstr = String(m)
                 row_sum = row_sum + sums[ri][cj2]
