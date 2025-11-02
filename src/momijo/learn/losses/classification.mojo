@@ -93,7 +93,7 @@ fn _softmax_row(row: List[Float64]) -> List[Float64]:
     var lse = _log_sum_exp(row)
     var i = 0
     while i < len(row):
-        out.push_back(_exp(row[i] - lse))
+        out.append(_exp(row[i] - lse))
         i = i + 1
     return out
 
@@ -296,7 +296,7 @@ fn _t_to_list1(t: tensor.Tensor[Float64]) -> List[Float64]:
     out.reserve(n)
     var i = 0
     while i < n:
-        out.push_back(_t_get1(t, i))
+        out.append(_t_get1(t, i))
         i = i + 1
     return out
 
@@ -311,9 +311,9 @@ fn _t_to_list2(t: tensor.Tensor[Float64]) -> List[List[Float64]]:
         row.reserve(c)
         var j = 0
         while j < c:
-            row.push_back(_t_get2(t, i, j))
+            row.append(_t_get2(t, i, j))
             j = j + 1
-        rows.push_back(row)
+        rows.append(row)
         i = i + 1
     return rows
 
