@@ -181,7 +181,7 @@ fn select(df: DataFrame, cols: List[String]) -> DataFrame:
         while j < nsrc:
             out.col_names.append(String(df.col_names[j]))
             out.names.append(String(df.col_names[j]))
-            out.cols.append(df.cols[j].copy())   # Column expected Copyable; replace with a real clone if needed
+            out.cols.append(df.cols[j].copy())   # Column expected Copyable; replace with a real clone 
             j += 1
         return out.copy()
 
@@ -200,7 +200,7 @@ fn select(df: DataFrame, cols: List[String]) -> DataFrame:
             var src_name = String(df.col_names[j])
             out.col_names.append(src_name)
             out.names.append(src_name)
-            out.cols.append(df.cols[j].copy())   # ensure deep copy of column payload
+            out.cols.append(df.cols[j].copy())   # if deep copy of column payload
         # If not found → silently skip this requested name
         i += 1
 
@@ -740,8 +740,7 @@ struct ColumnBoolOps:
 
 # -----------------------------------------------------------------------------
 # Label-based row slicing token + helpers
-# -----------------------------------------------------------------------------
-# If you already defined this elsewhere, keep your original.
+# ----------------------------------------------------------------------------- 
 
 # fn slice_labels(start: String, end: String, inclusive: Bool = True) -> LabelSlice:
 #     var s = LabelSlice()
