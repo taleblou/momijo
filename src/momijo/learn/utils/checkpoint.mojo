@@ -288,12 +288,7 @@ fn save_state_dict(model: NNSequential, dir_: String, stem: String) -> None:
     save_state_dict(model.seq, base)
 
 
-# Keep both exists_checkpoint arities:
-# 1-arg already exists: fn exists_checkpoint(path: String) -> Bool
-# Add 2-arg: exists_checkpoint(dir, stem)
-fn exists_checkpoint(dir_: String, stem: String) -> Bool:
-    var base = _join_dir_stem(dir_, stem)
-    return exists_checkpoint(base)
+
 
 fn load_state_dict(mut model: Sequential, path: String) -> Bool:
     var base_path = String(path)
@@ -345,6 +340,13 @@ fn read_model_class_from_header(path: String) -> String:
     var header_json = _read_text(header)
     return _extract_model_class_from_header(header_json)
 
+
+# Keep both exists_checkpoint arities:
+# 1-arg already exists: fn exists_checkpoint(path: String) -> Bool
+# Add 2-arg: exists_checkpoint(dir, stem)
+fn exists_checkpoint(dir_: String, stem: String) -> Bool:
+    var base = _join_dir_stem(dir_, stem)
+    return exists_checkpoint(base)
 # Returns True if a valid header and state file are present.
 fn exists_checkpoint(path: String) -> Bool:
     var header = _header_path(path)
