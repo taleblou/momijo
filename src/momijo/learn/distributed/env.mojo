@@ -23,7 +23,7 @@ fn getenv_compat(_key: String) -> Optional[String]:
     return None
 
 # -----------------------------------------------------------------------------
-# Parse helpers (بدون هیچ cast/raises)
+# Parse helpers
 # -----------------------------------------------------------------------------
 @always_inline
 fn _parse_int_opt(s: String) -> Optional[Int]:
