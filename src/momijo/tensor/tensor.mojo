@@ -14,7 +14,7 @@
 # Repository:   https://github.com/taleblou/momijo
 #
 # License:      MIT License
-# SPDX-License-Identifier: MIT 
+# SPDX-License-Identifier: MIT
 # Notes:
 #   - var-only; no asserts.
 #   - No wildcard imports.
@@ -36,16 +36,16 @@ from collections.list import List
 # Explicit helpers (adjust paths if your project uses different names)
 from momijo.tensor.helpers import *
 from momijo.tensor.nanops import nanmean,nansum,nanmin
- 
- 
+
+
 from momijo.tensor.transform import reshape,transpose,unsqueeze,squeeze_all,repeat,squeeze_axis
 from momijo.tensor.broadcast import broadcast_shapes,can_broadcast_shapes,clamp
 from momijo.tensor.broadcast import matmul_core_vec,clamp_int
- 
+
 from momijo.tensor.broadcast import matmul as _matmul_free
 from momijo.tensor.broadcast import tensordot as _tensordot_free
 from momijo.tensor.math import mean as _mean_free
-  
+
 from momijo.tensor.math import *
 from momijo.tensor.cast import *
 from momijo.tensor.creation import scalar_f64,scalar_f32,scalar_int
@@ -54,7 +54,7 @@ from momijo.tensor.transform import flatten,view ,permute,unbind,split_sizes,cat
 
 from momijo.tensor.creation import empty_tensor_with
 
- 
+
 # ---------- helpers: digit & int parsing (no-throw) ----------
 @always_inline
 fn _digit_val(ch: String) -> (Bool, Int):
@@ -101,7 +101,7 @@ fn _parse_int_no_throw(s_in: String) -> (Bool, Int):
         acc = -acc
     return (True, acc)
 
- 
+
 @always_inline
 fn _parse_opt_int(s: String) -> Optional[Int]:
     var ss = String(s.strip())
@@ -124,9 +124,8 @@ fn _str_string_list(xs: List[String]) -> String:
     out += String("]")
     return out.copy()
 
- 
 
-# کمکی: تبدیل (start?, stop?, step?) به سه‌تایی نرمال‌شده با قواعد پایتونی
+
 @always_inline
 fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Optional[Int]) -> (Int, Int, Int):
     var step: Int
@@ -135,7 +134,7 @@ fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Op
     else:
         step = c_opt.value()
         if step == 0:
-            step = 1  
+            step = 1
 
     var start: Int
     var stop:  Int
@@ -148,7 +147,7 @@ fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Op
         # wrap منفی‌ها
         if start < 0: start += n
         if stop  < 0: stop  += n
- 
+
         if start < 0: start = 0
         if start > n: start = n
         if stop  < 0: stop  = 0
@@ -158,9 +157,9 @@ fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Op
         if a_opt is None: start = n - 1    else: start = a_opt.value()
         if b_opt is None: stop  = -1       else: stop  = b_opt.value()
 
-        # start منفی را wrap کن، اما stop=-1 را دست نزن (سنّتینل)
+
         if start < 0: start += n
-        if stop  < -1: stop += n   # فقط کمتر از -1 را wrap کن، -1 را نگه‌دار
+        if stop  < -1: stop += n
 
         # clamp: start ∈ [-1..n-1] ، stop ∈ [-1..n-1]
         if start < -1: start = -1
@@ -171,20 +170,20 @@ fn _normalize_trip(n: Int, a_opt: Optional[Int], b_opt: Optional[Int], c_opt: Op
     return (start, stop, step)
 
 
- 
 
 
 
 
- 
+
+
 
 @always_inline
-fn _ls_index(i: Int) -> IndexSel: 
-    return IndexSel.index(i)         
+fn _ls_index(i: Int) -> IndexSel:
+    return IndexSel.index(i)
 
 @always_inline
-fn _ls_slice(a: Int, b: Int, st: Int) -> IndexSel: 
-    return IndexSel.slice(a, b, st)   
+fn _ls_slice(a: Int, b: Int, st: Int) -> IndexSel:
+    return IndexSel.slice(a, b, st)
 
 @always_inline
 fn _ls_str(s: IndexSel) -> String:
@@ -241,7 +240,7 @@ fn _sels_str(sels: List[IndexSel]) -> String:
 # ----------------------------
 # انتخاب هر محور: یا ایندکس تکی یا برش (start, stop, step)
 # ----------------------------
- 
+
 struct _SelViewMeta(Copyable, Movable):
     var base_offset: Int
     var out_shape:   List[Int]
@@ -257,10 +256,10 @@ struct _SelViewMeta(Copyable, Movable):
         self.base_offset = other.base_offset
         self.out_shape   = other.out_shape.copy()
         self.out_coefs   = other.out_coefs.copy()
- 
- 
 
- 
+
+
+
 
 fn _trip_len(a: Int, b: Int, st: Int) -> Int:
     # len(range(a,b,st)) برای step≠0 (فرض: ورودی نرمال‌شده است)
@@ -283,7 +282,6 @@ fn _flat_index_affine(base: Int, coefs: List[Int], idx: List[Int]) -> Int:
         k += 1
     return j
 # ===== کمک‌تابع‌ها برای کار با IndexSel =====
-# اگر در کدت نام فیلد/متدها فرق دارد، فقط همین 3 تا آداپتر را با نوع IndexSel خودت هماهنگ کن.
 @always_inline
 fn _sel_is_index(sel: IndexSel) -> Bool:
     var r = sel.kind == .Index            # ← تطبیق با تعریف خودت
@@ -297,10 +295,10 @@ fn _sel_get_index(sel: IndexSel) -> Int:
 fn _sel_get_trip(sel: IndexSel) -> (Int, Int, Int):
     return sel.trip                        # ← (start, stop, step) نرمال‌شده
 
- 
 
 
- 
+
+
 
 @always_inline
 fn _opt_int(x: Optional[Int]) -> String:
@@ -379,27 +377,27 @@ fn _dump_view[T: ImplicitlyCopyable & Copyable & Movable](label: String, x: Tens
           " strides=" + _list_str(x._strides) +
           " offset=" + String(x._offset) +
           " numel=" + String(numel))
- 
- 
+
+
 # ---------------- Core with debug prints ----------------
 @always_inline
 fn _assign_view_tensor[T: ImplicitlyCopyable & Copyable & Movable](mut dst: Tensor[T], rhs: Tensor[T]) -> None:
-      
-    var rhs_total = _prod_shape(rhs._shape)   
+
+    var rhs_total = _prod_shape(rhs._shape)
 
     # ---------- treat any single-element RHS as scalar (rank-0 OR shape=[1] OR any numel==1 view) ----------
     if rhs_total == 1:
         # get that single element robustly (works for any strides/offset)
         var zeros = _zero_indices(len(rhs._shape))
         var j_rhs = _flat_index(rhs._offset, rhs._strides, zeros)
-        var v = rhs._data[j_rhs] 
+        var v = rhs._data[j_rhs]
 
         if len(dst._shape) == 0:
-            dst._data[dst._offset] = v 
+            dst._data[dst._offset] = v
             return
 
         var total = _prod_shape(dst._shape)
-        if total == 0: 
+        if total == 0:
             return
 
         var idx = _zero_indices(len(dst._shape))
@@ -411,20 +409,20 @@ fn _assign_view_tensor[T: ImplicitlyCopyable & Copyable & Movable](mut dst: Tens
             if wrote <= 4:
                 print("[SETITEM] fill @j=" + String(j))
             if _bump_indices(idx, dst._shape) == False:
-                break 
+                break
         return
 
     # ---------- exact-shape copy (both non-contig OK) ----------
-    if _shapes_equal(dst._shape, rhs._shape) == False: 
+    if _shapes_equal(dst._shape, rhs._shape) == False:
         print("  dst.shape=" + _list_str(dst._shape) + " rhs.shape=" + _list_str(rhs._shape))
         return
 
     if len(dst._shape) == 0:
         var zeros_rhs = _zero_indices(len(rhs._shape))
         var j_rhs0 = _flat_index(rhs._offset, rhs._strides, zeros_rhs)
-        dst._data[dst._offset] = rhs._data[j_rhs0] 
+        dst._data[dst._offset] = rhs._data[j_rhs0]
         return
- 
+
     var idx2 = _zero_indices(len(dst._shape))
     var copied = 0
     while True:
@@ -435,10 +433,10 @@ fn _assign_view_tensor[T: ImplicitlyCopyable & Copyable & Movable](mut dst: Tens
         if copied <= 4:
             print("[SETITEM] copy j_dst=" + String(j_dst) + " <= j_rhs=" + String(j_rhs))
         if _bump_indices(idx2, dst._shape) == False:
-            break 
+            break
 
 
-    
+
 @always_inline
 fn _rank(shp: List[Int]) -> Int:
     return len(shp)
@@ -640,7 +638,7 @@ struct StrIndex:
     @always_inline
     fn __init__(out self, spec: String):
         self.spec = spec
- 
+
 @always_inline
 fn S(spec: String) -> StrIndex:
     return StrIndex(spec)
@@ -674,13 +672,13 @@ struct EllipsisSpec:
 # ---------------------------------------------------------------------------
 # Slice normalization (Python semantics for 1-D axis)
 # ---------------------------------------------------------------------------
-@always_inline 
+@always_inline
 fn _normalize_slice_1d(n: Int,
                        start_opt: Optional[Int],
                        stop_opt: Optional[Int],
                        step_opt: Optional[Int]) -> Tuple[Int, Int, Int]:
     # Debug: raw inputs
-  
+
 
     var step: Int
     if step_opt is None: step = 1 else: step = step_opt.value()
@@ -698,7 +696,7 @@ fn _normalize_slice_1d(n: Int,
         if start > n: start = n
         if stop  < 0: stop  = 0
         if stop  > n: stop  = n
-       
+
     else:
         # step < 0
         if start_opt is None: start = n - 1 else: start = start_opt.value()
@@ -714,13 +712,13 @@ fn _normalize_slice_1d(n: Int,
         if stop  < -1: stop  = -1
         if stop  >  n-1: stop  = n-1
 
-    
 
-    # Final trip 
+
+    # Final trip
     return (start, stop, step)
 
 
- 
+
 @always_inline
 fn make_fancy_sel(js: List[Int]) -> IndexSel:
     return IndexSel.fancy(js)
@@ -731,7 +729,7 @@ fn clone_sel(x: IndexSel) -> IndexSel:
     return IndexSel(x.tag, x.i, x.start, x.stop, x.step, x.idxs)
 
 # ---------------------------------------------------------------------------
-# Sample 1D slice execution (only if your select(...) doesn't handle SLICE) 
+# Sample 1D slice execution (only if your select(...) doesn't handle SLICE)
 # ---------------------------------------------------------------------------
 
 @always_inline
@@ -907,7 +905,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
 
 
-   
+
     # ---------------- view maker (zero-copy) ----------------
     @always_inline
     fn _make_view(self, new_shape: List[Int], new_strides: List[Int], new_off: Int) -> Tensor[T]:
@@ -932,7 +930,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # @always_inline
     # fn take(self, js: List[Int]) -> IndexSel:
     #     return make_fancy_sel(js)
-    
+
     # @always_inline
     # fn take(self, js: Tensor[Int]) -> IndexSel:
     #     ls=js.to_list()
@@ -949,9 +947,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
 
     # Normalize a slice selector against dim and (possibly) negative step.
-    # Returns (start, stop, step) normalized s.t. resulting axis length >= 0 
+    # Returns (start, stop, step) normalized s.t. resulting axis length >= 0
     @always_inline
-    fn _normalize_slice(self, dim: Int, st0: Int, sp0: Int, step0: Int) -> (Int, Int, Int): 
+    fn _normalize_slice(self, dim: Int, st0: Int, sp0: Int, step0: Int) -> (Int, Int, Int):
         var step = step0
         if step == 0: step = 1
 
@@ -980,7 +978,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 # IMPORTANT: for negative step keep stop negative if user passed -1;
                 # do NOT translate stop via (dim + stop). Just clamp to [-1, dim-1].
                 stop = clamp_int(stop, -1, dim - 1)
-            start = clamp_int(start, -1, dim - 1) 
+            start = clamp_int(start, -1, dim - 1)
         return (start, stop, step)
 
     # =========================== Core: select_view ===========================
@@ -1000,10 +998,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 var ii = wrap_axis_index(get_index(sels[ax]), dim)
                 new_off = new_off + ii * self._strides[ax]
             elif is_slice(sels[ax]):
-                var (st0, sp0, step0) = get_slice(sels[ax]) 
+                var (st0, sp0, step0) = get_slice(sels[ax])
 
                 var (st, sp, step1) = self._normalize_slice(dim, st0, sp0, step0)
-                var out_len = axis_len_from_slice(st, sp, step1) 
+                var out_len = axis_len_from_slice(st, sp, step1)
 
                 new_off = new_off + st * self._strides[ax]
                 new_shape.append(out_len)
@@ -1117,12 +1115,12 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 break
             i += 1
 
-        
 
-        if viewable: 
-            return self.select_view(sels) 
+
+        if viewable:
+            return self.select_view(sels)
         return self.select_copy(sels)
- 
+
 
     # ------------------------------------------
     # String parser across axes ("," separated)
@@ -1138,8 +1136,6 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var ax = 0                      # current axis we are filling
         var i = 0
 
-        # پیش‌اسکن برای محاسبهٔ بسط Ellipsis:
-        # explicit = تعداد توکن‌هایی که Ellipsis نیستند ( ":"/خالی هم حساب می‌شوند )
         var explicit = 0
         var k = 0
         while k < tcount:
@@ -1228,7 +1224,6 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             ax = ax + 1
             i = i + 1
 
-        # اگر توکن‌ها کمتر از رتبه بود، محورهای باقی‌مانده را فول‌اسلایس کن
         while ax < d:
             var n_ax4 = self._axis_len(ax)
             sels.append(make_slice_sel((0, n_ax4, 1)))
@@ -1284,9 +1279,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var trip = _normalize_slice_1d(n, st, sp, stp)   # (start, stop, step) — با نگه‌داشتن -1 برای step<0
         return make_slice_sel(trip)
 
-    # ===================== Native slice-based __getitem__ overloads ===================== 
+    # ===================== Native slice-based __getitem__ overloads =====================
 
-     
+
     # --------------------------------------
     # 2) __getitem__ برای StrIndex
     # --------------------------------------
@@ -1296,7 +1291,6 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return self.select(sels)
 
     # --------------------------------------
-    # 3) شیم برای StringLiteral تا arr["1:3"] مستقیم کار کند
     #    (توجه: امضای __getitem__(self, spec: String) باید حذف باشد)
     # --------------------------------------
     @always_inline
@@ -1327,14 +1321,14 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var sels = List[IndexSel]()
         sels.append(make_slice_sel(trip))
         return self.select(sels)
- 
+
 
     @always_inline
     fn _getitem_slice_spec(self, trip: (Int, Int, Int)) -> Tensor[T]:
         var sels = List[IndexSel]()
         sels.append(make_slice_sel(trip))
         return self.select(sels)
- 
+
     # ------------------------------------------------------------------------------
     # 0) Full 2D "[: , :]" using two empty tuples (native ":")
     # ------------------------------------------------------------------------------
@@ -1378,7 +1372,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         print("TRIP1:", trip1[0], trip1[1], trip1[2])
         return self.select(sels)
 
-   
+
 
     # ------------------------------------------------------------------------------
     # 3) Mixed index/slice (native Slice on one axis)
@@ -1462,7 +1456,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var sels = List[IndexSel]()
         sels.append(make_slice_sel(trip0))
         sels.append(make_slice_sel(trip1))
- 
+
         return self.select(sels)
 
 
@@ -1519,7 +1513,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # سازگار با الگوی موجود: Tuple[] برای ":" و Slice برای a:b:c
     # --------------------------------------------------------------------------
 
-    
+
     @always_inline
     fn __getitem__(self, _e0: Tuple[], i1: Int, _e2: Tuple[]) -> Tensor[T]:
         var n0 = self._axis_len(0)
@@ -1564,8 +1558,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         sels.append(make_slice_sel((0, n0, 1)))
         sels.append(make_slice_sel((0, n1, 1)))
         sels.append(make_slice_sel(trip2))
-        return self.select(sels) 
- 
+        return self.select(sels)
+
     @always_inline
     fn __getitem__(self, i0: Int, i1: Int) -> Tensor[T]:
         # index on axes 0 and 1; keep axis 2 as-is (view)
@@ -1597,7 +1591,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return self.select(sels)
 
 
-   
+
     @always_inline
     fn __getitem__(self, i0: Int, i1: Int, i2: Int, i3: Int) -> Tensor[T]:
         var sels = List[IndexSel]()
@@ -1707,7 +1701,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         sels.append(make_index_sel(i3))
         return self.select(sels)
 
- 
+
 
     # [:, :, :, a:b:c]
     @always_inline
@@ -1784,7 +1778,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return self.select(sels)
 
     # --------------------------------------
-    # Helper 
+    # Helper
     # --------------------------------------
     @always_inline
     fn self._trip_from_slice( axis: Int, s: Slice) -> (Int, Int, Int):
@@ -2071,7 +2065,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 a3 = a3 + 1
             self._data[lin_dst] = src._data[q]
             q = q + 1
- 
+
     # --- 1D index: scalar + tensor ---
     # -----------------------------------------------------------------------------
     # Scalar casting helpers: pick a Float64->T converter for current T
@@ -2101,7 +2095,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # 1) ساخت متادیتا از sels
     # -------------------------
     @always_inline
-    fn _build_sel_meta(self, sels: List[IndexSel]) -> _SelViewMeta: 
+    fn _build_sel_meta(self, sels: List[IndexSel]) -> _SelViewMeta:
 
         var base = self._offset
         var out_shape = List[Int]()
@@ -2115,9 +2109,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
             if sel.tag == 0:
                 # index
-                var i = sel.i 
+                var i = sel.i
                 if i < 0:
-                    i += self._axis_len(ax) 
+                    i += self._axis_len(ax)
                 base += i * stride_ax
 
             else:
@@ -2125,25 +2119,25 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 var s  = sel.start
                 var e  = sel.stop
                 var st = sel.step
-                var ln = _trip_len(s, e, st) 
+                var ln = _trip_len(s, e, st)
 
                 base += s * stride_ax
                 out_shape.append(ln)
                 out_coefs.append(st * stride_ax)
 
-            ax += 1 
+            ax += 1
         var meta = _SelViewMeta(base, out_shape, out_coefs)
         return meta.copy()
 
- 
+
     @always_inline
     fn _assign_into_self_from_meta(
         mut self, meta: _SelViewMeta, rhs: Tensor[T]
     ) -> None:
- 
 
-        var rhs_total = _prod_shape(rhs._shape) 
- 
+
+        var rhs_total = _prod_shape(rhs._shape)
+
         if len(meta.out_shape) == 0:
             if rhs_total != 1:
                 print("[ASG ERROR] scalar-dst but rhs_total=" + String(rhs_total))
@@ -2151,9 +2145,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 return
             var zeros = _zero_indices(len(rhs._shape))
             var j_rhs = _flat_index(rhs._offset, rhs._strides, zeros)
-            self._data[meta.base_offset] = rhs._data[j_rhs] 
+            self._data[meta.base_offset] = rhs._data[j_rhs]
             return
- 
+
         if rhs_total == 1:
             var zeros2 = _zero_indices(len(rhs._shape))
             var j_rhs2 = _flat_index(rhs._offset, rhs._strides, zeros2)
@@ -2167,8 +2161,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 #if wrote <= 6:
                 #    print("[ASG] fill j_dst=" + String(j_dst))
                 if _bump_indices(idx, meta.out_shape) == False:
-                    break 
-            return 
+                    break
+            return
         if _shapes_equal(meta.out_shape, rhs._shape) == False:
             print("[ASG ERROR] shape mismatch")
             print("  dst.shape=" + _list_str(meta.out_shape) + " rhs.shape=" + _list_str(rhs._shape))
@@ -2184,14 +2178,14 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             #if copied <= 6:
             #    print("[ASG] copy j_dst=" + String(j_dst2) + " <= j_rhs=" + String(j_rhs3))
             if _bump_indices(idx2, meta.out_shape) == False:
-                break 
+                break
 
- 
+
     @always_inline
-    fn _assign_with_sels_tensor(mut self, sels: List[IndexSel], rhs: Tensor[T]) -> None: 
-        var meta = self._build_sel_meta(sels) 
-        self._assign_into_self_from_meta(meta, rhs) 
- 
+    fn _assign_with_sels_tensor(mut self, sels: List[IndexSel], rhs: Tensor[T]) -> None:
+        var meta = self._build_sel_meta(sels)
+        self._assign_into_self_from_meta(meta, rhs)
+
 
     @always_inline
     fn _trip_from_slice(self, axis: Int, s: Slice) -> (Int, Int, Int):
@@ -2207,10 +2201,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             trip = (0, n, 1)
         return trip
 
-    
-   
 
-    # --- خودِ پارسر: مستقیماً List[IndexSel] می‌سازد و sliceها را نرمال می‌کند ---
+
+
     @always_inline
     fn _parse_selector_string_lite(self, spec: String) -> List[IndexSel]:
         var r = len(self._shape)
@@ -2221,7 +2214,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             var ax = 0
             while ax < r:
                 sels.append(IndexSel.slice(0, self._axis_len(ax), 1))
-                ax += 1 
+                ax += 1
             return sels.copy()
 
         # split به String
@@ -2278,15 +2271,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             while p < pad:
                 tokens.append(String(":"))
                 p += 1
-        elif len(tokens) > r: 
+        elif len(tokens) > r:
             var clipped = List[String]()
             var q = 0
             while q < r:
                 clipped.append(tokens[q])
                 q += 1
-            tokens = clipped.copy()   
- 
- 
+            tokens = clipped.copy()
+
+
         var ax2 = 0
         while ax2 < r:
             var tok = tokens[ax2]
@@ -2313,9 +2306,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
                 var trip = _normalize_trip(n_ax, a_opt, b_opt, c_opt)
                 var s = IndexSel.slice(trip[0], trip[1], trip[2])
-                sels.append(s) 
+                sels.append(s)
             else:
-                # index (بدون throw)
                 var i_opt = _parse_opt_int(tok)   # "" -> None، عدد معتبر -> Some
                 var i_val: Int
                 if i_opt is None:
@@ -2324,27 +2316,27 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 else:
                     i_val = i_opt.value()
                 var s2 = IndexSel.index(i_val)
-                sels.append(s2) 
+                sels.append(s2)
 
             ax2 += 1
- 
+
         return sels.copy()
 
 
     # -----------------------------------------------------------------------------
         # __setitem__ overloads (single index, scalar RHS)
-    # ----------------------------------------------------------------------------- 
+    # -----------------------------------------------------------------------------
     @always_inline
-    fn _assign_after_dump(mut self, label: String, sels: List[IndexSel], rhs: Tensor[T]) -> None: 
+    fn _assign_after_dump(mut self, label: String, sels: List[IndexSel], rhs: Tensor[T]) -> None:
         var dbg = self.select(sels)
         # _dump_view("[VIEW dst]", dbg)
-        # _dump_view("[VIEW rhs]", rhs) 
+        # _dump_view("[VIEW rhs]", rhs)
         self._assign_with_sels_tensor(sels, rhs)
 
 
     @always_inline
-    fn __setitem__(mut self, s: StrIndex, rhs: Tensor[T]) -> None:  
-        var sels = self._parse_selector_string_lite(s.spec)  # خروجی: List[IndexSel] 
+    fn __setitem__(mut self, s: StrIndex, rhs: Tensor[T]) -> None:
+        var sels = self._parse_selector_string_lite(s.spec)  # خروجی: List[IndexSel]
         self._assign_with_sels_tensor(sels, rhs)
 
     @always_inline
@@ -2352,16 +2344,16 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         self.__setitem__(StrIndex(String(lit)), rhs)
 
     @always_inline
-    fn __setitem__(mut self, i0: Int, rhs: Tensor[T]) -> None: 
+    fn __setitem__(mut self, i0: Int, rhs: Tensor[T]) -> None:
         var sels = List[IndexSel]()
-        sels.append(_ls_index(i0)) 
+        sels.append(_ls_index(i0))
         self._assign_with_sels_tensor(sels, rhs)
 
     @always_inline
-    fn __setitem__(mut self, s: Slice, rhs: Tensor[T]) -> None: 
+    fn __setitem__(mut self, s: Slice, rhs: Tensor[T]) -> None:
         var trip = self._trip_from_slice(0, s)
         var sels = List[IndexSel]()
-        sels.append(_ls_slice(trip[0], trip[1], trip[2])) 
+        sels.append(_ls_slice(trip[0], trip[1], trip[2]))
         self._assign_with_sels_tensor(sels, rhs)
 
     @always_inline
@@ -2372,7 +2364,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         if r >= 2: sels.append(_ls_slice(0, self._axis_len(1), 1))
         if r >= 3: sels.append(_ls_slice(0, self._axis_len(2), 1))
         if r >= 4: sels.append(_ls_slice(0, self._axis_len(3), 1))
-        if r >= 5: sels.append(_ls_slice(0, self._axis_len(4), 1)) 
+        if r >= 5: sels.append(_ls_slice(0, self._axis_len(4), 1))
         self._assign_with_sels_tensor(sels, rhs)
 
 
@@ -2427,7 +2419,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var t1 = self._trip_from_slice(1, s1)
         var sels = List[IndexSel]()
         sels.append(_ls_slice(t0[0], t0[1], t0[2]))
-        sels.append(_ls_slice(t1[0], t1[1], t1[2])) 
+        sels.append(_ls_slice(t1[0], t1[1], t1[2]))
         self._assign_with_sels_tensor(sels, rhs)
 
     # [i, j, :]
@@ -2600,7 +2592,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var view = self.select(sels)   # view over self
         _copy_view_broadcast(view, rhs)
 
-    # Convenience: normalized 1D slice for a given axis  
+    # Convenience: normalized 1D slice for a given axis
     @always_inline
     fn _trip_from_slice_axis(self: Tensor[T], axis: Int, s: Slice) -> (Int, Int, Int):
         var n = self._axis_len(axis)
@@ -2637,7 +2629,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # rank (number of dimensions)
     fn ndim(self) -> Int:
         return len(self._shape)
- 
+
 
     fn rank(self) -> Int:
         return len(self._shape)
@@ -2648,15 +2640,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn idx(self, i: Int) -> IndexSel:
         return make_index_sel(i)
- 
+
     @always_inline
     fn rng(self, a: Int, b: Int, step: Int = 1) -> IndexSel:
         return make_slice_sel((a, b, step))
 
     @always_inline
     fn reange(self, a: Int, b: Int) -> IndexSel:
-        return make_slice_sel((a, b, 1))    
-    
+        return make_slice_sel((a, b, 1))
+
     @always_inline
     fn clone(self) -> Tensor[T]:
         return self.copy()
@@ -2667,28 +2659,28 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return SliceSpec(start=0, stop=dim, step=1)
 
     fn unsqueeze(self,axis_in: Int) -> Tensor[T]:
-        return unsqueeze(self, axis_in) 
+        return unsqueeze(self, axis_in)
 
     fn squeeze_all(self) -> Tensor[T]:
         return squeeze_all(self)
 
 
     fn squeeze(self,axis_in: Int) -> Tensor[T]:
-        return squeeze_axis(self, axis_in) 
+        return squeeze_axis(self, axis_in)
 
     fn permute(self, axes: List[Int]) -> Tensor[T]:
-        return permute(self, axes) 
+        return permute(self, axes)
 
     fn repeat(self, reps: List[Int]) -> Tensor[T]:
         return repeat(self, reps)
-         
+
     fn transpose(self, i: Int, j: Int) -> Tensor[T]: return transpose(self, i, j)
     fn transpose(self, perm: List[Int]) -> Tensor[T]:  return transpose(self, perm)
     fn transpose(self) -> Tensor[T]:  return transpose(self)
 
     fn flatten(self, start_dim: Int = 0,    end_dim_opt: Optional[Int] = None) -> Tensor[T]:
         return flatten(self,start_dim,    end_dim_opt)
- 
+
     fn narrow(self, axis: Int, start: Int, length: Int) -> SliceSpec:
         var d = len(self._shape)
         var ax = normalize_axis(axis, d)
@@ -2701,8 +2693,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             e = dim
         return SliceSpec(start=s, stop=e, step=1)
 
-    # ------------------------- multi-axis slice ------------------------ 
-     
+    # ------------------------- multi-axis slice ------------------------
+
 
     fn slice(self, specs: List[SliceSpec]) -> Tensor[T]:
         var d = len(self._shape)
@@ -2770,7 +2762,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         step: Int = 1,
         debug: Bool = True
     ) -> Tensor[T]:
-        
+
 
         var r = len(self._shape)
         if r == 0:
@@ -2785,11 +2777,11 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
         var n_ax = self._shape[ax]
 
-        # Normalize like Python        
-        var s = start 
-        if start < 0: s =start + n_ax  
-        var e =stop 
-        if stop  < 0: e =stop  + n_ax 
+        # Normalize like Python
+        var s = start
+        if start < 0: s =start + n_ax
+        var e =stop
+        if stop  < 0: e =stop  + n_ax
 
         # Clamp
         if s < 0: s = 0
@@ -2806,10 +2798,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         out_strides[ax] = self._strides[ax] * step
         var out_offset  = self._offset + s * self._strides[ax]
 
-     
+
 
         # Constructor order MUST be (data, shape, strides, offset)
-        
+
         return Tensor[T](self._data, out_shape, out_strides, out_offset)
 
     fn slice_inplace(
@@ -2817,8 +2809,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         ax: Int,
         start: Int,
         stop: Int,
-        step: Int = 1, 
-    ) -> Tensor[T]: 
+        step: Int = 1,
+    ) -> Tensor[T]:
 
         # Basic validation
         var r = len(self._shape)
@@ -2873,13 +2865,13 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
         var new_offset = self._offset + base_idx * self._strides[ax]
 
-         
+
         # Apply in-place: update only the selected axis
         self._shape[ax]   = len_ax
         self._strides[ax] = new_stride_ax
         self._offset      = new_offset
 
-        
+
         return self.copy()
 
     fn index_axis(self, axis: Int, index: Int) -> Tensor[T]:
@@ -2912,7 +2904,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 out_shape.append(self._shape[i])
             i = i + 1
         return Tensor[T](out_shape, self._data)
- 
+
     @always_inline
     fn as_strided(
         self,
@@ -2971,61 +2963,61 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             return self.copy()
 
         # Pure view (shared storage)
-        return Tensor[T](self._data, new_shape, new_strides, offset)  
+        return Tensor[T](self._data, new_shape, new_strides, offset)
 
 
     fn get2(self, i: Int, j: Int ) -> T:
         var r = len(self._shape)
-        if r != 2: 
+        if r != 2:
 
         var n0 = self._shape[0]; var n1 = self._shape[1]
-        var ii =i 
-        if i < 0: ii =i + n0  
-        var jj =j 
-        if j < 0: jj =j + n1 
+        var ii =i
+        if i < 0: ii =i + n0
+        var jj =j
+        if j < 0: jj =j + n1
         if ii < 0 or ii >= n0 or jj < 0 or jj >= n1:
-            
+
             return self._data[self._offset]   # fallback
 
         var lin = self._offset + ii * self._strides[0] + jj * self._strides[1]
-        
+
         return self._data[lin]
 
     fn set2(
         mut self,
         i: Int,
         j: Int,
-        value: T, 
+        value: T,
     ) -> None:
-        var r = len(self._shape) 
+        var r = len(self._shape)
 
-        if r != 2: 
+        if r != 2:
             return
 
         var n0 = self._shape[0]
         var n1 = self._shape[1]
 
         # Normalize negative indices
-        var ii =i 
-        if i < 0: ii =i + n0  
-        var jj =j 
-        if j < 0: jj =j + n1 
- 
+        var ii =i
+        if i < 0: ii =i + n0
+        var jj =j
+        if j < 0: jj =j + n1
+
 
         # Bounds check
-        if ii < 0 or ii >= n0 or jj < 0 or jj >= n1: 
+        if ii < 0 or ii >= n0 or jj < 0 or jj >= n1:
             return
 
         # Linear position using strides + offset (supports views)
         var lin = self._offset + ii * self._strides[0] + jj * self._strides[1]
- 
+
         # Guard read (lin checked by OOB above for logical indices; still sanity-print)
         if lin < 0 or lin >= len(self._data):
             print("[set2] ERROR: storage index OOB: lin=" + lin.__str__() +
                     " data_len=" + len(self._data).__str__())
-            return 
+            return
 
-        self._data[lin] = value 
+        self._data[lin] = value
 
     fn put(self,index: Tensor[Int], src: Tensor[T]) -> Tensor[T]:
         return put(self,index, src)
@@ -3153,17 +3145,17 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
         return make_slice_sel((start, stop, step))  # unchanged (tuple-based SliceSpec)
 
- 
 
 
-    
+
+
 
     # ------------------------------- Introspection -----------------------------
- 
- 
 
- 
- 
+
+
+
+
 
     fn matmul(self: Tensor[Float64], x: Tensor[Float64]) -> Tensor[Float64]:
         return _matmul_free(self, x)
@@ -3196,17 +3188,17 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn tensordot(self: Tensor[Float64], B: Tensor[Float64], axis: Int = 1) -> Tensor[Float64]:
         return _tensordot_free(self, B, axis)
 
-    
+
     fn tensordot(self: Tensor[Int], B: Tensor[Int], axis: Int = 1) -> Tensor[Float64]:
         var Af = astype_f64_from_int(self)
         var Bf = astype_f64_from_int(B)
         return _tensordot_free(Af, Bf, axis)
 
-  
+
     fn sum(self: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return sum(self, axis, keepdims)
     fn sum(self: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
-        return sum(self, axis, keepdims) 
+        return sum(self, axis, keepdims)
     fn sum(self: Tensor[Int], axis: Optional[Int], keepdims: Bool = False) -> Tensor[Int]:
         var f = astype_f64_from_int(self)
         return sum(self, axis, keepdims)
@@ -3216,17 +3208,17 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     @always_inline
     fn sum_all(self: Tensor[Float64]) -> Float64:
-        return sum1d_unrolled(self) 
+        return sum1d_unrolled(self)
 
     @always_inline
     fn sum_all(self: Tensor[Float32]) -> Float32:
-        return sum1d_unrolled(self) 
- 
+        return sum1d_unrolled(self)
+
 
     fn std(self: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return std(self, axis, keepdims)
     fn std(self: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
-        return std(self, axis, keepdims) 
+        return std(self, axis, keepdims)
     fn std(self: Tensor[Int], axis: Optional[Int], keepdims: Bool = False) -> Tensor[Float64]:
         var f = astype_f64_from_int(self)
         return std(f, axis, keepdims)
@@ -3236,12 +3228,12 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     @always_inline
     fn std_all(self: Tensor[Float64]) -> Float64:
-        return std1d_unrolled(self) 
+        return std1d_unrolled(self)
 
     @always_inline
     fn std_all(self: Tensor[Float32]) -> Float32:
-        return std1d_unrolled(self) 
- 
+        return std1d_unrolled(self)
+
     fn nanmean(self:Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return nanmean(self, axis, keepdims)
 
@@ -3250,7 +3242,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn nanmin(self:Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return nansum(self, axis, keepdims)
- 
+
     fn nanmean(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return nanmean(self, axis, keepdims)
 
@@ -3260,7 +3252,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn nanmin(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return nansum(self, axis, keepdims)
 
- 
+
     fn nanmean(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return nanmean(self, axis, keepdims)
 
@@ -3271,7 +3263,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return nansum(self, axis, keepdims)
 
 
-    
+
     # ---------- Float64 overloads ----------
 
     fn mean(self: Tensor[Float64]) -> Tensor[Float64]:
@@ -3299,7 +3291,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var ax = Optional[Int](axis)
         return _mean_free(A, ax, False)
 
-    fn mean(self: Tensor[Float32], axis: List[Int]) -> Tensor[Float64]: 
+    fn mean(self: Tensor[Float32], axis: List[Int]) -> Tensor[Float64]:
         var A = astype_f64_from_f32(self)
         return mean_axes_f64(A, axis, False)
 
@@ -3320,10 +3312,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn mean(self: Tensor[Int], axis: List[Int]) -> Tensor[Float64]:
         var A = astype_f64_from_int(self)
         return mean_axes_f64(A, axis, False)
- 
 
 
- 
+
+
 
     @always_inline
     fn astype[U: ImplicitlyCopyable & Copyable & Movable](
@@ -3332,13 +3324,13 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     ) -> Tensor[U]:
         return astype_with[T, U](self, f)
 
-        
+
     # ------------------------------ __str__ -----------------------------------
     # Public: pretty string with full data
- 
+
     fn to_string(self: Tensor[Int]) -> String:
         return tensor_core_print[Int](self, _fmt_int)
- 
+
     fn to_string(self: Tensor[Int16]) -> String:
         return tensor_core_print[Int16](self, _fmt_i16)
 
@@ -3360,7 +3352,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn to_string(self: Tensor[String]) -> String:
         return tensor_core_print[String](self, _fmt_str)
 
- 
+
     fn dump(self: Tensor[Int]) -> None:
         print(tensor_core_print[Int](self, _fmt_int))
 
@@ -3384,11 +3376,11 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn dump(self: Tensor[String]) -> None:
         print(tensor_core_print[String](self, _fmt_str))
-  
+
 
     fn __str__(self: Tensor[Int]) -> String:
         return tensor_core_print[Int](self, _fmt_int)
- 
+
     fn __str__(self: Tensor[Int16]) -> String:
         return tensor_core_print[Int16](self, _fmt_i16)
 
@@ -3424,7 +3416,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # existing same-type overloads must already exist:
     # fn set_union(self: Tensor[Int], other: Tensor[Int]) -> Tensor[Int]: ...
     # fn set_union(self: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Float64]: ...
- 
+
     @always_inline
     fn set_union(self: Tensor[Int], other: Tensor[Int]) -> Tensor[Int]:
         var u1 = setops_sorted_unique_int(self)   # -> List[Int] sorted-unique
@@ -3648,8 +3640,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         while i < d:
             n = n * self._shape[i]
             i = i + 1
-        return n 
-          
+        return n
+
     fn unique(self: Tensor[Int]) -> UniqueResult[Int]:
         return tensor_unique_int(self)
 
@@ -3681,7 +3673,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn sort(self: Tensor[Int]) -> Tensor[Int]:
         return tensor_sort_int(self)
 
-    
+
 
     @always_inline
     fn argsort(self: Tensor[Float64]) -> Tensor[Int]:
@@ -3694,7 +3686,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn argsort(self: Tensor[Int]) -> Tensor[Int]:
         return argsort_int(self)
- 
+
 
     @always_inline
     fn bincount(self: Tensor[Int]) -> Tensor[Int]:
@@ -3707,7 +3699,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn digitize(self: Tensor[Int], edges: List[Int]) -> Tensor[Int]:
         return tensor_digitize_int(self, edges)
- 
+
 
 
 
@@ -3717,15 +3709,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn exp(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn exp(self: Tensor[Int]) -> Tensor[Float64]:
         return exp_t(self)
 
     @always_inline
-    fn exp(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn exp(self: Tensor[Float64]) -> Tensor[Float64]:
         return exp_t(self)
 
     @always_inline
-    fn exp(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn exp(self: Tensor[Float32]) -> Tensor[Float64]:
         return exp_t(self)
 
 
@@ -3734,15 +3726,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn log(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn log(self: Tensor[Int]) -> Tensor[Float64]:
         return log_t(self)
 
     @always_inline
-    fn log(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn log(self: Tensor[Float64]) -> Tensor[Float64]:
         return log_t(self)
 
     @always_inline
-    fn log(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn log(self: Tensor[Float32]) -> Tensor[Float64]:
         return log_t(self)
 
 
@@ -3751,15 +3743,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # ==========================
 
     @always_inline
-    fn sqrt(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn sqrt(self: Tensor[Int]) -> Tensor[Float64]:
         return sqrt_t(self)
 
     @always_inline
-    fn sqrt(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn sqrt(self: Tensor[Float64]) -> Tensor[Float64]:
         return sqrt_t(self)
 
     @always_inline
-    fn sqrt(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn sqrt(self: Tensor[Float32]) -> Tensor[Float64]:
         return sqrt_t(self)
 
 
@@ -3768,18 +3760,18 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn abs(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn abs(self: Tensor[Int]) -> Tensor[Float64]:
         return abs_t(self)
 
     @always_inline
-    fn abs(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn abs(self: Tensor[Float64]) -> Tensor[Float64]:
         return abs_t(self)
 
     @always_inline
-    fn abs(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn abs(self: Tensor[Float32]) -> Tensor[Float64]:
         return abs_t(self)
 
- 
+
 
 
     # =========================
@@ -3787,15 +3779,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn sin(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn sin(self: Tensor[Int]) -> Tensor[Float64]:
         return sin_t(self)
 
     @always_inline
-    fn sin(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn sin(self: Tensor[Float64]) -> Tensor[Float64]:
         return sin_t(self)
 
     @always_inline
-    fn sin(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn sin(self: Tensor[Float32]) -> Tensor[Float64]:
         return sin_t(self)
 
 
@@ -3805,15 +3797,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn cos(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn cos(self: Tensor[Int]) -> Tensor[Float64]:
         return cos_t(self)
 
     @always_inline
-    fn cos(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn cos(self: Tensor[Float64]) -> Tensor[Float64]:
         return cos_t(self)
 
     @always_inline
-    fn cos(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn cos(self: Tensor[Float32]) -> Tensor[Float64]:
         return cos_t(self)
 
 
@@ -3823,15 +3815,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn tan(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn tan(self: Tensor[Int]) -> Tensor[Float64]:
         return tan_t(self)
 
     @always_inline
-    fn tan(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn tan(self: Tensor[Float64]) -> Tensor[Float64]:
         return tan_t(self)
 
     @always_inline
-    fn tan(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn tan(self: Tensor[Float32]) -> Tensor[Float64]:
         return tan_t(self)
 
 
@@ -3841,15 +3833,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn relu(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn relu(self: Tensor[Int]) -> Tensor[Float64]:
         return relu_t(self)
 
     @always_inline
-    fn relu(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn relu(self: Tensor[Float64]) -> Tensor[Float64]:
         return relu_t(self)
 
     @always_inline
-    fn relu(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn relu(self: Tensor[Float32]) -> Tensor[Float64]:
         return relu_t(self)
 
 
@@ -3859,15 +3851,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn expm1(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn expm1(self: Tensor[Int]) -> Tensor[Float64]:
         return expm1_t(self)
 
     @always_inline
-    fn expm1(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn expm1(self: Tensor[Float64]) -> Tensor[Float64]:
         return expm1_t(self)
 
     @always_inline
-    fn expm1(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn expm1(self: Tensor[Float32]) -> Tensor[Float64]:
         return expm1_t(self)
 
 
@@ -3877,15 +3869,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn log1p(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn log1p(self: Tensor[Int]) -> Tensor[Float64]:
         return log1p_t(self)
 
     @always_inline
-    fn log1p(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn log1p(self: Tensor[Float64]) -> Tensor[Float64]:
         return log1p_t(self)
 
     @always_inline
-    fn log1p(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn log1p(self: Tensor[Float32]) -> Tensor[Float64]:
         return log1p_t(self)
 
 
@@ -3894,151 +3886,151 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn floor(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn floor(self: Tensor[Int]) -> Tensor[Float64]:
         return floor_t(self)
 
     @always_inline
-    fn floor(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn floor(self: Tensor[Float64]) -> Tensor[Float64]:
         return floor_t(self)
 
     @always_inline
-    fn floor(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn floor(self: Tensor[Float32]) -> Tensor[Float64]:
         return floor_t(self)
 
- 
+
     # =========================
     # Elementwise ceil overloads
     # =========================
 
     @always_inline
-    fn ceil(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn ceil(self: Tensor[Int]) -> Tensor[Float64]:
         return ceil_t(self)
 
     @always_inline
-    fn ceil(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn ceil(self: Tensor[Float64]) -> Tensor[Float64]:
         return ceil_t(self)
 
     @always_inline
-    fn ceil(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn ceil(self: Tensor[Float32]) -> Tensor[Float64]:
         return ceil_t(self)
 
- 
+
     # =========================
     # Elementwise round overloads
     # =========================
 
     @always_inline
-    fn round(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn round(self: Tensor[Int]) -> Tensor[Float64]:
         return round_t(self)
 
     @always_inline
-    fn round(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn round(self: Tensor[Float64]) -> Tensor[Float64]:
         return round_t(self)
 
     @always_inline
-    fn round(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn round(self: Tensor[Float32]) -> Tensor[Float64]:
         return round_t(self)
 
- 
+
     # =========================
     # Elementwise sign overloads
     # =========================
 
     @always_inline
-    fn sign(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn sign(self: Tensor[Int]) -> Tensor[Float64]:
         return sign_t(self)
 
     @always_inline
-    fn sign(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn sign(self: Tensor[Float64]) -> Tensor[Float64]:
         return sign_t(self)
 
     @always_inline
-    fn sign(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn sign(self: Tensor[Float32]) -> Tensor[Float64]:
         return sign_t(self)
 
- 
+
     # =========================
     # Elementwise sigmoid overloads
     # =========================
 
     @always_inline
-    fn sigmoid(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn sigmoid(self: Tensor[Int]) -> Tensor[Float64]:
         return sigmoid_t(self)
 
     @always_inline
-    fn sigmoid(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn sigmoid(self: Tensor[Float64]) -> Tensor[Float64]:
         return sigmoid_t(self)
 
     @always_inline
-    fn sigmoid(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn sigmoid(self: Tensor[Float32]) -> Tensor[Float64]:
         return sigmoid_t(self)
 
- 
+
     # =========================
     # Elementwise tanh overloads
     # =========================
 
     @always_inline
-    fn tanh(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn tanh(self: Tensor[Int]) -> Tensor[Float64]:
         return tanh_t(self)
 
     @always_inline
-    fn tanh(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn tanh(self: Tensor[Float64]) -> Tensor[Float64]:
         return tanh_t(self)
 
     @always_inline
-    fn tanh(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn tanh(self: Tensor[Float32]) -> Tensor[Float64]:
         return tanh_t(self)
 
- 
+
     # =========================
     # Elementwise silu overloads
     # =========================
 
     @always_inline
-    fn silu(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn silu(self: Tensor[Int]) -> Tensor[Float64]:
         return silu_t(self)
 
     @always_inline
-    fn silu(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn silu(self: Tensor[Float64]) -> Tensor[Float64]:
         return silu_t(self)
 
     @always_inline
-    fn silu(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn silu(self: Tensor[Float32]) -> Tensor[Float64]:
         return silu_t(self)
 
- 
+
     # =========================
     # Elementwise gelu overloads
     # =========================
 
     @always_inline
-    fn gelu(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn gelu(self: Tensor[Int]) -> Tensor[Float64]:
         return gelu_t(self)
 
     @always_inline
-    fn gelu(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn gelu(self: Tensor[Float64]) -> Tensor[Float64]:
         return gelu_t(self)
 
     @always_inline
-    fn gelu(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn gelu(self: Tensor[Float32]) -> Tensor[Float64]:
         return gelu_t(self)
 
- 
+
     # =========================
     # Elementwise elu overloads
     # =========================
 
     @always_inline
-    fn elu(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn elu(self: Tensor[Int]) -> Tensor[Float64]:
         return elu_t(self)
 
     @always_inline
-    fn elu(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn elu(self: Tensor[Float64]) -> Tensor[Float64]:
         return elu_t(self)
 
     @always_inline
-    fn elu(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn elu(self: Tensor[Float32]) -> Tensor[Float64]:
         return elu_t(self)
 
     # =========================
@@ -4046,18 +4038,18 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn selu(self: Tensor[Int]) -> Tensor[Float64]: 
+    fn selu(self: Tensor[Int]) -> Tensor[Float64]:
         return selu_t(self)
 
     @always_inline
-    fn selu(self: Tensor[Float64]) -> Tensor[Float64]: 
+    fn selu(self: Tensor[Float64]) -> Tensor[Float64]:
         return selu_t(self)
 
     @always_inline
-    fn selu(self: Tensor[Float32]) -> Tensor[Float64]: 
+    fn selu(self: Tensor[Float32]) -> Tensor[Float64]:
         return selu_t(self)
 
-     
+
    # Any / All / Count for Float64
     fn any(self: Tensor[Float64]) -> Bool:
         var n = len(self._data)
@@ -4160,7 +4152,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             if self._data[i]: c += 1
             i += 1
         return c
- 
+
     # ----------------------
     # self: Tensor[Float64]
     # ----------------------
@@ -4184,15 +4176,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn min(self: Tensor[Float64]) -> Float64: return min_t(self)                                   # min f64
     fn max(self: Tensor[Float64]) -> Float64: return max_t(self)                                   # max f64
-    
 
- 
+
+
     fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Float64],strict: Bool = False) -> Bool:
         return can_broadcast_shapes(self._shape, other._shape,strict)
- 
+
     fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Float32],strict: Bool = False) -> Bool:
         return can_broadcast_shapes(self._shape, other._shape,strict)
- 
+
     fn can_broadcast_with(self: Tensor[Float64], other: Tensor[Int],strict: Bool = False) -> Bool:
         return can_broadcast_shapes(self._shape, other._shape,strict)
 
@@ -4238,8 +4230,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn maximum_scalar(self: Tensor[Float32], s: Int)     -> Tensor[Float32]: return where_f32(ge_t(self, to_float32(scalar_int(s))), self, to_float32(scalar_int(s)))                      # max s=int ⇒ f32
 
 
-    fn min(self: Tensor[Float32]) -> Float32: return min_t(self)                                   
-    fn max(self: Tensor[Float32]) -> Float32: return max_t(self)       
+    fn min(self: Tensor[Float32]) -> Float32: return min_t(self)
+    fn max(self: Tensor[Float32]) -> Float32: return max_t(self)
     # ----------------------
     # self: Tensor[Int]
     # ----------------------
@@ -4269,8 +4261,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn minimum_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return where_int(le_t(self, scalar_int(s)), self, scalar_int(s))                               # min s=int ⇒ int
     fn maximum_scalar(self: Tensor[Int], s: Int)     -> Tensor[Int]:     return where_int(ge_t(self, scalar_int(s)), self, scalar_int(s))                               # max s=int ⇒ int
 
-    fn min(self: Tensor[Int]) -> Int: return min_t(self)                                    
-    fn max(self: Tensor[Int]) -> Int: return max_t(self)       
+    fn min(self: Tensor[Int]) -> Int: return min_t(self)
+    fn max(self: Tensor[Int]) -> Int: return max_t(self)
 
 
     fn __bool__(self) -> Bool:
@@ -4716,7 +4708,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __xor__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Int]: return xor_t(to_float64(self), scalar_f64(rhs))         # a(f32→f64) ^ s(f64)
     fn __xor__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Int]: return xor_t(self, scalar_f32(rhs))                     # a ^ s(f32)
     fn __xor__(self: Tensor[Float32], rhs: Int)             -> Tensor[Int]: return xor_t(self, to_float32(scalar_int(rhs)))       # a ^ s(int→f32)
- 
+
 
     # =========================
     # Int logical overloads (elementwise → Tensor[Int] mask)
@@ -4741,7 +4733,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn __xor__(self: Tensor[Int], rhs: Float64)         -> Tensor[Int]: return xor_t(to_float64(self), scalar_f64(rhs))             # a(int→f64) ^ s(f64)
     fn __xor__(self: Tensor[Int], rhs: Float32)         -> Tensor[Int]: return xor_t(to_float32(self), scalar_f32(rhs))             # a(int→f32) ^ s(f32)
     fn __xor__(self: Tensor[Int], rhs: Int)             -> Tensor[Int]: return xor_t(self, scalar_int(rhs))                       # a ^ s(int)
- 
+
     # =========================
     # Float64 reflected logical (result mask: Tensor[Int])
     # =========================
@@ -5071,7 +5063,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn and_scalar(self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(and_t(self, scalar_f64(s)))                                         # a(f64) & s(f64) ⇒ f64
     fn and_scalar(self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(and_t(self, to_float64(scalar_f32(s))))                             # a(f64) & s(f32→f64) ⇒ f64
     fn and_scalar(self: Tensor[Float64], s: Int)     -> Tensor[Int]: return to_int(and_t(self, to_float64(scalar_int(s))))                           # a(f64) & s(int→f64) ⇒ f64
- 
+
     fn or_scalar (self: Tensor[Float64], s: Float64) -> Tensor[Int]: return to_int(or_t (self, scalar_f64(s)))                                         # a(f64) | s(f64) ⇒ f64
     fn or_scalar (self: Tensor[Float64], s: Float32) -> Tensor[Int]: return to_int(or_t (self, to_float64(scalar_f32(s))))                             # a(f64) | s(f32→f64) ⇒ f64
     fn or_scalar (self: Tensor[Float64], s: Int)     -> Tensor[Int]: return to_int(or_t (self, to_float64(scalar_int(s))))                           # a(f64) | s(int→f64) ⇒ f64
@@ -5105,10 +5097,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn xor_bitwise(self: Tensor[Float64], s: Tensor[Float64]) -> Tensor[Int]: return to_int(xor_t(self, (s)))                                         # a(f64) ^ s(f64) ⇒ f64
     fn xor_bitwise(self: Tensor[Float64], s: Tensor[Float32]) -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))                             # a(f64) ^ s(f32→f64) ⇒ f64
-    fn xor_bitwise(self: Tensor[Float64], s: Tensor[Int])     -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))  
-    
-    
-              
+    fn xor_bitwise(self: Tensor[Float64], s: Tensor[Int])     -> Tensor[Int]: return to_int(xor_t(self, to_float64((s))))
+
+
+
 
     # =========================
     # Float32 overloads (full combos)
@@ -5182,8 +5174,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn logical_xor(self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Bool]: return lxor_t(to_float64(self), other)                              # a(int→f64) ^ b(f64) ⇒ bool
     fn logical_xor(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Bool]: return lxor_t(to_float32(self), other)                              # a(int→f32) ^ b(f32) ⇒ bool
     fn logical_xor(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Bool]: return lxor_t(self, other)                                          # a(int) ^ b(int) ⇒ bool
-    
-    
+
+
     # Numeric bitwise with scalar (result promoted by rule)
     fn and_bitwise(self: Tensor[Int], s: Tensor[Float64]) -> Tensor[Int]: return to_int(and_t(to_float64(self), (s)))                                   # a(int→f64) & s(f64) ⇒ f64
     fn and_bitwise(self: Tensor[Int], s: Tensor[Float32]) -> Tensor[Int]: return to_int(and_t(to_float32(self), (s)))                                  # a(int→f32) & s(f32) ⇒ f32
@@ -5220,22 +5212,22 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
 
 
-    fn not_bitwise(self: Tensor[Float64]) -> Tensor[Int]: return not_t(self)                                       
-    fn not_bitwise(self: Tensor[Float32]) -> Tensor[Int]:return not_t(self)                                  
-    fn not_bitwise(self: Tensor[Int])     -> Tensor[Int]:return not_t(self)               
+    fn not_bitwise(self: Tensor[Float64]) -> Tensor[Int]: return not_t(self)
+    fn not_bitwise(self: Tensor[Float32]) -> Tensor[Int]:return not_t(self)
+    fn not_bitwise(self: Tensor[Int])     -> Tensor[Int]:return not_t(self)
 
     # Logical boolean ops (mask-style; returns Bool)
-    fn logical_not(self: Tensor[Float64]) -> Tensor[Bool]: return lnot_t(self) 
-    fn logical_not(self: Tensor[Float32]) -> Tensor[Bool]: return lnot_t(self)  
-    fn logical_not(self: Tensor[Int]) -> Tensor[Bool]: return lnot_t(self)        
+    fn logical_not(self: Tensor[Float64]) -> Tensor[Bool]: return lnot_t(self)
+    fn logical_not(self: Tensor[Float32]) -> Tensor[Bool]: return lnot_t(self)
+    fn logical_not(self: Tensor[Int]) -> Tensor[Bool]: return lnot_t(self)
     fn logical_not(self: Tensor[Bool]) -> Tensor[Bool]: return lnot_t(self)
-     
+
     fn logical_and(self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return land_t(self, other)                                     # a(f64) & b(f64) ⇒ bool
-  
+
     fn logical_or (self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return lor_t (self, other)                                     # a(f64) | b(f64) ⇒ bool
-   
+
     fn logical_xor(self: Tensor[Bool], other: Tensor[Bool]) -> Tensor[Bool]: return lxor_t(self, other)                                     # a(f64) ^ b(f64) ⇒ bool
- 
+
     # =========================
     # Float32 overloads — Shifts (full combos, one-liners)
     # Promotion: Int < Float32 < Float64
@@ -5440,23 +5432,23 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn ne(self: Tensor[Int], other: Tensor[Float64]) -> Tensor[Int]: return ne_t(to_float64(self), other)                          # a(int→f64) != b(f64)
     fn ne(self: Tensor[Int], other: Tensor[Float32]) -> Tensor[Int]: return ne_t(to_float32(self), other)                          # a(int→f32) != b(f32)
     fn ne(self: Tensor[Int], other: Tensor[Int])     -> Tensor[Int]: return ne_t(self, other)                                      # a(int) != b(int)
- 
-  
-    fn to_float64(self: Tensor[Float64]) -> Tensor[Float64]: return to_float64(self) 
-    fn to_float64(self: Tensor[Float32]) -> Tensor[Float64]: return to_float64(self) 
-    fn to_float64(self: Tensor[Int])     -> Tensor[Float64]: return to_float64(self) 
 
-    fn to_float32(self: Tensor[Float64]) -> Tensor[Float32]: return to_float32(self) 
-    fn to_float32(self: Tensor[Float32]) -> Tensor[Float32]: return to_float32(self) 
+
+    fn to_float64(self: Tensor[Float64]) -> Tensor[Float64]: return to_float64(self)
+    fn to_float64(self: Tensor[Float32]) -> Tensor[Float64]: return to_float64(self)
+    fn to_float64(self: Tensor[Int])     -> Tensor[Float64]: return to_float64(self)
+
+    fn to_float32(self: Tensor[Float64]) -> Tensor[Float32]: return to_float32(self)
+    fn to_float32(self: Tensor[Float32]) -> Tensor[Float32]: return to_float32(self)
     fn to_float32(self: Tensor[Int])     -> Tensor[Float32]: return to_float32(self)
 
-    fn to_int(self: Tensor[Float64])     -> Tensor[Int]:     return to_int(self) 
-    fn to_int(self: Tensor[Float32])     -> Tensor[Int]:     return to_int(self) 
+    fn to_int(self: Tensor[Float64])     -> Tensor[Int]:     return to_int(self)
+    fn to_int(self: Tensor[Float32])     -> Tensor[Int]:     return to_int(self)
     fn to_int(self: Tensor[Int])         -> Tensor[Int]:     return to_int(self)
 
 
 
-    
+
     fn view(self ,shape: List[Int]) -> Tensor[T]:        return view(self,shape)
 
     fn dtype_name(self: Tensor[Bool])    -> String: return "Bool"
@@ -5472,15 +5464,15 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn dtype_name(self: Tensor[UInt64])  -> String: return "UInt64"
     fn dtype_name(self: Tensor[Float32]) -> String: return "Float32"
     fn dtype_name(self: Tensor[Float64]) -> String: return "Float64"
- 
+
     fn is_contiguous(self: Tensor[Float64]) -> Bool:    return is_row_major_contiguous(self._shape, self._strides)
     fn is_contiguous(self: Tensor[Float32]) -> Bool:    return is_row_major_contiguous(self._shape, self._strides)
     fn is_contiguous(self: Tensor[Int]) -> Bool:        return is_row_major_contiguous(self._shape, self._strides)
 
 
-    fn sigmoid(self: Tensor[Float64]) -> Tensor[Float64]: return sigmoid_t(self) 
-    fn sigmoid(self: Tensor[Float32]) -> Tensor[Float64]: return sigmoid_t(self) 
-    fn sigmoid(self: Tensor[Int])     -> Tensor[Float64]: return sigmoid_t(self) 
+    fn sigmoid(self: Tensor[Float64]) -> Tensor[Float64]: return sigmoid_t(self)
+    fn sigmoid(self: Tensor[Float32]) -> Tensor[Float64]: return sigmoid_t(self)
+    fn sigmoid(self: Tensor[Int])     -> Tensor[Float64]: return sigmoid_t(self)
 
     @always_inline
     fn scatter_add(self: Tensor[Int], dim: Int, index: Tensor[Int], src: Tensor[Int]) -> Tensor[Int]:
@@ -5627,7 +5619,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             var u = rng.next_unit_f64()
             self._data[i] = low + span * u
             i += 1
-        return self.copy()  
+        return self.copy()
 
 
     @always_inline
@@ -5641,13 +5633,13 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
         var n = len(self._data)
         var i = 0
-        var span = low   
+        var span = low
         span = high - low
         while i < n:
             var u = rng.next_unit_f64()
             self._data[i] = low + Float32(Float64(span) * u)
             i += 1
-        return self.copy() 
+        return self.copy()
 
 
 
@@ -5677,8 +5669,8 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
                 out._data[i] = Float32(0.0)
             i += 1
         return out.copy()
- 
- 
+
+
 
     # =========================
     # Bernoulli — Float64
@@ -5752,7 +5744,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             var out = empty_tensor_with[Int](to_int_from_f64, Optional[List[Int]](out_shape.copy()))
 
             var cdf = List[Float64]()
-            _build_cdf_1d(self, 0, k, cdf) 
+            _build_cdf_1d(self, 0, k, cdf)
 
             var i = 0
             while i < num_samples:
@@ -5826,7 +5818,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # Method on Tensor[Float64]
     # ------------------------------
     @always_inline
-    fn one_hot(self: Tensor[Float64], depth: Int) -> Tensor[Int]: 
+    fn one_hot(self: Tensor[Float64], depth: Int) -> Tensor[Int]:
         var shp = copy_ints(self._shape)
         var n = 1
         var i = 0
@@ -5838,7 +5830,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         ids.reserve(n)
         i = 0
         var lim = len(self._data)
-        if n < len(self._data):  lim = n  
+        if n < len(self._data):  lim = n
         while i < lim:
             ids.append(Int(self._data[i]))
             i += 1
@@ -5848,7 +5840,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # Method on Tensor[Float32]
     # ------------------------------
     @always_inline
-    fn one_hot(self: Tensor[Float32], depth: Int) -> Tensor[Int]: 
+    fn one_hot(self: Tensor[Float32], depth: Int) -> Tensor[Int]:
         var shp = copy_ints(self._shape)
         var n = 1
         var i = 0
@@ -5860,7 +5852,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         ids.reserve(n)
         i = 0
         var lim = len(self._data)
-        if n < len(self._data):  lim = n  
+        if n < len(self._data):  lim = n
         while i < lim:
             ids.append(Int(self._data[i]))
             i += 1
@@ -6046,7 +6038,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn fill(mut self: Tensor[Float64], v: Float64) -> None:
         fill[Float64](self, v)
 
-   
+
 
     fn masked_select(self, mask: Tensor[Int]) -> Tensor[T]:
         return masked_select(self, mask)
@@ -6054,7 +6046,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn masked_fill(mut self, mask: Tensor[Int],value: T):
         masked_fill(self, mask,value)
- 
+
     @always_inline
     fn boolean_select(
         self: Tensor[T], mask: Tensor[Int]
@@ -6142,7 +6134,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         clamp(self, min_opt, max_opt)
         return
 
- 
+
     # Int -> Int
     @always_inline
     fn clamped(self: Tensor[Int], mn: Int, mx: Int) -> Tensor[Int]:
@@ -6169,7 +6161,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn clamped(self: Tensor[Float64], mn: Float64, mx: Float64) -> Tensor[Float64]:
         var out = self.copy()
         out.clamp(some_f64(mn), some_f64(mx))
-        return out.copy() 
+        return out.copy()
 
 
     @always_inline
@@ -6178,7 +6170,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var Af64 = to_float64(self)
         var bf64 = to_float64(b)
         var xf64 = solve(Af64,bf64)
-        return  xf64.copy() 
+        return  xf64.copy()
 
     @always_inline
     fn solve(self: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
@@ -6219,7 +6211,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn solve(self: Tensor[Int], b: Tensor[Float32]) -> Tensor[Float64]:
         return solve(to_float64(self),to_float64(b))
-    
+
 
     # Promotion overloads
     @always_inline
@@ -6276,7 +6268,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     @always_inline
     fn cat(self: List[Tensor[T]], dim: Int) -> Tensor[T]:
         return cat(self, dim)
- 
+
 
     @always_inline
     fn split_sizes(self: Tensor[T], sizes: List[Int], dim: Int) -> List[Tensor[T]]:
@@ -6290,7 +6282,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn unbind(self: Tensor[T], dim: Int) -> List[Tensor[T]]:
         return unbind(self, dim)
 
-    
+
     @always_inline
     fn row(self: Tensor[T], i: Int) -> Tensor[T]:
         return row(self, i)
@@ -6306,7 +6298,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn reshape_like(self, other: Tensor[T]) -> Tensor[T]:
         return reshape_like(self, other)
-        
+
     # Expand/truncate selector list to exactly ndim, fill full-axis as needed
     @always_inline
     fn pad_full_axes(self, sels: List[IndexSel]) -> List[IndexSel]:
@@ -6314,10 +6306,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         var d = len(self._shape)
         var i = 0
         while i < len(sels) and i < d:
-            out.append(clone_sel(sels[i])) 
+            out.append(clone_sel(sels[i]))
             i = i + 1
         while i < d:
-            out.append(self.all_axis())     
+            out.append(self.all_axis())
             i = i + 1
         return out.copy()
 
@@ -6327,7 +6319,68 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
       return self.__eq__(other)
     fn equal(self: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Int]:
       return self.__eq__(other)
-   
+
+
+     # ---------- helpers (private) ----------
+    @always_inline
+    fn _compute_strides_(self, shape: List[Int]) -> List[Int]:
+        # Row-major contiguous strides
+        var n = len(shape)
+        var strides = List[Int]()
+        strides.reserve(n)
+        var i = 0
+        while i < n:
+            strides.push_back(0)
+            i = i + 1
+        if n == 0:
+            return strides
+        strides[n - 1] = 1
+        var j = n - 2
+        while j >= 0:
+            strides[j] = strides[j + 1] * shape[j + 1]
+            if j == 0: break
+            j = j - 1
+        return strides
+
+    @always_inline
+    fn _offset_(self, strides: List[Int], idx: List[Int]) -> Int:
+        var n = len(idx)
+        var off = 0
+        var i = 0
+        while i < n:
+            off = off + idx[i] * strides[i]
+            i = i + 1
+        return off
+
+   # ---------- transpose 2D ----------
+    fn transpose2d(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        var shp = x.shape()
+        var rank = len(shp)
+        if rank != 2:
+            var same = tensor.zeros(shp)   # same shape, zeros
+            # copy data
+            var n = len(x._data)
+            var t = 0
+            while t < n:
+                same._data[t] = x._data[t]
+                t = t + 1
+            return same.copy()
+
+        var h = shp[0]
+        var w = shp[1]
+        var out = tensor.zeros([w, h])
+
+        var i = 0
+        while i < h:
+            var j = 0
+            while j < w:
+                # out[j, i] = x[i, j]
+                out._data[j * h + i] = x._data[i * w + j]
+                j = j + 1
+            i = i + 1
+        return out.copy()
+
+
 
 
 
@@ -6375,7 +6428,7 @@ fn _build_cdf_1d(
     p: Tensor[Float64],
     start: Int,
     k: Int,
-    mut out_cdf: List[Float64]  
+    mut out_cdf: List[Float64]
 ) -> Float64:
     out_cdf.clear()
     out_cdf.reserve(k)
