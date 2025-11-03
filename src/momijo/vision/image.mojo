@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
+# Momijo
 # SPDX-License-Identifier: MIT
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
@@ -111,7 +111,7 @@ struct Image(Copyable, Movable):
     fn __copyinit__(out self, other: Self):
         self._tensor = other._tensor.clone_deep()
         self._meta = other._meta.copy()
- 
+
 
     # Human-readable summary
     fn __str__(self) -> String:
@@ -178,7 +178,7 @@ struct Image(Copyable, Movable):
 
     fn is_contiguous_hwc_u8(self) -> Bool:
         return self.is_hwc() and self.is_u8() and self._tensor.is_contiguous_hwc_u8()
- 
+
     # if packed HWC/UInt8; clone if already packed and copy_if_needed=True.
     # Image -> HWC UInt8 packed (copy-based, no channel swap)
     # Always returns a valid HWC-UInt8 image with strides=(W*C, C, 1) in RGB order.
@@ -191,14 +191,11 @@ struct Image(Copyable, Movable):
         if H <= 0 or W <= 0 or C <= 0:
             return self.copy()
 
-        # اگر نیاز داری fast-path داشته باشی که packed بودن را تشخیص دهد،
-        # می‌توانی همینجا بسازی (بدون is_packed_hwc_u8):
         # فرض: اگر layout==HWC و dtype==UInt8 و stride2==1، stride1==C، stride0==W*C
 
         # تخصیص مقصد: قبل از ساخت، ضرب ایمن
         var ok_sz = _safe_mul3(H, W, C)
         if not ok_sz[0]:
-            # ابعاد غیرعادی، از تبدیل صرفنظر
             return self.copy()
 
         var out = Image.new_hwc_u8(H, W, C, UInt8(0), self.colorspace(), Layout.HWC())
@@ -218,7 +215,7 @@ struct Image(Copyable, Movable):
 
 
 
-            
+
 
 
 
@@ -277,7 +274,6 @@ struct Image(Copyable, Movable):
     fn set_u8(self, y: Int, x: Int, k: Int, v: UInt8):
         var t = self._tensor.copy()
         var off = y * t.stride0() + x * t.stride1() + k * t.stride2()
-        # data() همین حالا در پروژه‌ات برای نوشتن هم کار می‌کند (قبلاً استفاده‌اش کردی)
         var p = t.data()                 # UnsafePointer[UInt8]
         p[off] = v
 
@@ -376,7 +372,7 @@ struct Image(Copyable, Movable):
             y += 1
         return out.copy()
 
-  
+
     @always_inline
     fn _flat_index_hwc_u8(self, y: Int, x: Int, ch: Int) -> Int:
         return (y * self.width() + x) * self.channels() + ch
@@ -390,7 +386,7 @@ struct Image(Copyable, Movable):
     fn unsafe_get_u8(self, y: Int, x: Int, ch: Int) -> UInt8:
         var idx = self._flat_index_hwc_u8(y, x, ch)
         return self._tensor.load_u8_at(idx)
- 
+
 
     # Pretty-print full image data as a table of pixel tokens per row.
     # max_rows/max_cols <= 0 means "no limit".
@@ -470,7 +466,7 @@ struct Image(Copyable, Movable):
             y += 1
 
     @staticmethod
-    fn new_hwc_u8(h: Int,w: Int,c: Int,value: UInt8 = UInt8(0),cs: ColorSpace = ColorSpace.SRGB(),layout: Layout = Layout.HWC()) -> Image: 
+    fn new_hwc_u8(h: Int,w: Int,c: Int,value: UInt8 = UInt8(0),cs: ColorSpace = ColorSpace.SRGB(),layout: Layout = Layout.HWC()) -> Image:
         return new_hwc_u8(h,w,c,value,cs,layout)
 
     # =============== Free helpers (place in the same module, outside the struct) ===============
@@ -487,11 +483,11 @@ fn _safe_mul3(a: Int, b: Int, c: Int) -> (Bool, Int):
     if abc <= 0 or abc > MAX: return (False, 0)
     return (True, abc)
 
-    
+
 @always_inline
 fn _is_packed_hwc_u8(img: Image) -> Bool:
     # layout must be HWC, dtype=UInt8, and strides=(W*C, C, 1)
-    if img.layout().id != Layout.HWC().id: 
+    if img.layout().id != Layout.HWC().id:
         return False
     if img.dtype().id != DType.UInt8().id:
         return False
@@ -501,7 +497,7 @@ fn _is_packed_hwc_u8(img: Image) -> Bool:
     var C = img.channels()
     if H <= 0 or W <= 0 or C <= 0:
         return False
- 
+
     var s0 = img._tensor._shape0
     var s1 = img._tensor._shape1
     var s2 = img._tensor._shape2
@@ -515,10 +511,9 @@ fn new_hwc_u8(h: Int, w: Int, c: Int,
               layout: Layout = Layout.HWC()) -> Image:
     # 1) یک Image «خالی» با متا بساز (تنسورش را پروژه‌ات هر طور می‌سازد)
     var m = ImageMeta(layout, cs, False)
-    var t = _alloc_tensor_u8(h, w, c, value)      # ← اگر این سازنده ندارید، از سازندهٔ فعلی‌تان استفاده کنید
+    var t = _alloc_tensor_u8(h, w, c, value)
     var img = Image(m.copy(), t.copy())
 
-    # 2) به‌صورت امن HWC را پُر کن تا packed واقعی شود (از set_u8 استفاده می‌کنیم)
     var y = 0
     while y < h:
         var x = 0
@@ -530,8 +525,7 @@ fn new_hwc_u8(h: Int, w: Int, c: Int,
             x += 1
         y += 1
 
-    # 3) در نهایت اگر فلگ packed لازم دارید، همین‌جا True کنید
-    return img.copy()#.ensure_packed_hwc_u8(True)    # ← نسخه‌ای که قبلاً برایت نوشتم و واقعاً کپی می‌کند
+    return img.copy()#.ensure_packed_hwc_u8(True)
 
 
 
@@ -542,7 +536,7 @@ fn full_hwc_u8(h: Int, w: Int, c: Int, value: UInt8) -> Image:
 fn zeros_hwc_u8(h: Int, w: Int, c: Int) -> Image:
     return Image.new_hwc_u8(h, w, c, UInt8(0))
 
- 
+
 @always_inline
 fn _pad3(n: Int) -> String:
     # Zero-padded 3-digit decimal for compact alignment (0..255 => "000".."255")
