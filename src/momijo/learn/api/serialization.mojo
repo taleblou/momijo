@@ -27,9 +27,8 @@ fn _header_path(base: String) -> String:
     return base + String(".header.json")
 
 fn _blob_path(base: String) -> String:
-    return base + String(".state.bin") 
+    return base + String(".state.bin")
 
-# تبدیل تنسر Float64 به CSV (String)
 fn _tensor_to_csv(x: tensor.Tensor[Float64]) -> String:
     var n = x.numel()
     var s = String("")
@@ -40,7 +39,6 @@ fn _tensor_to_csv(x: tensor.Tensor[Float64]) -> String:
         i = i + 1
     return s
 
-# تبدیل CSV (String) به لیست Float64
 fn _csv_to_list(s: String) -> List[Float64]:
     from collections.list import List
     var vals = List[Float64]()
@@ -67,7 +65,7 @@ fn _u8_to_string(b: tensor.Tensor[UInt8]) -> String:
     var s = String("")
     var i = 0
     while i < n:
-        s = s + String((b._data[i]))  
+        s = s + String((b._data[i]))
         i = i + 1
     return s
 
@@ -78,7 +76,7 @@ fn _string_to_u8(s: String) -> tensor.Tensor[UInt8]:
     while i < n:
         var code: Int = 0
         try:
-            code = Int(s[i])               
+            code = Int(s[i])
         except _:
             code = 63                      # '?'
         if code < 0: code = 0
@@ -87,9 +85,9 @@ fn _string_to_u8(s: String) -> tensor.Tensor[UInt8]:
         i = i + 1
     return out.copy()
 
-# Fallback CSV reader for Float64 blobs if binary packers are unavailable. 
+# Fallback CSV reader for Float64 blobs if binary packers are unavailable.
 fn _csv_to_floats(bytes: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
-    var s = _u8_to_string(bytes) 
+    var s = _u8_to_string(bytes)
 
 
     var vals = List[Float64]()
@@ -114,7 +112,6 @@ fn _csv_to_floats(bytes: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
         except _:
             vals.append(0.0)
 
-    # 2) تبدیل لیست به تنسر Float64
     return tensor.Tensor[Float64](vals)
 
 # -----------------------------------------------------------------------------
@@ -153,25 +150,24 @@ fn save(net: Sequential, base: String) -> Bool:
     var bp = _blob_path(base)
     return save_checkpoint_files(net, hp, bp)
 
-# Load raw state (header, blob) from files, without applying to a net. 
+# Load raw state (header, blob) from files, without applying to a net.
 fn load(base: String) -> (Bool, String, tensor.Tensor[Float64]):
     var hp = _header_path(base)
-    var bp = _blob_path(base) 
+    var bp = _blob_path(base)
     try:
         var p_h = Path(hp)
         var p_b = Path(bp)
-        if not p_h.exists() or not p_b.exists(): 
+        if not p_h.exists() or not p_b.exists():
             return (False, String(""), tensor.zeros([0]))
 
         var header = p_h.read_text()
-        var csv    = p_b.read_text() 
+        var csv    = p_b.read_text()
 
         # parse CSV string
         var vals = _csv_to_list(csv)
-        # تبدیل لیست به تنسر
-        var blob = tensor.Tensor[Float64](vals) 
+        var blob = tensor.Tensor[Float64](vals)
         return (True, header, blob.copy())
-    except _: 
+    except _:
         return (False, String(""), tensor.zeros([0]))
 
 
@@ -200,13 +196,13 @@ fn save_linear(m: Linear, base: String) -> Bool:
                  String(",\"out\":") + String(m.out_features) + String("}")
     var blob = _flatten_linear(m)
     var csv = _tensor_to_csv(blob)
- 
+
 
     try:
         var p_h = Path(hp);  p_h.write_text(header)
-        var p_b = Path(bp);  p_b.write_text(csv) 
+        var p_b = Path(bp);  p_b.write_text(csv)
         return True
-    except _: 
+    except _:
         return False
 
 
