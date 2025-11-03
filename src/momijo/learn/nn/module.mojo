@@ -5,10 +5,10 @@
 # Description: Tagged-union Module wrapper for heterogeneous layers.
 
 from collections.list import List
-from momijo.tensor import tensor  
+from momijo.tensor import tensor
 from momijo.learn.nn.layers import Linear, ReLU, LeakyReLU, Sigmoid, Tanh, BatchNorm1d, Dropout
 from momijo.learn.nn.conv import Conv2d, MaxPool2d
- 
+
 
 
 # -----------------------------
@@ -174,38 +174,38 @@ struct Module(Copyable, Movable):
             i = i + 1
         return out.copy()
 
-    fn forward(mut self, x: tensor.GradTensor) -> tensor.GradTensor:
-        if self.tag == 0: return self.linear.forward(x)
-        if self.tag == 1: return self.relu.forward(x)
-        if self.tag == 2: return self.lrelu.forward(x)
-        if self.tag == 3: return self.sigmoid.forward(x)
-        if self.tag == 4: return self.tanh.forward(x)
-        if self.tag == 5: return self.bn1d.forward(x)
-        if self.tag == 6: return self.dropout.forward(x)
-        if self.tag == 7: return self.conv2d.forward(x)
-        if self.tag == 8: return self.maxpool2d.forward(x)
+    fn forward(mut self, mut ctx: GradContext, x: GradTensor) -> GradTensor:
+        if self.tag == 0: return self.linear.forward(ctx, x)
+        if self.tag == 1: return self.relu.forward(ctx, x)
+        if self.tag == 2: return self.lrelu.forward(ctx, x)
+        if self.tag == 3: return self.sigmoid.forward(ctx, x)
+        if self.tag == 4: return self.tanh.forward(ctx, x)
+        if self.tag == 5: return self.bn1d.forward(ctx, x)
+        if self.tag == 6: return self.dropout.forward(ctx, x)
+        if self.tag == 7: return self.conv2d.forward(ctx, x)
+        if self.tag == 8: return self.maxpool2d.forward(ctx, x)
+
         # container/generic: forward through children in order if any
         var out = x.copy()
         var i = 0
         while i < len(self.children):
-            var m = self.children[i].copy()
-            out = m.forward(out)
-            self.children[i]= m.copy()
+            # اگر children حاوی ماژول‌های همین نوع هستند:
+            out = self.children[i].forward(ctx, out)
             i = i + 1
         return out.copy()
     # --------------------------------
     # Composition / registration
     # --------------------------------
- 
+
 
     fn add_module(mut self, name: String, m: Module):
         var n = len(self.child_names)
         var i = 0
         while i < n:
-            if self.child_names[i] == name: 
-                self.children[i] = m  
+            if self.child_names[i] == name:
+                self.children[i] = m
                 return
-            i = i + 1 
+            i = i + 1
         self.child_names.append(name)
         self.children.append(m)
 
@@ -410,7 +410,7 @@ struct Module(Copyable, Movable):
         if not (first == String("{") and last == String("}")): return
         return
 
- 
+
 
 # -----------------------------
 # Minimal JSON string escaping
