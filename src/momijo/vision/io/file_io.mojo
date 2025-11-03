@@ -1,4 +1,4 @@
-# MIT License 
+# MIT License
 # SPDX-License-Identifier: MIT
 # Project: momijo.vision.io
 # File: src/momijo/vision/io/file_io.mojo
@@ -188,7 +188,7 @@ struct MemFileStore(Copyable, Movable):
         return out.copy()
 
     fn clear(mut self) -> Int:
-        var count = self.keys.__len__() 
+        var count = self.keys.__len__()
         while self.keys.__len__() > 0:
             self.keys.pop()
         while self.vals.__len__() > 0:
@@ -370,11 +370,9 @@ fn write_all_bytes(path: String, data: List[UInt8]) raises -> Bool:
         var view = Span(data)
         var n = f.write_bytes(view)
         # print("[io] write →", path, " bytes=", " sum=", _sum_u8(data), " nz=", _count_nz(data))
-    # flush/close لازم نیست؛ with خودش هندل می‌کند
+
     # دیباگ امضای PNG
     # if len(data) >= 8:
         # print("[io] png-signature=", data[0], ",", data[1], ",", data[2], ",", data[3], ",", data[4], ",", data[5], ",", data[6], ",", data[7])
     # print("[io] done writing to ", path)
     return True
-
- 
