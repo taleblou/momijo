@@ -124,15 +124,15 @@ struct Sequential(Copyable, Movable):
             i = i + 1
         return out.copy()
 
-    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
-        var out = x.copy()
+    fn forward(mut self, mut ctx: GradContext, x: GradTensor) -> GradTensor:
+        var out = x.copy()  
         var i = 0
         var n = len(self.modules)
         while i < n:
-            var m = self.modules[i].copy()
-            out = m.forward(out)
+            # Call the GradTensor variant: forward(ctx, GradTensor)
+            out = self.modules[i].forward(ctx, out)
             i = i + 1
-        return out.copy()
+        return out.copy()  
 
     fn run(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         return self.forward(x)
@@ -275,11 +275,12 @@ struct NNSequential(Copyable, Movable):
 
     fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         return self.seq.forward(x)
-
-    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
-        return self.seq.forward(x)
-
-# -----------------------------------------------------------------------------
+ 
+    fn forward(self, mut ctx: GradContext, x: GradTensor) -> GradTensor: 
+        var s = self.copy()           
+        var y = s.forward(ctx, x)        
+        return y.copy()     
+    # -----------------------------------------------------------------------------
 # Prepared/Converted (Linear → ReLU → Linear) + prepare/convert
 # -----------------------------------------------------------------------------
 struct Prepared(Copyable, Movable):
