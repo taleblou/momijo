@@ -12,14 +12,14 @@
 #   - Re-exports transforms (pad/fliplr/flipud/sliding_window)
 #   - Re-exports math reductions (mean)
 #   - Re-exports selected indexing/printing helpers
-# 
+#
 # Notes:
 #   - No wildcard imports.
 #   - English-only comments.
 #   - Keep this file minimal and focused on the public surface.
 
 # ----------------------------- Core types -------------------------------------
-from momijo.tensor.tensor import Tensor 
+from momijo.tensor.tensor import Tensor
 
 # ----------------------------- DType utilities --------------------------------
 from momijo.tensor.dtype import DType
@@ -29,7 +29,7 @@ from momijo.tensor.dtype import can_cast
 from momijo.tensor.dtype import to_code
 from momijo.tensor.dtype import from_code
 from momijo.tensor.dtype import from_name
-from momijo.tensor.dtype import itemsize_for_code  
+from momijo.tensor.dtype import itemsize_for_code
 
 # ----------------------------- Creation (Float64 backends) --------------------
 # If your codebase currently provides only *_f64 variants, expose ergonomic names:
@@ -42,10 +42,10 @@ from momijo.tensor.creation import eye_int,eye_f64,eye_f32
 from momijo.tensor.creation import randperm_int,randperm_f64,randperm_f32
 from momijo.tensor.creation import scalar_f64,scalar_f32,scalar_int
 
-# Random helpers (Float64) 
-from momijo.tensor.creation import from_list_float64,from_list_float32,from_list_int ,from_list_int32 ,from_list_int16,from_list_bool 
-from momijo.tensor.creation import from_2d_list_float64,from_2d_list_float32,from_2d_list_int ,from_2d_list_int32 ,from_2d_list_int16,from_2d_list_bool 
-from momijo.tensor.creation import from_3d_list_float64,from_3d_list_float32,from_3d_list_int ,from_3d_list_int32 ,from_3d_list_int16,from_3d_list_bool 
+# Random helpers (Float64)
+from momijo.tensor.creation import from_list_float64,from_list_float32,from_list_int ,from_list_int32 ,from_list_int16,from_list_bool
+from momijo.tensor.creation import from_2d_list_float64,from_2d_list_float32,from_2d_list_int ,from_2d_list_int32 ,from_2d_list_int16,from_2d_list_bool
+from momijo.tensor.creation import from_3d_list_float64,from_3d_list_float32,from_3d_list_int ,from_3d_list_int32 ,from_3d_list_int16,from_3d_list_bool
 
 from momijo.tensor.creation import randn,rand,randn_int,randn_f64,randn_f32
 from momijo.tensor.creation import zeros_like,normal,full_like
@@ -53,7 +53,7 @@ from momijo.tensor.creation import arange_f64 as arange
 
 # ----------------------------- Axis operations --------------------------------
 from momijo.tensor.axis import moveaxis
-from momijo.tensor.axis import moveaxes   
+from momijo.tensor.axis import moveaxes
 from momijo.tensor.axis import swapaxes
 from momijo.tensor.axis import roll      # (x, shift, axis)
 # Optional specialized helpers:
@@ -69,9 +69,10 @@ from momijo.tensor.transform import sliding_window_step
 from momijo.tensor.transform import transpose
 
 # ----------------------------- Math / Reductions ------------------------------
-from momijo.tensor.math import mean
+from momijo.tensor.math import and_t,mul_t,sqrt_t,div_t,matmul2d
 
-from momijo.tensor.math import and_t,complex,complex_abs,complex_real,complex_imag,mean 
+from momijo.tensor.math import complex,complex_abs,complex_real,complex_imag,mean
+from momijo.tensor.math import reciprocal_scalar,reciprocal,safe_div,safe_div_scalar
 # from momijo.tensor.math import sum,analytic_jacobian,numeric_jacobian,f_vec
 # from momijo.tensor.math import min
 # from momijo.tensor.math import max
@@ -81,20 +82,20 @@ from momijo.tensor.math import and_t,complex,complex_abs,complex_real,complex_im
 from momijo.tensor.indexing import slice1d
 from momijo.tensor.indexing import slice2d
 from momijo.tensor.indexing import head
-from momijo.tensor.indexing import tail 
+from momijo.tensor.indexing import tail
 from momijo.tensor.indexing import slice_dim0
 from momijo.tensor.indexing import gather
-from momijo.tensor.indexing import plane 
-from momijo.tensor.indexing import where  
-from momijo.tensor.indexing import col  
+from momijo.tensor.indexing import plane
+from momijo.tensor.indexing import where
+from momijo.tensor.indexing import col
 # ----------------------------- Printing helpers -------------------------------
- 
+
 # ----------------------------- Errors (optional) ------------------------------
 # Re-export only what external callers might need for error classification.
 from momijo.tensor.errors import TensorError
 from momijo.tensor.errors import ErrorKind
 
- 
+
 
 
 from momijo.tensor.cast import to_string
@@ -110,8 +111,8 @@ from momijo.tensor.cast import to_float64
 from momijo.tensor.io import save_npz_f64
 # from momijo.tensor.io import load_npy
 # from momijo.tensor.io import save_npy
-# from momijo.tensor.io import load_npz 
-# from momijo.tensor.io import save_npz 
+# from momijo.tensor.io import load_npz
+# from momijo.tensor.io import save_npz
 # from momijo.tensor.io import save_csv
 # from momijo.tensor.io import load_csv
 
