@@ -32,7 +32,7 @@ from momijo.tensor.helpers import numel,is_row_major_contiguous
 from momijo.tensor.broadcast import keepdims_shape,clip
 from momijo.tensor.helpers import normalize_axis,unravel_index ,lin_index
 from momijo.tensor.helpers import shape_drop_axis ,astype_with ,zero_scalar_of ,compute_row_major_strides
- 
+
 
 from math import *
 # ======================= Math helpers (Float64) =======================
@@ -267,8 +267,8 @@ fn cos64 (x: Float64) -> Float64: return cos(x)
 fn tan64 (x: Float64) -> Float64: return tan(x)
 fn pow64 (a: Float64, b: Float64) -> Float64: return a.(b)
 
- 
- 
+
+
 # ====================== Unary core (via converters) ======================
 # uop_id mapping (extended):
 # 0: neg, 1: abs, 2: sqrt, 3: exp, 4: log, 5: sin, 6: cos, 7: tan,
@@ -338,7 +338,7 @@ fn apply_unary_impl[T: ImplicitlyCopyable & Copyable & Movable](
     return Tensor[T](out, x._shape)
 
 # ---- public unary (per-dtype) ----
-# Import the tensor-level converters from your cast module 
+# Import the tensor-level converters from your cast module
 @always_inline
 fn apply_unary(x: Tensor[Float64], uop_id: Int) -> Tensor[Float64]:
     # Already Float64; apply directly in Float64 space.
@@ -563,7 +563,7 @@ fn round_t(x: Tensor[Int]) -> Tensor[Float64]:
 
 # -------- SIGN (op 14) --------
 @always_inline
-fn sign_t(x: Tensor[Float64]) -> Tensor[Float64]: 
+fn sign_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 14)
 @always_inline
 fn sign_t(x: Tensor[Float32]) -> Tensor[Float64]:
@@ -781,7 +781,7 @@ fn _apply_compare(x: Tensor[Float64], y: Tensor[Float64], cmp_id: Int) -> Tensor
     return to_int(mf64)
 
 
-@always_inline 
+@always_inline
 fn _apply_compare(x: Tensor[Float32], y: Tensor[Float32], cmp_id: Int) -> Tensor[Int]:
     var mf64 = _apply_compare_impl[Float32](x, y, cmp_id, to_float64_of)
     return to_int(mf64)
@@ -791,16 +791,16 @@ fn _apply_compare(x: Tensor[Float32], y: Tensor[Float32], cmp_id: Int) -> Tensor
 fn _apply_compare(x: Tensor[Int], y: Tensor[Int], cmp_id: Int) -> Tensor[Int]:
     var mf64 = _apply_compare_impl[Int](x, y, cmp_id, to_float64_of)
     return to_int(mf64)
- 
+
 
 # -------- EQ / NE / LT / LE / GT / GE --------
-@always_inline 
+@always_inline
 fn eq_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: return _apply_compare(x, y, 0)
-@always_inline 
+@always_inline
 fn eq_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: return _apply_compare(x, y, 0)
-@always_inline 
+@always_inline
 fn eq_t(x: Tensor[Int],     y: Tensor[Int])     -> Tensor[Int]: return _apply_compare(x, y, 0)
- 
+
 
 @always_inline
 fn ne_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: return _apply_compare(x, y, 1)
@@ -808,44 +808,44 @@ fn ne_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: return _apply_co
 fn ne_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: return _apply_compare(x, y, 1)
 @always_inline
 fn ne_t(x: Tensor[Int],     y: Tensor[Int])     -> Tensor[Int]: return _apply_compare(x, y, 1)
- 
 
-@always_inline 
+
+@always_inline
 fn lt_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: return _apply_compare(x, y, 2)
-@always_inline 
+@always_inline
 fn lt_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: return _apply_compare(x, y, 2)
-@always_inline 
+@always_inline
 fn lt_t(x: Tensor[Int],     y: Tensor[Int])     -> Tensor[Int]: return _apply_compare(x, y, 2)
- 
 
-@always_inline 
+
+@always_inline
 fn le_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: return _apply_compare(x, y, 3)
 @always_inline
 fn le_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: return _apply_compare(x, y, 3)
 @always_inline
 fn le_t(x: Tensor[Int],     y: Tensor[Int])     -> Tensor[Int]: return _apply_compare(x, y, 3)
- 
 
-@always_inline 
+
+@always_inline
 fn gt_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: return _apply_compare(x, y, 4)
-@always_inline 
+@always_inline
 fn gt_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: return _apply_compare(x, y, 4)
-@always_inline 
+@always_inline
 fn gt_t(x: Tensor[Int],     y: Tensor[Int])     -> Tensor[Int]: return _apply_compare(x, y, 4)
- 
 
-@always_inline 
+
+@always_inline
 fn ge_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: return _apply_compare(x, y, 5)
-@always_inline 
+@always_inline
 fn ge_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: return _apply_compare(x, y, 5)
-@always_inline 
+@always_inline
 fn ge_t(x: Tensor[Int],     y: Tensor[Int])     -> Tensor[Int]: return _apply_compare(x, y, 5)
- 
 
- 
+
+
 
 # -------- Public API: AND / OR / XOR / NAND / NOR / XNOR / ANDNOT / NOT --------
- 
+
 
 # Repeat the tiny wrappers for other dtypes as needed (or call apply_unary directly).
 
@@ -878,9 +878,9 @@ fn bin_combine_impl[T: ImplicitlyCopyable & Copyable & Movable](
         rf = af if af >= bf else bf
     elif op_id == 6:                    # min
         rf = af if af <= bf else bf
-    elif op_id == 7: 
-        rf =af % bf 
-   
+    elif op_id == 7:
+        rf =af % bf
+
     elif op_id == 10 or op_id == 20 :            # AND
         rf = ia & ib
     elif op_id == 11 or op_id == 21 :          # OR
@@ -894,7 +894,7 @@ fn bin_combine_impl[T: ImplicitlyCopyable & Copyable & Movable](
     elif op_id == 15 or op_id == 25 :          # XNOR
         rf = 1 - (ia ^ ib)
     elif op_id == 16 or op_id == 26 :          # ANDNOT (a & ~b)
-        rf = ia & (1 - ib) 
+        rf = ia & (1 - ib)
 
 
     return from_f64(rf)
@@ -1219,7 +1219,7 @@ fn apply_broadcast5(a: Tensor[UInt64], b: Tensor[UInt64], op_id: Int) -> Tensor[
 @always_inline
 fn apply_broadcast5(a: Tensor[Bool], b: Tensor[Bool], op_id: Int) -> Tensor[Bool]:
     return to_bool(apply_broadcast2_impl[Bool](a, b, op_id, to_f64_bool, f64_to_bool))
- 
+
 
 @always_inline
 fn apply_broadcast4(a: Tensor[Float64], b: Tensor[Float64], op_id: Int) -> Tensor[Int]:
@@ -1466,22 +1466,22 @@ fn mod_t(a: Tensor[Int], b: Tensor[Int]) -> Tensor[Float64]:
 @always_inline
 fn and_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 10)
-@always_inline 
-fn or_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]: 
+@always_inline
+fn or_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 11)
 @always_inline
 fn xor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 12)
 @always_inline
-fn nand_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]: 
+fn nand_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 13)
-@always_inline 
-fn nor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]: 
+@always_inline
+fn nor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 14)
-@always_inline 
+@always_inline
 fn xnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 15)
-@always_inline 
+@always_inline
 fn andnot_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 16)
 
@@ -1490,22 +1490,22 @@ fn andnot_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
 @always_inline
 fn land_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 20)
-@always_inline 
-fn lor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]: 
+@always_inline
+fn lor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 21)
 @always_inline
 fn lxor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 22)
 @always_inline
-fn lnand_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]: 
+fn lnand_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 23)
-@always_inline 
-fn lnor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]: 
+@always_inline
+fn lnor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 24)
-@always_inline 
+@always_inline
 fn lxnor_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 25)
-@always_inline 
+@always_inline
 fn landnot_t(x: Tensor[Int], y: Tensor[Int]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 26)
 
@@ -1549,22 +1549,22 @@ fn mod_t(a: Tensor[Float64], b: Tensor[Float64]) -> Tensor[Float64]:
 @always_inline
 fn and_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 10)
-@always_inline 
-fn or_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: 
+@always_inline
+fn or_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 11)
 @always_inline
 fn xor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 12)
 @always_inline
-fn nand_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: 
+fn nand_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 13)
-@always_inline 
-fn nor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]: 
+@always_inline
+fn nor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 14)
-@always_inline 
+@always_inline
 fn xnor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
      return apply_broadcast4(x, y,1 5)
-@always_inline 
+@always_inline
 fn andnot_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 16)
 
@@ -1573,25 +1573,25 @@ fn andnot_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
 @always_inline
 fn land_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 20)
-@always_inline 
-fn lor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]: 
+@always_inline
+fn lor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 21)
 @always_inline
 fn lxor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 22)
 @always_inline
-fn lnand_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]: 
+fn lnand_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 23)
-@always_inline 
-fn lnor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]: 
+@always_inline
+fn lnor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 24)
-@always_inline 
+@always_inline
 fn lxnor_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 25)
-@always_inline 
+@always_inline
 fn landnot_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 26)
-    
+
 
 # ===== Float32 =====
 @always_inline
@@ -1624,8 +1624,8 @@ fn minimum_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
 
 @always_inline
 fn mod_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float64]:
-    return apply_broadcast3(a, b, 7) 
-@always_inline 
+    return apply_broadcast3(a, b, 7)
+@always_inline
 fn xnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Float32]:
      return _apply_logic(x, y, 5)
 
@@ -1634,69 +1634,69 @@ fn xnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Float32]:
 @always_inline
 fn and_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 10)
-@always_inline 
-fn or_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: 
+@always_inline
+fn or_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 11)
 @always_inline
 fn xor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 12)
 @always_inline
-fn nand_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: 
+fn nand_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 13)
-@always_inline 
-fn nor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]: 
+@always_inline
+fn nor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]:
     return apply_broadcast4(x, y, 14)
-@always_inline 
+@always_inline
 fn xnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 15)
-@always_inline 
+@always_inline
 fn andnot_t(x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Int]:
      return apply_broadcast4(x, y, 6)
- 
- 
+
+
 
 
 @always_inline
 fn land_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 20)
-@always_inline 
-fn lor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]: 
+@always_inline
+fn lor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 21)
 @always_inline
 fn lxor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 22)
 @always_inline
-fn lnand_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]: 
+fn lnand_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 23)
-@always_inline 
-fn lnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]: 
+@always_inline
+fn lnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 24)
-@always_inline 
+@always_inline
 fn lxnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 25)
-@always_inline 
+@always_inline
 fn landnot_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 26)
 
 @always_inline
 fn land_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 20)
-@always_inline 
-fn lor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]: 
+@always_inline
+fn lor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 21)
 @always_inline
 fn lxor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 22)
 @always_inline
-fn lnand_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]: 
+fn lnand_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 23)
-@always_inline 
-fn lnor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]: 
+@always_inline
+fn lnor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
     return apply_broadcast5(x, y, 24)
-@always_inline 
+@always_inline
 fn lxnor_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 25)
-@always_inline 
+@always_inline
 fn landnot_t(x: Tensor[Bool], y: Tensor[Bool]) -> Tensor[Bool]:
      return apply_broadcast5(x, y, 26)
 
@@ -1856,33 +1856,33 @@ fn lnot_t(x: Tensor[Bool]) -> Tensor[Bool]:
     var strides = compute_row_major_strides(x._shape)
     return Tensor[Bool](out, x._shape, strides, 0)
 
- 
- 
 
 
 
 
-@always_inline 
+
+
+@always_inline
 fn iadd_t[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], y: Tensor[T]) -> None:
     apply_broadcast2_inplace(x, y, 0)
-@always_inline 
+@always_inline
 fn isub_t[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], y: Tensor[T]) -> None:
     apply_broadcast2_inplace(x, y, 1)
-@always_inline 
+@always_inline
 fn imul_t[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], y: Tensor[T]) -> None:
     apply_broadcast2_inplace(x, y, 2)
-@always_inline 
+@always_inline
 fn idiv_t[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], y: Tensor[T]) -> None:
     apply_broadcast2_inplace(x, y, 3)
-@always_inline 
+@always_inline
 fn imaximum_t[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], y: Tensor[T]) -> None:
     apply_broadcast2_inplace(x, y, 5)
-@always_inline 
+@always_inline
 fn iminimum_t[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], y: Tensor[T]) -> None:
     apply_broadcast2_inplace(x, y, 6)
 
 # ======================= Scalar pow/clip/lerp/normalize =======================
- 
+
 # ---------- Pow (scalar) ----------
 fn pow_scalar_right[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], p: Float64) -> Tensor[T]:
     var n = len(x._data)
@@ -1979,7 +1979,7 @@ fn lerp[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T], 
             i = i + 1
 
         return Tensor[T](ashp, out)
-     
+
 
     var oshp = broadcast_shapes(ashp, bshp)
     if len(oshp) == 0:
@@ -1997,7 +1997,7 @@ fn lerp[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T], 
         var shp1 = List[Int]()
         shp1.append(k)
         return Tensor[T](shp1, out0)
-     
+
 
     var a_str = ensure_strides(a._strides, apad)
     var b_str = ensure_strides(b._strides, bpad)
@@ -2036,11 +2036,11 @@ fn lerp[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T], 
             if step != 0:
                 rem = rem % step
             d = d + 1
-         
+
 
         out2.append(T(Float64(a._data[oa]) * inv2 + Float64(b._data[ob]) * w2))
         idx = idx + 1
-     
+
 
     return Tensor[T](oshp, out2)
 # ======================= Dot (1D) =======================
@@ -2066,12 +2066,12 @@ fn dot[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], b: Tensor[T]) -
         s = s + a._data[i + 6] * b._data[i + 6]
         s = s + a._data[i + 7] * b._data[i + 7]
         i = i + 8
-     
+
 
     while i < k:
         s = s + a._data[i] * b._data[i]
         i = i + 1
-     
+
 
     return s
 
@@ -2389,7 +2389,7 @@ fn max_t(x: Tensor[Float64]) -> Float64:
 
     return M
 
- 
+
 @always_inline
 fn min_t(x: Tensor[Float32]) -> Float32:
     var xs = x._data.copy()
@@ -2540,7 +2540,7 @@ fn max_t(x: Tensor[Float32]) -> Float32:
         i = i + 1
 
     return M
- 
+
 
 @always_inline
 fn min_t(x: Tensor[Int]) -> Int:
@@ -3746,14 +3746,14 @@ fn std(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False, d
             var out_data = List[Float64](); out_data.reserve(1); out_data.append(std_scalar)
             var out_shape = List[Int]()
             if keepdims:
-                var t = 0; 
+                var t = 0;
                 while t < rank: out_shape.append(1); t = t + 1
             else:
                 out_shape.append(1)
             return Tensor[Float64](out_shape, out_data)
 
         # Generic (non-contiguous) whole-tensor: iterate indices to get mean then ssd
-        var idx = List[Int](); var k = 0; 
+        var idx = List[Int](); var k = 0;
         while k < rank: idx.append(0); k = k + 1
         var sumv = 0.0; var count = 0
         var done = False
@@ -3772,7 +3772,7 @@ fn std(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False, d
         var mean_g = sumv / Float64(n_total)
 
         # Pass 2
-        var idx2 = List[Int](); var k2 = 0; 
+        var idx2 = List[Int](); var k2 = 0;
         while k2 < rank: idx2.append(0); k2 = k2 + 1
         var q2 = 0.0; done = False
         while not done:
@@ -3791,7 +3791,7 @@ fn std(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False, d
         var out_data_g = List[Float64](); out_data_g.append(std_scalar_g)
         var out_shape_g = List[Int]()
         if keepdims:
-            var t2 = 0; 
+            var t2 = 0;
             while t2 < rank: out_shape_g.append(1); t2 = t2 + 1
         else:
             out_shape_g.append(1)
@@ -3800,7 +3800,7 @@ fn std(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False, d
     # ---------- AXIS REDUCTION ----------
     var ax = normalize_axis(axis.value(), rank)
     var reduce_n =shp[ax]
-    if rank == 0: reduce_n =1  
+    if rank == 0: reduce_n =1
     #assert(reduce_n > ddof and "std: ddof must be < size along axis")
 
     if is_row_major_contiguous(shp, x._strides):
@@ -4114,9 +4114,9 @@ fn std(x: Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False, ddof:
             return Tensor[Float64](out_shape_g, out_data_g)
 
     # ---------- AXIS REDUCTION ----------
-    var ax = normalize_axis(axis.value(), rank)    
+    var ax = normalize_axis(axis.value(), rank)
     var reduce_n =shp[ax]
-    if rank == 0: reduce_n =1  
+    if rank == 0: reduce_n =1
     #assert(reduce_n > ddof and "std: ddof must be < size along axis")
 
     if is_row_major_contiguous(shp, x._strides):
@@ -4427,7 +4427,7 @@ fn std(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False, d
     # ---------- AXIS REDUCTION ----------
     var ax = normalize_axis(axis.value(), rank)
     var reduce_n =shp[ax]
-    if rank == 0: reduce_n =1 
+    if rank == 0: reduce_n =1
     #assert(reduce_n > ddof and "std: ddof must be < size along axis")
 
     if is_row_major_contiguous(shp, x._strides):
@@ -4719,7 +4719,7 @@ fn mean(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) 
             if reduce_n > 0:
                 mu = s2 / Float64(reduce_n)
             outv.append(mu)
-            o = o + 1 
+            o = o + 1
 
         var tout = Tensor[Float64](out_shape, outv)
         if keepdims:
@@ -4798,7 +4798,7 @@ fn mean(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) 
             pos = pos - 1
         if not running:
             break
- 
+
     var tout_g = Tensor[Float64](out_shape_g, outv2)
     if keepdims:
         var kd2 = _keepdims_shape(shp, ax)
@@ -4816,7 +4816,7 @@ fn mean_axes_f64(
     # normalize & dedup
     var axes = List[Int]()
     axes.reserve(len(axes_in))
-    var seen = List[Int]()       
+    var seen = List[Int]()
     var i = 0
     while i < len(axes_in):
         var a = axes_in[i]
@@ -4853,7 +4853,7 @@ fn mean_axes_f64(
         var opt = Optional[Int](a)
         x = mean(x, opt, keepdims)
         if not keepdims:
-             
+
             var u = t + 1
             while u < len(axes):
                 if axes[u] > a:
@@ -5072,7 +5072,7 @@ fn variance(
     return tout
 
 
- 
+
 
 # -------- reduce_max for Float64 (unchanged, constructor-style where needed) --------
 fn reduce_max_f64(x: Tensor[Float64]) -> Float64:
@@ -5565,7 +5565,7 @@ fn math_min(a: Int, b: Int) -> Int:
 fn math_max(a: Int, b: Int) -> Int:
     return a if a >= b else b
 
- 
+
 
 
 # -----------------------------------------------------------------------------
@@ -5638,11 +5638,11 @@ fn numeric_jacobian(x: Tensor[Float64], eps: Float64 = 1e-6) -> Tensor[Float64]:
         j += 1
     return from_list_float64(jbuf).reshape([n, n])
 
- 
+
 # -----------------------------------------------------------------------------
 # Complex128 element type (pure Mojo, no FFI)
 # -----------------------------------------------------------------------------
- 
+
 struct Complex128(ImplicitlyCopyable, Copyable, Movable):
     var re: Float64
     var im: Float64
@@ -5655,7 +5655,7 @@ struct Complex128(ImplicitlyCopyable, Copyable, Movable):
     fn __copyinit__(out self, other: Complex128):
         self.re = other.re
         self.im = other.im
- 
+
     @always_inline
     fn real(self) -> Float64:
         return self.re
@@ -5681,10 +5681,10 @@ fn _sqrt_f64(x: Float64) -> Float64:
 # Stable hypot without overflow/underflow: sqrt(a*a + b*b)
 @always_inline
 fn _hypot_f64(a: Float64, b: Float64) -> Float64:
-    var aa =a 
-    if a < 0.0: aa =-a 
-    var bb =b 
-    if b < 0.0: bb =-b 
+    var aa =a
+    if a < 0.0: aa =-a
+    var bb =b
+    if b < 0.0: bb =-b
     if aa < bb:
         var t = aa; aa = bb; bb = t
     if aa == 0.0:
@@ -5707,7 +5707,7 @@ fn _shapes_equal(a: List[Int], b: List[Int]) -> Bool:
 # -----------------------------------------------------------------------------
 # tensor.complex(zr, zi) -> Tensor[Complex128]
 # No 'assert' usage; manual guards. On mismatch returns an empty tensor [0]-shape.
-# ----------------------------------------------------------------------------- 
+# -----------------------------------------------------------------------------
 @always_inline
 fn complex(zr: Tensor[Float64], zi: Tensor[Float64]) -> Tensor[Complex128]:
     if not _shapes_equal(zr._shape, zi._shape):
@@ -5816,7 +5816,7 @@ fn complex_abs(z: Tensor[Complex128]) -> Tensor[Float64]:
 
 
 
- 
+
 # ------------------------------
 # Method on Tensor[Int]
 # ------------------------------
@@ -5915,13 +5915,13 @@ fn _squeeze_if_2d1_f64(x_shape: List[Int], y: Tensor[Float64]) -> Tensor[Float64
 
 @always_inline
 fn _clamp_index(j: Int, c: Int) -> Int:
-    if c <= 0: 
+    if c <= 0:
         return 0
     var jj = j
     if jj < 0: jj = 0
     if jj >= c: jj = c - 1
     return jj
- 
+
 
 @always_inline
 fn _same_shape(a: List[Int], b: List[Int]) -> Bool:
@@ -7462,3 +7462,91 @@ fn solve(xx: Tensor[Float64], b: Tensor[Float64]) -> Tensor[Float64]:
             return b.copy()
     else:
         return b.copy()
+
+
+
+# ----------------------------- scalar reciprocal ------------------------------
+@always_inline
+fn reciprocal_scalar(x: Float64, eps: Float64 = 0.0) -> Float64:
+    # If |x| < eps, clamp to +/-eps to avoid div-by-zero
+    var v = x
+    var a = v
+    if eps > 0.0:
+        if v >= 0.0 and v < eps: v = eps
+        if v < 0.0 and -v < eps: v = -eps
+    return 1.0 / v
+
+# ----------------------------- tensor reciprocal ------------------------------
+fn reciprocal(x: tensor.Tensor[Float64], eps: Float64 = 0.0) -> tensor.Tensor[Float64]:
+    # Elementwise y[i] = 1 / clamp(x[i], eps)
+    var shp = x.shape()
+    var y = tensor.zeros(shp)
+    var n = len(x._data)
+    var i = 0
+    if eps <= 0.0:
+        while i < n:
+            y._data[i] = 1.0 / x._data[i]
+            i = i + 1
+    else:
+        while i < n:
+            var v = x._data[i]
+            if v >= 0.0 and v < eps: v = eps
+            if v < 0.0 and -v < eps: v = -eps
+            y._data[i] = 1.0 / v
+            i = i + 1
+    return y.copy()
+
+# ----------------------------- helper: safe_div -------------------------------
+# Optional helper if you still prefer a.mul(tensor.reciprocal(s)):
+fn safe_div(a: tensor.Tensor[Float64], s: tensor.Tensor[Float64], eps: Float64 = 0.0) -> tensor.Tensor[Float64]:
+    return a.mul(reciprocal(s, eps))
+
+fn safe_div_scalar(a: tensor.Tensor[Float64], s: Float64, eps: Float64 = 0.0) -> tensor.Tensor[Float64]:
+    return a.mul_scalar(reciprocal_scalar(s, eps))
+
+
+
+# Row-major 2D @ 2D → 2D, safe fallback on bad shapes
+fn matmul2d(a: tensor.Tensor[Float64], b: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    # Shapes
+    var ashp = a.shape()   # [m, k] expected
+    var bshp = b.shape()   # [k, n] expected
+    var ar = len(ashp)
+    var br = len(bshp)
+
+    # Defaults for fallback
+    var m = 0
+    var k_a = 0
+    var k_b = 0
+    var n = 0
+    if ar == 2:
+        m = ashp[0]
+        k_a = ashp[1]
+    if br == 2:
+        k_b = bshp[0]
+        n = bshp[1]
+
+    # Validate ranks and inner dim; on failure return zeros([m, n]) to be shape-friendly
+    if ar != 2 or br != 2 or k_a != k_b:
+        return tensor.zeros([m, n])
+
+    # Fast path: standard triple loop (row-major)
+    var out = tensor.zeros([m, n])
+
+    var i = 0
+    while i < m:
+        var j = 0
+        while j < n:
+            var acc = 0.0
+            var t = 0
+            # a[i, t] * b[t, j]
+            # a row offset: i*k_a
+            # b col offset uses stride n
+            var a_row_base = i * k_a
+            while t < k_a:
+                acc = acc + a._data[a_row_base + t] * b._data[t * n + j]
+                t = t + 1
+            out._data[i * n + j] = acc
+            j = j + 1
+        i = i + 1
+    return out.copy()
