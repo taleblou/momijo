@@ -62,7 +62,7 @@ struct Huffman(Copyable, Movable):
         self.first_symbol = other.first_symbol.copy()
         self.count        = other.count.copy()
         self.values       = other.values.copy()
-        self.max_bits     = other.max_bits   # <-- بدون .copy()
+        self.max_bits     = other.max_bits
 
 # Build canonical decoder from code lengths
 fn _build_huffman(code_lengths: List[Int], max_bits: Int) -> (Bool, Huffman):
@@ -304,13 +304,13 @@ fn zlib_inflate(z: List[UInt8]) -> (Bool, List[UInt8]):
                 return (False, List[UInt8]())
 
         elif btype == 2:
-            var ok_h = br.read_bits(5);  
+            var ok_h = br.read_bits(5);
             if not ok_h[0]: return (False, List[UInt8]())
             var HLIT  = 257 + ok_h[1]
-            var ok_d = br.read_bits(5);  
+            var ok_d = br.read_bits(5);
             if not ok_d[0]: return (False, List[UInt8]())
             var HDIST = 1 + ok_d[1]
-            var ok_c = br.read_bits(4);  
+            var ok_c = br.read_bits(4);
             if not ok_c[0]: return (False, List[UInt8]())
             var HCLEN = 4 + ok_c[1]
 
