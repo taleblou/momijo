@@ -74,41 +74,78 @@ struct Conv2d(Copyable, Movable):
         return y.copy()
 
 
-    fn forward(self, x:tensor.GradTensor) -> tensor.GradTensor:
-        var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
-        var OH = (H + 2*self.pad_h - self.kernel_h) // self.stride_h + 1
-        var OW = (W + 2*self.pad_w - self.kernel_w) // self.stride_w + 1
-        var y = tensor.zeros([N, self.out_channels, OH, OW])
+
+
+    fn forward(self, mut ctx: GradContext, x: GradTensor) -> GradTensor:
+        # Read raw tensors (for shape/data); x stays tracked on tape
+        var xv  = x.value(ctx)                 # Tensor[Float64] [N,C,H,W]
+        var shp = xv._shape.copy()
+        if len(shp) != 4:
+            return x.copy()
+
+        var N = shp[0]; var C = shp[1]; var H = shp[2]; var W = shp[3]
+        var KH = self.kernel_h
+        var KW = self.kernel_w
+        var SH = self.stride_h
+        var SW = self.stride_w
+        var PH = self.pad_h
+        var PW = self.pad_w
+        var OC = self.out_channels
+
+        # Output spatial sizes
+        var OH = (H + 2 * PH - KH) // SH + 1
+        var OW = (W + 2 * PW - KW) // SW + 1
+        if OH <= 0 or OW <= 0:
+            return x.copy()
+
+        # Allocate output tensor
+        var y = tensor.zeros([N, OC, OH, OW])
+
+        # Raw buffers
+        var xd = xv._data.copy()
+        var yd = y._data.copy()
+        var wd = self.weight._data.copy()     # [OC, C, KH, KW] row-major
+        var bd = self.bias._data.copy()       # [OC]
+
+        # Convolution
         var n = 0
         while n < N:
             var oc = 0
-            while oc < self.out_channels:
+            while oc < OC:
                 var oy = 0
                 while oy < OH:
                     var ox = 0
                     while ox < OW:
-                        var sum = 0.0
+                        var acc = 0.0
                         var ic = 0
                         while ic < C:
                             var ky = 0
-                            while ky < self.kernel_h:
+                            while ky < KH:
+                                var iy = oy * SH - PH + ky
                                 var kx = 0
-                                while kx < self.kernel_w:
-                                    var iy = oy * self.stride_h - self.pad_h + ky
-                                    var ix = ox * self.stride_w - self.pad_w + kx
-                                    if (iy >= 0 and iy < H and ix >= 0 and ix < W):
-                                        var xi = n*C*H*W + ic*H*W + iy*W + ix
-                                        var wi = oc*C*self.kernel_h*self.kernel_w + ic*self.kernel_h*self.kernel_w + ky*self.kernel_w + kx
-                                        sum = sum + x._data[xi] * self.weight._data[wi]
-                                    kx += 1
-                                ky += 1
-                            ic += 1
-                        y._data[n*self.out_channels*OH*OW + oc*OH*OW + oy*OW + ox] = sum + self.bias._data[oc]
-                        ox += 1
-                    oy += 1
-                oc += 1
-            n += 1
-        return y.copy()
+                                while kx < KW:
+                                    var ix = ox * SW - PW + kx
+                                    if iy >= 0 and iy < H and ix >= 0 and ix < W:
+                                        var x_idx = _idx_nchw(n, ic, iy, ix, C, H, W)
+                                        # w index: [oc, ic, ky, kx] row-major
+                                        var w_idx = (((oc * C) + ic) * KH + ky) * KW + kx
+                                        acc = acc + xd[x_idx] * wd[w_idx]
+                                    kx = kx + 1
+                                ky = ky + 1
+                            ic = ic + 1
+                        # add bias if size matches
+                        if len(bd) == OC:
+                            acc = acc + bd[oc]
+                        var y_idx = _idx_nchw(n, oc, oy, ox, OC, OH, OW)
+                        yd[y_idx] = acc
+                        ox = ox + 1
+                    oy = oy + 1
+                oc = oc + 1
+            n = n + 1
+
+        # Return as leaf (no grad for this op in this version)
+        var lid = ctx.tape.add_leaf(y)
+        return GradTensor(lid, False)
 
     fn backward(self, x: tensor.Tensor[Float64], grad_y: tensor.Tensor[Float64]) -> (tensor.Tensor[Float64], tensor.Tensor[Float64], tensor.Tensor[Float64]):
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
@@ -147,7 +184,7 @@ struct Conv2d(Copyable, Movable):
                 oc += 1
             n += 1
         return (dW, db, dx)
-        
+
     fn backward(self, x: tensor.GradTensor, grad_y: tensor.GradTensor) -> (tensor.GradTensor, tensor.GradTensor, tensor.GradTensor):
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
         var OH = grad_y.shape()[2]; var OW = grad_y.shape()[3]
@@ -239,11 +276,35 @@ struct MaxPool2d(Copyable, Movable):
         return y.copy()
 
 
-    fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
-        var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
-        var OH = (H + 2*self.pad_h - self.kernel_h) // self.stride_h + 1
-        var OW = (W + 2*self.pad_w - self.kernel_w) // self.stride_w + 1
+    fn forward(self, mut ctx: GradContext, x: GradTensor) -> GradTensor:
+        # x: [N, C, H, W]
+        var xv  = x.value(ctx)          # Tensor[Float64]
+        var shp = xv._shape.copy()
+        if len(shp) != 4:
+            return x.copy()
+
+        var N = shp[0]; var C = shp[1]; var H = shp[2]; var W = shp[3]
+
+        var KH = self.kernel_h
+        var KW = self.kernel_w
+        var SH = self.stride_h
+        var SW = self.stride_w
+        var PH = self.pad_h
+        var PW = self.pad_w
+
+        # Output spatial sizes
+        var OH = (H + 2 * PH - KH) // SH + 1
+        var OW = (W + 2 * PW - KW) // SW + 1
+        if OH <= 0 or OW <= 0:
+            return x.copy()
+
+        # Allocate output
         var y = tensor.zeros([N, C, OH, OW])
+
+        # Raw buffers
+        var xd = xv._data.copy()
+        var yd = y._data.copy()
+
         var n = 0
         while n < N:
             var c = 0
@@ -252,25 +313,30 @@ struct MaxPool2d(Copyable, Movable):
                 while oy < OH:
                     var ox = 0
                     while ox < OW:
-                        var m = -1e300
+                        var m = -1.0e300
                         var ky = 0
-                        while ky < self.kernel_h:
+                        while ky < KH:
+                            var iy = oy * SH - PH + ky
                             var kx = 0
-                            while kx < self.kernel_w:
-                                var iy = oy * self.stride_h - self.pad_h + ky
-                                var ix = ox * self.stride_w - self.pad_w + kx
-                                if (iy >= 0 and iy < H and ix >= 0 and ix < W):
-                                    var idx = n*C*H*W + c*H*W + iy*W + ix
-                                    var v = x._data[idx]
-                                    if v > m: m = v
-                                kx += 1
-                            ky += 1
-                        y._data[n*C*OH*OW + c*OH*OW + oy*OW + ox] = m
-                        ox += 1
-                    oy += 1
-                c += 1
-            n += 1
-        return y.copy()
+                            while kx < KW:
+                                var ix = ox * SW - PW + kx
+                                if iy >= 0 and iy < H and ix >= 0 and ix < W:
+                                    var x_idx = _idx_nchw(n, c, iy, ix, C, H, W)
+                                    var v = xd[x_idx]
+                                    if v > m:
+                                        m = v
+                                kx = kx + 1
+                            ky = ky + 1
+                        var y_idx = _idx_nchw(n, c, oy, ox, C, OH, OW)
+                        yd[y_idx] = m
+                        ox = ox + 1
+                    oy = oy + 1
+                c = c + 1
+            n = n + 1
+
+        # Return as a leaf (no-grad path for now)
+        var lid = ctx.tape.add_leaf(y)
+        return GradTensor(lid, False)
     fn backward(self, x: tensor.Tensor[Float64], grad_y: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
         var OH = grad_y.shape()[2]; var OW = grad_y.shape()[3]
@@ -305,7 +371,7 @@ struct MaxPool2d(Copyable, Movable):
                 c += 1
             n += 1
         return dx.copy()
-   fn backward(self, x: tensor.GradTensor, grad_y: tensor.GradTensor) ->tensor.GradTensor:
+    fn backward(self, x: tensor.GradTensor, grad_y: tensor.GradTensor) ->tensor.GradTensor:
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
         var OH = grad_y.shape()[2]; var OW = grad_y.shape()[3]
         var dx = tensor.zeros_like(x)
@@ -339,3 +405,8 @@ struct MaxPool2d(Copyable, Movable):
                 c += 1
             n += 1
         return dx.copy()
+
+
+@always_inline
+fn _idx_nchw(n: Int, c: Int, h: Int, w: Int, C: Int, H: Int, W: Int) -> Int:
+    return (((n * C) + c) * H + h) * W + w
