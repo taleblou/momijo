@@ -1,4 +1,4 @@
-# MIT License 
+# MIT License
 # SPDX-License-Identifier: MIT
 # Project: momijo.vision | File: src/momijo/vision/io/image.mojo
 
@@ -80,7 +80,7 @@ fn _to_lower(s: String) -> String:
             var delta = Int('a') - Int('A')
 
             if code >= upper_a and code <= upper_z:
-                # تبدیل دستی به lowercase: با آرایه تک‌بایتی
+
                 var b = UnsafePointer[UInt8].alloc(1)
                 b[0] = UInt8(code + delta)
                 var low = String(b, 1)
@@ -153,9 +153,9 @@ fn read_image_any(path: String) -> Image:
 
     return full((32, 32, 3), UInt8(127))
 
-fn write_image_any(path: String, img: Image) -> Bool: 
-    
-    var p = _to_lower(path)    
+fn write_image_any(path: String, img: Image) -> Bool:
+
+    var p = _to_lower(path)
     var ii = img.ensure_packed_hwc_u8(True)
 
     # if _ends_with(p, ".ppm"):
@@ -168,7 +168,7 @@ fn write_image_any(path: String, img: Image) -> Bool:
         #     var alt = path + String(".ppm")
         #     return write_ppm(alt, img)
 
-    # if _ends_with(p, ".jpg") or _ends_with(p, ".jpeg"): 
+    # if _ends_with(p, ".jpg") or _ends_with(p, ".jpeg"):
     #     # if has_jpeg_codec():
     #         return write_jpeg(path, img.tensor())
     #     # else:
