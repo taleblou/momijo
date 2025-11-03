@@ -3,10 +3,10 @@
 # Project: momijo.vision | File: src/momijo/vision/transforms/draw.mojo
 
 from momijo.vision.image import Image
-from momijo.vision.dtypes import DType  # for explicit checks 
+from momijo.vision.dtypes import DType  # for explicit checks
 from momijo.vision.transforms.array import full
 from momijo.vision.transforms.features import Keypoint, keypoint_xy, len_keypoints
- 
+
 from momijo.vision.transforms.glyphs import _glyph5x7_rowmajor
 
 from collections.list import List
@@ -28,27 +28,27 @@ fn iabs(v: Int) -> Int:
     return -v if v < 0 else v
 
 # ---------- Pixel write hook ----------
-# Writes a BGR pixel into a packed HWC/UInt8 image at (x,y).  
+# Writes a BGR pixel into a packed HWC/UInt8 image at (x,y).
 fn _poke(mut img: Image, x: Int, y: Int, b: UInt8, g: UInt8, r: UInt8):
     # --- Dimensions & bounds ---
     var w = img.width()
-    var h = img.height() 
-    if x < 0 or y < 0 or x >= w or y >= h: 
+    var h = img.height()
+    if x < 0 or y < 0 or x >= w or y >= h:
         return
 
     # --- Channels ---
-    var c = img.channels() 
-    if c <= 0: 
+    var c = img.channels()
+    if c <= 0:
         return
 
     # --- Linear index & guard ---
     var base = (y * w + x) * c
-    var total = w * h * c 
-    if base < 0 or base + (c - 1) >= total: 
+    var total = w * h * c
+    if base < 0 or base + (c - 1) >= total:
         return
 
     # --- Pointer and BEFORE values ---
-    var p = img.tensor().data() 
+    var p = img.tensor().data()
 
     var before0: UInt8 = p[base]
     var before1: UInt8 = 0
@@ -58,7 +58,7 @@ fn _poke(mut img: Image, x: Int, y: Int, b: UInt8, g: UInt8, r: UInt8):
     if c > 2:
         before2 = p[base + 2]
 
-  
+
 
     # --- WRITE ---
     p[base] = b
@@ -67,7 +67,7 @@ fn _poke(mut img: Image, x: Int, y: Int, b: UInt8, g: UInt8, r: UInt8):
     if c > 2:
         p[base + 2] = r
 
-    
+
 
     # --- AFTER values ---
     var after0: UInt8 = p[base]
@@ -78,7 +78,7 @@ fn _poke(mut img: Image, x: Int, y: Int, b: UInt8, g: UInt8, r: UInt8):
     if c > 2:
         after2 = p[base + 2]
 
-      
+
 
 
 
@@ -86,11 +86,11 @@ fn _poke(mut img: Image, x: Int, y: Int, b: UInt8, g: UInt8, r: UInt8):
 
 
 # ---------- Helpers ----------
- 
+
 fn _in_bounds(img: Image, x: Int, y: Int) -> Bool:
     return (x >= 0 and x < img.width() and y >= 0 and y < img.height())
 
- 
+
 
 fn _draw_disk(mut img: Image, cx: Int, cy: Int, r: Int, color: (UInt8, UInt8, UInt8)):
     var rr = r
@@ -174,7 +174,7 @@ fn _clamp(v: Int, lo: Int, hi: Int) -> Int:
     return v
 
 fn _put_color(dst: Image, y: Int, x: Int, color: List[UInt8]):
-    # Writes color, broadcasting  
+    # Writes color, broadcasting
     var c = dst.channels()
     if len(color) == 0:
         var ch = 0
@@ -204,7 +204,7 @@ fn _put_gray(dst: Image, y: Int, x: Int, v: UInt8):
 fn _rectangle_core(src: Image,
                    x0: Int, y0: Int, x1: Int, y1: Int,
                    thickness: Int,
-                   b: UInt8, g: UInt8, r: UInt8) -> Image: 
+                   b: UInt8, g: UInt8, r: UInt8) -> Image:
     var h = src.height()
     var w = src.width()
     if h == 0 or w == 0:
@@ -220,7 +220,7 @@ fn _rectangle_core(src: Image,
 
     # Clone first, then if packed HWC/u8
     var dst = src.ensure_packed_hwc_u8(True).clone()
- 
+
 
     if thickness < 0:
         var y = y_min
@@ -272,7 +272,7 @@ fn _rectangle_core(src: Image,
             _poke(dst, xR, yy2, b, g, r)
             yy2 += 1
         xR += 1
- 
+
     return dst.copy()
 
 
@@ -473,7 +473,7 @@ fn _color_from_list_u8(color: List[UInt8]) -> (UInt8, UInt8, UInt8):
     return (b, g, r)
 
 
-# --------- Point converters (assumed provided) ---------- 
+# --------- Point converters (assumed provided) ----------
 # Here are minimal stand-ins to avoid ambiguity:
 
 @always_inline
@@ -526,7 +526,7 @@ fn fill_poly(mut img: Image, pts: List[List[Int]], color: List[Int]) -> Image:
 fn fill_poly(mut img: Image, pts: List[List[Int]], color: List[UInt8]) -> Image:
     return fill_poly(img, _pts_from_list_list_int(pts), _color_from_list_u8(color))
 
- 
+
 
 
 # convenience overload: accepts (Int,Int,Int) and casts to UInt8
@@ -625,7 +625,7 @@ fn _draw_circles_u8(
 #     var col_bgr: (UInt8, UInt8, UInt8)  = (UInt8(b),  UInt8(g),  UInt8(r))
 #     var ccol_bgr: (UInt8, UInt8, UInt8) = (UInt8(cb), UInt8(cg), UInt8(cr))
 #     return _draw_circles_u8(img, circles, col_bgr, thickness, ccol_bgr, center_radius)
-   
+
 # Int-based signature (RGB), converts internally to BGR UInt8 and forwards.
 fn draw_circles(
     mut img: Image,
@@ -641,7 +641,6 @@ fn draw_circles(
     var ccol_bgr: (UInt8, UInt8, UInt8) = (UInt8(cb & 255), UInt8(cg & 255), UInt8(cr & 255))
     return _draw_circles_u8(img, circles, col_bgr, thickness, ccol_bgr, center_radius)
 
-# UInt8-based signature (RGB), مستقیماً به BGR UInt8 تبدیل می‌کند.
 fn draw_circles(
     mut img: Image,
     circles: List[(Int, Int, Int)],
@@ -667,7 +666,7 @@ fn draw_circles(
 #      0 : no-op
 #     < 0 : fill the polygon interior using even–odd rule (scanline fill)
 
- 
+
 # simple insertion sort for List[Int]
 fn _sort_int_list(mut xs: List[Int]):
     var i = 1
@@ -936,7 +935,7 @@ fn draw_matches(
     matches: List[(Int, Int)]
 ) -> Image:
     var k1 = _drop_score(kps1)
-    var k2 = _drop_score(kps2) 
+    var k2 = _drop_score(kps2)
     return draw_matches(img1, k1, img2, k2, matches)
 
 
@@ -967,7 +966,7 @@ fn draw_matches(
     kps1: List[(Int, Int)],
     img2: Image,
     kps2: List[(Int, Int)],
-    matches: List[(Int, Int, Int)]    
+    matches: List[(Int, Int, Int)]
 ) -> Image:
     var pairs = List[(Int, Int)]()
     var i = 0
@@ -983,7 +982,7 @@ fn draw_matches(
     kps1: List[(Int, Int, Float32)],
     img2: Image,
     kps2: List[(Int, Int, Float32)],
-    matches: List[(Int, Int, Int)]   
+    matches: List[(Int, Int, Int)]
 ) -> Image:
     # drop score از keypoints
     var k1 = List[(Int, Int)]()
@@ -999,7 +998,7 @@ fn draw_matches(
         k2.append((x, y))
         i = i + 1
 
-    # تبدیل matches به جفت
+
     var pairs = List[(Int, Int)]()
     i = 0
     while i < len(matches):
@@ -1282,7 +1281,7 @@ fn FONT_SIMPLEX() -> Int:
     return 1
 
 # --- Color adapters (once per file) ------------------------------------------
- 
+
 fn _to_u8_color_from_int3(c: (Int, Int, Int)) -> (UInt8, UInt8, UInt8):
     var (r, g, b) = c
     return (
@@ -1343,7 +1342,7 @@ fn label_to_color(labels: List[List[Int]], num_labels: Int) -> List[List[List[UI
         out.append(row)
         y += 1
     return out.copy()
- 
+
 # Deterministic pseudo-color for label ids
 fn _color_for(lbl: Int) -> (UInt8, UInt8, UInt8):
     if lbl == 0: return (UInt8(0), UInt8(0), UInt8(0))  # background: black
@@ -1390,7 +1389,7 @@ fn _draw_point(mut img: Image, x: Int, y: Int, color: (UInt8, UInt8, UInt8)):
     var (b, g, r) = color   # assuming color tuple is (B, G, R)
     _poke(img, x, y, b, g, r)
 
-    
+
 fn _draw_thick_line(
     mut img: Image,
     x1: Int,
@@ -1461,7 +1460,7 @@ fn draw_lines_p(
         _draw_thick_line(img, x1, y1, x2, y2, color, thickness)
         i += 1
     return img.copy()
- 
+
 
 # --- internal blit (u8 HWC only) ---
 fn _blit(mut dst: Image, dx: Int, dy: Int, src: Image):
