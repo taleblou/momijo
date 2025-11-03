@@ -4,8 +4,8 @@
 # Module:       momijo.tensor.teansform
 # File:         src/momijo/tensor/teansform.mojo
 #
- 
- 
+
+
 
 from collections.list import List
 
@@ -25,7 +25,7 @@ from momijo.tensor.helpers import (
     copy_list_T,
     normalize_axis,
     is_contig_2d,
-    clone_header_share_data, 
+    clone_header_share_data,
     copy_list,
     compute_row_major_strides,
 )
@@ -34,7 +34,7 @@ from momijo.tensor.broadcast import clamp_axis,clamp_int
 from momijo.tensor.creation import empty_tensor_with,zero_scalar_of
 from momijo.tensor.cast import *
 
-from momijo.tensor.tensor import Tensor   
+from momijo.tensor.tensor import Tensor
 # ============================================================================
 #                          Boundary index maps for padding
 # ============================================================================
@@ -1295,7 +1295,7 @@ fn size[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Int:
 
 fn contiguous[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
     if is_row_major_contiguous(x._shape, x._strides):
-        # already contiguous: return a header-clone that aliases data (or use x.copy()  
+        # already contiguous: return a header-clone that aliases data (or use x.copy()
         return clone_header_share_data[T](x, x._shape.copy(), x._strides.copy())
 
     var n = numel(x._shape)
@@ -1357,7 +1357,7 @@ fn contiguous[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tenso
             d = d - 1
         lin = lin + 1
 
-    # if caller gets a tensor with its own header/buffer (optional; 
+    # if caller gets a tensor with its own header/buffer (optional;
     return out.copy()
 # -----------------------------------------------------------------------------
 # Internal: compute the target strides for a reshape *without copy*.
@@ -1376,7 +1376,7 @@ fn view_reshape_strides_if_contiguous(
     # Row-major view: standard row-major strides for the new shape
     var ns = compute_row_major_strides(new_shape)
     return (True, ns)
- 
+
 # -----------------------------------------------------------------------------
 # Strict reshape: size must match. Returns a view when C-contiguous; otherwise
 # materializes a contiguous buffer and updates header.
@@ -1551,7 +1551,7 @@ fn _resize_like_with_pad_core[T: ImplicitlyCopyable & Copyable & Movable](
     while i < nmin:
         data.append(c._data[i])
         i += 1
- 
+
     if n_tgt > nmin:
         var fill = data[nmin - 1] if nmin > 0 else from_f64(0.0)
         var r = n_tgt - nmin
@@ -1581,8 +1581,8 @@ fn resize_like_with_pad(x: Tensor[Float64], target_like: Tensor[Float64]) -> Ten
     return _resize_like_with_pad_core[Float64](x, target_like, f64_to)
 
 
-        
- 
+
+
 
 @always_inline
 fn ravel[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
@@ -1794,7 +1794,7 @@ fn tensor_permute[T: Copyable & Movable](x: Tensor[T], axes: List[Int]) -> Tenso
 
 
 
- 
+
 
 # ----------------------------- utility function -----------------------------
 
@@ -1808,7 +1808,7 @@ fn is_identity_perm(clean: List[Int]) -> Bool:
         i = i + 1
     return True
 
- 
+
 
 @always_inline
 fn is_row_major(shape: List[Int], strides: List[Int]) -> Bool:
@@ -1822,8 +1822,8 @@ fn is_row_major(shape: List[Int], strides: List[Int]) -> Bool:
         expected = expected * shape[k]
         k = k - 1
     return True
- 
- 
+
+
 
 # -----------------------------------------------------------------------------
 # view (reshape):
@@ -2084,7 +2084,6 @@ fn tile[T: ImplicitlyCopyable & Copyable & Movable](
 fn _swap_perm(rank: Int, a: Int, b: Int) -> List[Int]:
     var r = rank
     var i = a; var j = b
-    # clamp_axis(i, r) و clamp_axis(j, r) را قبلاً داری
     i = clamp_axis(i, r)
     j = clamp_axis(j, r)
     var perm = List[Int]()
@@ -2097,7 +2096,7 @@ fn _swap_perm(rank: Int, a: Int, b: Int) -> List[Int]:
         perm[i] = perm[j]
         perm[j] = tmp
     return perm.copy()
- 
+
 @always_inline
 fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], i: Int, j: Int) -> Tensor[T]:
     var r = len(x._shape)
@@ -2118,16 +2117,16 @@ fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], i: Int, j
     perm[jj] = tmp
 
     return permute(x, perm)
- 
+
 @always_inline
-fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], perm: List[Int]) -> Tensor[T]: 
+fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], perm: List[Int]) -> Tensor[T]:
     return x.permute(perm)
 
 @always_inline
 fn transpose[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tensor[T]:
     var r = len(x._shape)
     if r <= 1:
-        return x.copy() 
+        return x.copy()
     return transpose(x, r - 2, r - 1)
 
 @always_inline
@@ -2347,19 +2346,19 @@ fn stack(xs: List[Tensor[Float64]], axis: Int = 0) -> Tensor[Float64]:
         t += 1
     return tensor.from_list_float64(vals2).reshape(out_shape)
 
- 
- 
+
+
 @always_inline
 fn _alloc_list[T: ImplicitlyCopyable & Copyable & Movable](n: Int) -> List[T]:
     var out = List[T]()
-    var i = 0 
+    var i = 0
     var z = default(T)
     while i < n:
         out.append(z)
         i += 1
     return out
 
- 
+
 # -----------------------------------------------------------------------------
 # Small helpers (kept local; do not export)
 # -----------------------------------------------------------------------------
@@ -2523,8 +2522,8 @@ fn _squeeze_dim[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: I
 fn _cat_impl[T: ImplicitlyCopyable & Copyable & Movable](
     xs: List[Tensor[T]], dim: Int
 ) -> Tensor[T]:
-    var nxs = len(xs) 
- 
+    var nxs = len(xs)
+
     var base = xs[0].copy()
     var r = len(base._shape)
     var d = clamp_axis(dim, r if r > 0 else 1)
@@ -2535,9 +2534,9 @@ fn _cat_impl[T: ImplicitlyCopyable & Copyable & Movable](
     while i < nxs:
         var xi = xs[i].copy()
         if len(xi._shape) != r and not (r == 0 and len(xi._shape) == 0):
-            return base.copy()                
+            return base.copy()
         if r == 0:
-            total_d = total_d + 1              
+            total_d = total_d + 1
         else:
             if not _same_except_dim(base._shape, xi._shape, d):
                 return base.copy()
@@ -2558,7 +2557,7 @@ fn _cat_impl[T: ImplicitlyCopyable & Copyable & Movable](
     # هندسه‌ی کپی: outer | dim | inner
     var outer = _prod(out_shape, 0, d)
     var inner = _prod(out_shape, d + 1, r)
- 
+
     var srcs = List[Tensor[T]]()
     var blocks = List[Int]()
     var kk = 0
@@ -2568,7 +2567,7 @@ fn _cat_impl[T: ImplicitlyCopyable & Copyable & Movable](
         srcs.append(_to_contiguous_impl(s0))
         blocks.append(ld * inner)
         kk += 1
- 
+
     var write_cursor = 0
     var o = 0
     while o < outer:
@@ -2664,7 +2663,7 @@ fn _chunk_impl[T: ImplicitlyCopyable & Copyable & Movable](
         return out.copy()
 
     var base = n // chunks
-    var rem  = n - base * chunks 
+    var rem  = n - base * chunks
 
     var start = 0
     var i = 0
@@ -2707,23 +2706,19 @@ fn _unbind_impl[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: I
 # - Provide thin forwarders so user code can call tensor.cat/split_sizes/chunk/unbind
 # - And instance methods on Tensor[T] so `x.split_sizes(...)` / `x.chunk(...)` / `x.unbind(...)` work
 # -----------------------------------------------------------------------------
-  
+
 @always_inline
 fn cat[T: ImplicitlyCopyable & Copyable & Movable](xs: List[Tensor[T]], dim: Int) -> Tensor[T]:
     return _cat_impl(xs, dim)
- 
+
 @always_inline
 fn split_sizes[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], sizes: List[Int], dim: Int) -> List[Tensor[T]]:
     return _split_sizes_impl(x, sizes, dim)
- 
+
 @always_inline
 fn chunk[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], chunks: Int, dim: Int) -> List[Tensor[T]]:
     return _chunk_impl(x, chunks, dim)
- 
+
 @always_inline
 fn unbind[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: Int) -> List[Tensor[T]]:
     return _unbind_impl(x, dim)
-
- 
-
- 
