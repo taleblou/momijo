@@ -23,25 +23,25 @@ fn needs_grad(flag_a: Bool, flag_b: Bool = False) -> Bool:
 fn broadcast_to_shape(x: tensor.Tensor[Float64], shape: List[Int]) -> tensor.Tensor[Float64]:
     var sx = x.shape()
     if sx == shape:
-        return x
+        return x.copy()
     # If x is scalar, expand to target
     if len(sx) == 0:
         return x.reshape(shape)
     # Right-align shapes and sum-reduce axes of length-1 where target has larger dims
     var dx = len(sx)
     var dy = len(shape)
-    var out = x
+    var out = x.copy()
     if dx < dy:
         # prepend ones then reshape
         var newshape = List[Int]()
         var pad = dy - dx
         var i = 0
         while i < pad:
-            newshape.push_back(1)
+            newshape.append(1)
             i = i + 1
         var j = 0
         while j < dx:
-            newshape.push_back(sx[j])
+            newshape.append(sx[j])
             j = j + 1
         out = out.reshape(newshape)
         sx = out.shape()
@@ -51,7 +51,7 @@ fn broadcast_to_shape(x: tensor.Tensor[Float64], shape: List[Int]) -> tensor.Ten
     while k < dy:
         if sx[k] != shape[k]:
             # reduce this axis
-            out = out.sum_axis(axis=k, keepdims=True)
+            out = out.sum(axis=k)
         k = k + 1
     # finally reshape to target
     return out.reshape(shape)
@@ -63,7 +63,7 @@ fn shape_like(x: tensor.Tensor[Float64]) -> List[Int]:
     var out = List[Int]()
     var i = 0
     while i < len(s):
-        out.push_back(s[i])
+        out.append(s[i])
         i = i + 1
     return out
 
@@ -91,98 +91,106 @@ fn _value_max_axis(x: tensor.Tensor[Float64], axis: Int, keepdims: Bool) -> tens
     return acc
 
 # ----------------------------- Op tags ----------------------------------------
-@always_inline 
+@always_inline
 fn TAG_LEAF()         -> Int: return 0
-@always_inline 
+@always_inline
 fn TAG_ADD()          -> Int: return 1
-@always_inline 
+@always_inline
 fn TAG_MUL()          -> Int: return 2
-@always_inline 
+@always_inline
 fn TAG_ADDS()         -> Int: return 3
-@always_inline 
+@always_inline
 fn TAG_MULS()         -> Int: return 4
-@always_inline 
+@always_inline
 fn TAG_SUM_ALL()      -> Int: return 5
-@always_inline 
+@always_inline
 fn TAG_MEAN_ALL()     -> Int: return 6
-@always_inline 
+@always_inline
 fn TAG_RESHAPE()      -> Int: return 7
-@always_inline 
-fn TAG_PERMUTE()      -> Int: return 8  
-@always_inline 
+@always_inline
+fn TAG_PERMUTE()      -> Int: return 8
+@always_inline
 fn TAG_SUM_AX()       -> Int: return 9
-@always_inline 
+@always_inline
 fn TAG_MEAN_AX()      -> Int: return 10
-@always_inline 
+@always_inline
 fn TAG_NEG()          -> Int: return 11
-@always_inline 
+@always_inline
 fn TAG_SUB()          -> Int: return 12
-@always_inline 
+@always_inline
 fn TAG_DIVS()         -> Int: return 13     # divide by scalar
-@always_inline 
+@always_inline
 fn TAG_SQUARE()       -> Int: return 14
-@always_inline 
+@always_inline
 fn TAG_POWS()         -> Int: return 15     # power by scalar
-@always_inline 
+@always_inline
 fn TAG_TRANSPOSE2D()  -> Int: return 16
-@always_inline 
+@always_inline
 fn TAG_FLATTEN()      -> Int: return 17
-@always_inline 
+@always_inline
 fn TAG_MATMUL2D()     -> Int: return 18     # 2D matrix multiply
-@always_inline 
+@always_inline
 fn TAG_TENSORDOT()   -> Int: return 51     # tensordot(axis)
-@always_inline 
+@always_inline
 fn TAG_MAXS()         -> Int: return 19     # maximum(x, c)
-@always_inline 
+@always_inline
 fn TAG_MINS()         -> Int: return 20     # minimum(x, c)
-@always_inline 
+@always_inline
 fn TAG_RELU()         -> Int: return 21     # relu(x) = max(x,0)
-@always_inline 
-fn TAG_LRELU()        -> Int: return 22     
-@always_inline 
+@always_inline
+fn TAG_LRELU()        -> Int: return 22
+@always_inline
 fn TAG_GATHER()      -> Int: return 24     # gather(axis, index)
-@always_inline 
+@always_inline
 fn TAG_INDEX_AXIS()  -> Int: return 25     # index_axis(axis, idx)
-@always_inline 
+@always_inline
 fn TAG_TAKE()        -> Int: return 26     # take(js, axis)
-@always_inline 
+@always_inline
 fn TAG_SCATTER()     -> Int: return 27     # scatter(axis, index, src)
-@always_inline 
+@always_inline
 fn TAG_MASKED_SELECT() -> Int: return 28   # masked_select(mask)
-@always_inline 
+@always_inline
 fn TAG_MASKED_SELECT_ELEM() -> Int: return 29   # masked_select elementwise (same-shape)
-@always_inline 
+@always_inline
 fn TAG_WHERE()       -> Int: return 90     # where(mask, a, b)
-@always_inline 
+@always_inline
 fn TAG_SQRT()        -> Int: return 60     # sqrt(x)
-@always_inline 
+@always_inline
 fn TAG_EXP()        -> Int: return 61     # exp(x)
-@always_inline 
+@always_inline
 fn TAG_LOG()        -> Int: return 62     # log(x)
-@always_inline 
+@always_inline
 fn TAG_TANH()        -> Int: return 63     # tanh(x)
-@always_inline 
+@always_inline
 fn TAG_SIGMOID()        -> Int: return 64     # sigmoid(x)
-@always_inline 
+@always_inline
 fn TAG_ABS()        -> Int: return 65     # abs(x)
-@always_inline 
+@always_inline
 fn TAG_SIGN()        -> Int: return 66     # sign(x) (zero-grad)
-@always_inline 
+@always_inline
 fn TAG_FLOOR()        -> Int: return 67     # floor(x) (zero-grad)
-@always_inline 
+@always_inline
 fn TAG_CEIL()        -> Int: return 68     # ceil(x) (zero-grad)
-@always_inline 
+@always_inline
 fn TAG_ROUND()        -> Int: return 69     # round(x) (zero-grad)
-@always_inline 
+@always_inline
 fn TAG_LOG1P()        -> Int: return 70     # log1p(x)
-@always_inline 
+@always_inline
 fn TAG_EXPM1()        -> Int: return 71     # expm1(x)
-@always_inline 
+@always_inline
 fn TAG_STD()         -> Int: return 80     # std over axis or all dims (biased, eps)
-@always_inline 
+@always_inline
 fn TAG_CLAMP()        -> Int: return 72     # clamp(x, min, max)
-@always_inline 
+@always_inline
 fn TAG_REPEAT()      -> Int: return 23     # repeat(reps)
+@always_inline
+fn TAG_DIV()      -> Int: return 30     #
+@always_inline
+fn TAG_CLIP() -> Int: return 31
+@always_inline
+fn TAG_CLAMP_DISABLED() -> Int: return 32
+@always_inline
+fn TAG_CLAMP_DISA() -> Int: return TAG_CLIP()
 # leaky_relu(x,a)
 
 # ----------------------------- Small helpers ---------------------------------
@@ -276,11 +284,11 @@ struct GradContext:
     fn grad_enabled(self) -> Bool:
         return self.no_grad_depth == 0
 
-@always_inline 
+@always_inline
 fn no_grad_begin(mut ctx: GradContext) -> None:
     ctx.no_grad_depth = ctx.no_grad_depth + 1
 
-@always_inline 
+@always_inline
 fn no_grad_end(mut ctx: GradContext) -> None:
     if ctx.no_grad_depth > 0:
         ctx.no_grad_depth = ctx.no_grad_depth - 1
@@ -314,8 +322,47 @@ struct GradTensor(Copyable, Movable):
         var nid = ctx.tape.add_leaf(x)
         return GradTensor(nid, requires_grad and ctx.grad_enabled())
 
-    fn value(self, ctx: GradContext) -> tensor.Tensor[Float64]:
+    # Access current tensor value from the active context
+    fn value(self, mut ctx: GradContext) -> tensor.Tensor[Float64]:
         return ctx.tape.values[self.id].copy()
+    # Shape as a plain List[Int]
+    fn shape(self, mut ctx: GradContext) -> List[Int]:
+        return ctx.tape.values[self.id]._shape.copy()
+
+    # Number of elements (product of shape)
+    fn numel(self, mut ctx: GradContext) -> Int:
+        var s = ctx.tape.values[self.id]._shape
+        var n = 1
+        var i = 0
+        while i < len(s):
+            n = n * s[i]
+            i = i + 1
+        return n
+
+    # Read a scalar value; safe only when numel()==1
+    fn item(self, mut ctx: GradContext) -> Float64:
+        var v = ctx.tape.values[self.id].copy()
+        # Optional safety check (comment out if asserts are undesired)
+        # assert(len(v._data) == 1)
+        return v._data[0]
+
+    # Convert to flat List[Float64] (read-only snapshot)
+    fn to_list(self, mut ctx: GradContext) -> List[Float64]:
+        var out = List[Float64]()
+        var v = ctx.tape.values[self.id].copy()
+        var n = len(v._data)
+        var i = 0
+        while i < n:
+            out.append(v._data[i])
+            i = i + 1
+        return out.copy()
+
+    # Convenience: get an element by flat index (read-only)
+    fn at_flat(self, mut ctx: GradContext, i: Int) -> Float64:
+        var v = ctx.tape.values[self.id]
+        # Optional bound check:
+        # assert(i >= 0 and i < len(v._data))
+        return v._data[i]
 
     fn grad(self, ctx: GradContext) -> tensor.Tensor[Float64]:
         return ctx.tape.grads[self.id].copy()
@@ -339,6 +386,40 @@ struct GradTensor(Copyable, Movable):
         var neg_y = other.mul_scalar(ctx, -1.0)
         return self.add(ctx, neg_y)
 
+    fn add(self, mut ctx: GradContext, other: tensor.Tensor[Float64]) -> GradTensor:
+        var a   = ctx.tape.values[self.id].copy()                 # Tensor[Float64]
+        var out = tensor.add_t(a, other)                     # elementwise add
+        var track = self.requires_grad and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+        var oid = ctx.tape.add_leaf(other)                 # stash RHS value (no grad)
+        var nid = ctx.tape.add_binary(out, TAG_ADD(), self.id, oid)
+        return GradTensor(nid, True)
+
+    fn mul(self, mut ctx: GradContext, other: tensor.Tensor[Float64]) -> GradTensor:
+        var a   = ctx.tape.values[self.id].copy()
+        var out = tensor.mul_t(a, other)                     # elementwise mul
+        var track = self.requires_grad and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+        var oid = ctx.tape.add_leaf(other)
+        var nid = ctx.tape.add_binary(out, TAG_MUL(), self.id, oid)
+        return GradTensor(nid, True)
+
+    fn sub(self, mut ctx: GradContext, other: tensor.Tensor[Float64]) -> GradTensor:
+        var a   = ctx.tape.values[self.id].copy()
+        # out = a - other  == a + (-other)
+        var neg_other = other.mul_scalar(-1.0)
+        var out = a.add(neg_other)
+        var track = self.requires_grad and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+        var oid = ctx.tape.add_leaf(other)                 # stash original RHS (optional: stash neg_other instead)
+        var nid = ctx.tape.add_binary(out, TAG_SUB(), self.id, oid)   # if you don't have TAG_SUB(), use TAG_ADD()
+        return GradTensor(nid, True)
     # ---------- Scalar elementwise ----------
     fn add_scalar(self, mut ctx: GradContext, s: Float64) -> GradTensor:
         var out = ctx.tape.values[self.id].add_scalar(s)
@@ -347,12 +428,34 @@ struct GradTensor(Copyable, Movable):
                    if track else ctx.tape.add_leaf(out))
         return GradTensor(nid, track)
 
+    fn add_scalar(self, mut ctx: GradContext, s: GradTensor) -> GradTensor:
+        var a = ctx.tape.values[self.id] .copy()
+        var b = ctx.tape.values[s.id] .copy()
+        var out = a.add( b)
+        var track = (self.requires_grad or s.requires_grad) and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+        var nid = ctx.tape.add_binary(out, TAG_ADD(), self.id, s.id)
+        return GradTensor(nid, True)
+
     fn mul_scalar(self, mut ctx: GradContext, s: Float64) -> GradTensor:
         var out = ctx.tape.values[self.id].mul_scalar(s)
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(out, TAG_MULS(), self.id, s, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(out))
         return GradTensor(nid, track)
+
+    fn mul_scalar(self, mut ctx: GradContext, s: GradTensor) -> GradTensor:
+        var a = ctx.tape.values[self.id].copy()
+        var b = ctx.tape.values[s.id].copy()
+        var out = a.mul(b)
+        var track = (self.requires_grad or s.requires_grad) and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+        var nid = ctx.tape.add_binary(out, TAG_MUL(), self.id, s.id)
+        return GradTensor(nid, True)
 
     fn div_scalar(self, mut ctx: GradContext, s: Float64) -> GradTensor:
         var inv = 1.0 / s
@@ -362,6 +465,60 @@ struct GradTensor(Copyable, Movable):
                    if track else ctx.tape.add_leaf(out))
         return GradTensor(nid, track)
 
+    fn div_scalar(self, mut ctx: GradContext, s: GradTensor) -> GradTensor:
+        var a = ctx.tape.values[self.id].copy()
+        var b = ctx.tape.values[s.id].copy()
+
+        # a / b
+        var out = a.mul( tensor.reciprocal(b))
+
+        # var out = tensor.mul(a, tensor.pow_scalar(b, -1.0))
+
+        var track = (self.requires_grad or s.requires_grad) and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+
+        var nid = ctx.tape.add_binary(out, TAG_DIV(), self.id, s.id)
+        return GradTensor(nid, True)
+
+
+    fn add_scalar(self, mut ctx: GradContext, s: tensor.Tensor[Float64]) -> GradTensor:
+        var a   = ctx.tape.values[self.id] .copy()
+        var out = a.add( s)
+        var track = self.requires_grad and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+        var sid = ctx.tape.add_leaf(s)                         # stash RHS (no grad)
+        var nid = ctx.tape.add_binary(out, TAG_ADD(), self.id, sid)
+        return GradTensor(nid, True)
+
+    fn mul_scalar(self, mut ctx: GradContext, s: tensor.Tensor[Float64]) -> GradTensor:
+        var a   = ctx.tape.values[self.id] .copy()
+        var out = a.mul( s)
+        var track = self.requires_grad and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+        var sid = ctx.tape.add_leaf(s)
+        var nid = ctx.tape.add_binary(out, TAG_MUL(), self.id, sid)
+        return GradTensor(nid, True)
+
+    fn div_scalar(self, mut ctx: GradContext, s: tensor.Tensor[Float64]) -> GradTensor:
+        var a   = ctx.tape.values[self.id].copy()
+        var out = a.mul(tensor.reciprocal(s))   # a / s
+
+        var track = self.requires_grad and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(out)
+            return GradTensor(lid, False)
+
+        var sid = ctx.tape.add_leaf(s)
+        var nid = ctx.tape.add_binary(out, TAG_DIV(), self.id, sid)
+        return GradTensor(nid, True)
+
+
     fn neg(self, mut ctx: GradContext) -> GradTensor:
         var out = ctx.tape.values[self.id].mul_scalar(-1.0)
         var track = self.requires_grad and ctx.grad_enabled()
@@ -370,7 +527,7 @@ struct GradTensor(Copyable, Movable):
         return GradTensor(nid, track)
 
     fn square(self, mut ctx: GradContext) -> GradTensor:
-        var v = ctx.tape.values[self.id]
+        var v = ctx.tape.values[self.id].copy()
         var out = v.mul(v)
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(out, TAG_SQUARE(), self.id, 0.0, List[Int](), List[Int](), -1, False)
@@ -403,6 +560,79 @@ struct GradTensor(Copyable, Movable):
                 # Fallback to square if exp/log not in core.
                 return self.square(ctx)
 
+
+    fn pow_scalar(self, mut ctx: GradContext, p: GradTensor) -> GradTensor:
+        # read scalar value from p
+        var pt = ctx.tape.values[p.id].copy()
+        var pv = (pt._data[0] if len(pt._data) > 0 else 1.0)   # default to 1.0 if somehow empty
+
+        # Fast paths
+        if pv == 2.0:
+            return self.square(ctx)
+        elif pv == 1.0:
+            # identity (preserve requires_grad)
+            return GradTensor(self.id, self.requires_grad)
+        elif pv == 0.0:
+            var one = tensor.zeros(ctx.tape.values[self.id]._shape.copy()).add_scalar(1.0)
+            var lid = ctx.tape.add_leaf(one)
+            return GradTensor(lid, False)
+
+        # Integer exponent > 2 → repeated multiply to build the graph
+        var ip = Int(pv)
+        if Float64(ip) == pv and ip > 2:
+            var out_g = GradTensor(self.id, self.requires_grad)
+            var k = 1
+            while k < ip:
+                out_g = out_g.mul(ctx, GradTensor(self.id, self.requires_grad))
+                k = k + 1
+            # Tag as POWS for bookkeeping (optional)
+            var out_t = ctx.tape.values[out_g.id]
+            var track = self.requires_grad and ctx.grad_enabled()
+            var nid = (ctx.tape.add_unary(out_t, TAG_POWS(), self.id, pv, List[Int](), List[Int](), -1, False)
+                    if track else ctx.tape.add_leaf(out_t))
+            return GradTensor(nid, track)
+
+        # General scalar exponent (non-integer): use exp(p * log(x)), requires x > 0
+        # Build p as a constant GradTensor scalar for mul
+        var pconst = GradTensor.from_tensor(ctx, tensor.zeros(List[Int]([1])).add_scalar(pv), False)
+        # y = exp(p * log(x))
+        # NOTE: log requires positive inputs; if your data may be non-positive, guard/clip before.
+        var y = self.log(ctx).mul(ctx, pconst).exp(ctx)
+        return y
+
+    fn pow_scalar(self, mut ctx: GradContext, p: tensor.Tensor[Float64]) -> GradTensor:
+        # read scalar value
+        var pv = 1.0
+        if len(p._data) > 0:
+            pv = p._data[0]
+
+        # Fast paths (no need to create extra nodes)
+        if pv == 2.0:
+            return self.square(ctx)
+        if pv == 1.0:
+            return GradTensor(self.id, self.requires_grad)
+        if pv == 0.0:
+            var one = tensor.zeros(ctx.tape.values[self.id]._shape.copy()).add_scalar(1.0)
+            var lid = ctx.tape.add_leaf(one)
+            return GradTensor(lid, False)
+
+        # Integer exponent > 2 → build graph by repeated multiply
+        var ip = Int(pv)
+        if Float64(ip) == pv and ip > 2:
+            var out_g = GradTensor(self.id, self.requires_grad)
+            var k = 1
+            while k < ip:
+                out_g = out_g.mul(ctx, GradTensor(self.id, self.requires_grad))
+                k = k + 1
+            return out_g
+
+        # General exponent (non-integer): y = exp( pv * log(clamp(x)) )
+        # Guard domain of log (x > 0)
+        var x_safe = self.clip(ctx, 1e-12, 1.0e300)
+        # multiply by constant scalar provided as Tensor[Float64]
+        var pconst = tensor.zeros(List[Int]([1])).add_scalar(pv)     # scalar tensor
+        var y = x_safe.log(ctx).mul_scalar(ctx, pconst).exp(ctx)
+        return y
     # ---------- Reductions ----------
 
     # sum_all: reduce over all elements → scalar (Float64)
@@ -482,14 +712,14 @@ struct GradTensor(Copyable, Movable):
             var xm = x.sub(m)
             var sq = xm.mul(xm)
             var v  = tensor.mean(sq)                  # scalar
-            y = tensor.sqrt(v.add_scalar(eps))
+            y = v.add_scalar(eps).sqrt()
         else:
             # axis-wise
-            var m  = tensor.mean_axis(x, axis, True)  # keepdims=True to broadcast safely
+            var m  = x.mean( axis)  # keepdims=True to broadcast safely
             var xm = x.sub(m)
             var sq = xm.mul(xm)
-            var v  = tensor.mean_axis(sq, axis, keepdims)
-            y = tensor.sqrt(v.add_scalar(eps))
+            var v  = sq.mean( axis)
+            y = v.add_scalar(eps).sqrt()
 
         var track = self.requires_grad and ctx.grad_enabled()
         if not track:
@@ -524,7 +754,7 @@ struct GradTensor(Copyable, Movable):
         if not track:
             var lid = ctx.tape.add_leaf(yv)
             return GradTensor(lid, False)
-        # Store order in orders[nid] to help backward  
+        # Store order in orders[nid] to help backward
         var nid = ctx.tape.add_unary(
             yv, TAG_PERMUTE(), self.id,
             0.0, v._shape.copy(), order.copy(), -1, False
@@ -578,7 +808,7 @@ struct GradTensor(Copyable, Movable):
         )
         return GradTensor(nid, True)
 
- 
+
 
     fn where(self: GradTensor, mut ctx: GradContext, mask: tensor.Tensor[Int], other: GradTensor) -> GradTensor:
         return where(ctx, mask, self, other)
@@ -695,20 +925,6 @@ struct GradTensor(Copyable, Movable):
         else:
             return self.reshape(ctx, v._shape.copy())
 
-    # ---------- 2D MatMul (A:[M,K], B:[K,N] -> [M,N]) ----------
-  # ---------- Linalg ----------
-
-    # General matmul (batched/broadcasted);
-    fn matmul(self, mut ctx: GradContext, other: GradTensor) -> GradTensor:
-        var a = ctx.tape.values[self.id]
-        var b = ctx.tape.values[other.id]
-        var y = tensor.matmul(a, b)
-        var track = (self.requires_grad or other.requires_grad) and ctx.grad_enabled()
-        if not track:
-            var lid = ctx.tape.add_leaf(y)
-            return GradTensor(lid, False)
-        var nid = ctx.tape.add_binary(y, TAG_MATMUL2D(), self.id, other.id)
-        return GradTensor(nid, True)
 
     # Optional: pure 2D matmul
     fn matmul2d(self, mut ctx: GradContext, other: GradTensor) -> GradTensor:
@@ -725,7 +941,7 @@ struct GradTensor(Copyable, Movable):
 
     @always_inline
     fn has_matmul2d() -> Bool:
-        return True   
+        return True
 
     # ---------- Shape ops ----------
 
@@ -777,18 +993,33 @@ struct GradTensor(Copyable, Movable):
 
     # General matmul that defers to kernel matmul (supports batched/broadcasted)
     fn matmul(self, mut ctx: GradContext, other: GradTensor) -> GradTensor:
-        var a = ctx.tape.values[self.id]
-        var b = ctx.tape.values[other.id]
+        var a = ctx.tape.values[self.id] .copy()
+        var b = ctx.tape.values[other.id] .copy()
         var y = tensor.matmul(a, b)
         var track = (self.requires_grad or other.requires_grad) and ctx.grad_enabled()
         var nid = (ctx.tape.add_binary(y, TAG_MATMUL2D(), self.id, other.id)
                    if track else ctx.tape.add_leaf(y))
         return GradTensor(nid, track)
 
+    fn matmul(self, mut ctx: GradContext, other: tensor.Tensor[Float64]) -> GradTensor:
+        var a = ctx.tape.values[self.id].copy()         # Tensor[Float64]
+        var y = tensor.matmul(a, other)          # uses your kernel's matmul (2D/batched)
+
+        # track only if self requires grad (other is a plain Tensor with no grad)
+        var track = self.requires_grad and ctx.grad_enabled()
+        if not track:
+            var lid = ctx.tape.add_leaf(y)
+            return GradTensor(lid, False)
+
+        # Store `other` as a leaf so backward can read its value; it receives no gradient.
+        var bid = ctx.tape.add_leaf(other)
+        var nid = ctx.tape.add_binary(y, TAG_MATMUL2D(), self.id, bid)
+        return GradTensor(nid, True)
+
     # Tensordot using core op; axis = number of contracted dims (last of A, first of B)
     fn tensordot(self, mut ctx: GradContext, other: GradTensor, axis: Int = 1) -> GradTensor:
-        var a = ctx.tape.values[self.id]
-        var b = ctx.tape.values[other.id]
+        var a = ctx.tape.values[self.id].copy()
+        var b = ctx.tape.values[other.id].copy()
         var y = tensor.tensordot(a, b, axis)
         var track = (self.requires_grad or other.requires_grad) and ctx.grad_enabled()
         if not track:
@@ -801,10 +1032,10 @@ struct GradTensor(Copyable, Movable):
     # ---------- Piecewise family ----------
     fn maximum_scalar(self, mut ctx: GradContext, c: Float64) -> GradTensor:
         # y = max(x, c)    (forward via core op if exists or compose)
-        var x = ctx.tape.values[self.id]
+        var x = ctx.tape.values[self.id] .copy()
         # Prefer direct kernel op if available; otherwise compose: max(x,c) = where(x>=c, x, c)
         # Here we simply use kernel's maximum with scalar for clarity:
-        var y = tensor.maximum_scalar(x, c)
+        var y = x.maximum_scalar(c)
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_MAXS(), self.id, c, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
@@ -812,8 +1043,8 @@ struct GradTensor(Copyable, Movable):
 
     fn minimum_scalar(self, mut ctx: GradContext, c: Float64) -> GradTensor:
         # y = min(x, c)
-        var x = ctx.tape.values[self.id]
-        var y = tensor.minimum_scalar(x, c)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.minimum_scalar( c)
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_MINS(), self.id, c, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
@@ -821,8 +1052,8 @@ struct GradTensor(Copyable, Movable):
 
     fn relu(self, mut ctx: GradContext) -> GradTensor:
         # relu(x) = max(x, 0)
-        var x = ctx.tape.values[self.id]
-        var y = tensor.maximum_scalar(x, 0.0)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.maximum_scalar( 0.0)
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_RELU(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
@@ -830,9 +1061,9 @@ struct GradTensor(Copyable, Movable):
 
     fn leaky_relu(self, mut ctx: GradContext, alpha: Float64 = 0.01) -> GradTensor:
         # leaky_relu(x,a) = relu(x) + a * min(x,0)
-        var x = ctx.tape.values[self.id]
-        var pos = tensor.maximum_scalar(x, 0.0)
-        var neg = tensor.minimum_scalar(x, 0.0).mul_scalar(alpha)
+        var x = ctx.tape.values[self.id].copy()
+        var pos = x.maximum_scalar( 0.0)
+        var neg = x.minimum_scalar( 0.0).mul_scalar(alpha)
         var y = pos.add(neg)
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_LRELU(), self.id, alpha, List[Int](), List[Int](), -1, False)
@@ -853,7 +1084,7 @@ struct GradTensor(Copyable, Movable):
         var x = ctx.tape.values[self.id].copy()
         return to_int(x)
 
-    # Return a non-differentiable Float32 tensor 
+    # Return a non-differentiable Float32 tensor
     fn to_float32_value(self, mut ctx: GradContext) -> tensor.Tensor[Float32]:
         var x = ctx.tape.values[self.id].copy()
         return to_float32(x)
@@ -865,7 +1096,7 @@ struct GradTensor(Copyable, Movable):
         var n = len(x._data)
         var i = 0
         while i < n:
-            v.push_back(x._data[i])
+            v.append(x._data[i])
             i = i + 1
         return v
 
@@ -877,81 +1108,81 @@ struct GradTensor(Copyable, Movable):
 
     # ---------- Stage 4: Unary math ops ----------
     fn sqrt(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.sqrt(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.sqrt()
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_SQRT(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
         return GradTensor(nid, track)
 
     fn exp(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.exp(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.exp()
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_EXP(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
         return GradTensor(nid, track)
 
     fn log(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.log(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.log()
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_LOG(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
         return GradTensor(nid, track)
 
     fn tanh(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.tanh(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.tanh()
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_TANH(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
         return GradTensor(nid, track)
 
     fn sigmoid(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.sigmoid(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.sigmoid()
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_SIGMOID(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
         return GradTensor(nid, track)
 
     fn abs(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.abs(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.abs()
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_ABS(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
         return GradTensor(nid, track)
 
     fn sign(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.sign(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.sign()
         # zero-grad op
         var nid = ctx.tape.add_leaf(y)
         return GradTensor(nid, False)
 
     fn floor(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.floor(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.floor()
         var nid = ctx.tape.add_leaf(y)
         return GradTensor(nid, False)
 
     fn ceil(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.ceil(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.ceil()
         var nid = ctx.tape.add_leaf(y)
         return GradTensor(nid, False)
 
     fn round(self, mut ctx: GradContext) -> GradTensor:
-        var x = ctx.tape.values[self.id]
-        var y = tensor.round(x)
+        var x = ctx.tape.values[self.id].copy()
+        var y = x.round()
         var nid = ctx.tape.add_leaf(y)
         return GradTensor(nid, False)
 
     fn log1p(self, mut ctx: GradContext) -> GradTensor:
         var x = ctx.tape.values[self.id]
-        var y = tensor.log1p(x)
+        var y = x.log1p()
         var track = self.requires_grad and ctx.grad_enabled()
         var nid = (ctx.tape.add_unary(y, TAG_LOG1P(), self.id, 0.0, List[Int](), List[Int](), -1, False)
                    if track else ctx.tape.add_leaf(y))
@@ -987,10 +1218,6 @@ struct GradTensor(Copyable, Movable):
     fn log_softmax(self, mut ctx: GradContext, axis: Int) -> GradTensor:
         var ls = self.logsumexp(ctx, axis, True)
         return self.sub(ctx, ls)
-
-    # Access current tensor value from the active context
-    fn value(self, mut ctx: GradContext) -> tensor.Tensor[Float64]:
-        return ctx.tape.values[self.id]
 
     # clip: clamp values into [lo, hi] using existing scalar ops
     fn clip(self, mut ctx: GradContext, lo: Float64, hi: Float64) -> GradTensor:
@@ -1105,7 +1332,7 @@ struct GradTensor(Copyable, Movable):
     # clip: clamp values into [lo, hi] using existing scalar ops
     # Gradients:
     #   inside (lo < x < hi):    dL/dx = g_out
-    #   at/beyond bounds:    
+    #   at/beyond bounds:
     fn clip(self, mut ctx: GradContext, lo: Float64, hi: Float64) -> GradTensor:
         # Optional safety: if lo > hi,
         var l = lo
@@ -1136,6 +1363,7 @@ struct GradTensor(Copyable, Movable):
             var g_out = ctx.tape.grads[top_id].copy()
             var p0 = ctx.tape.parents[top_id][0]
             var p1 = ctx.tape.parents[top_id][1]
+            var p2 = ctx.tape.parents[top_id][2]
 
             if op == TAG_LEAF():
                 continue
@@ -1242,7 +1470,7 @@ struct GradTensor(Copyable, Movable):
                     stack.append(p0)
 
             elif op == TAG_SUB():
-       
+
                 if p0 >= 0:
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(g_out)
                     stack.append(p0)
@@ -1312,12 +1540,25 @@ struct GradTensor(Copyable, Movable):
                     stack.append(p0)
 
             elif op == TAG_MATMUL2D():
+                # y = a @ b  (2D × 2D)
+                if p0 >= 0:
+                    # dL/da = g_out @ b^T
+                    var bT = ctx.tape.values[p1].transpose2d()
+                    var ga = tensor.matmul2d(g_out, bT)
+                    ctx.tape.grads[p0] = ctx.tape.grads[p0].add(ga)
+                    stack.append(p0)
+                if p1 >= 0:
+                    # dL/db = a^T @ g_out
+                    var aT = ctx.tape.values[p0].transpose2d()
+                    var gb = tensor.matmul2d(aT, g_out)
+                    ctx.tape.grads[p1] = ctx.tape.grads[p1].add(gb)
+                    stack.append(p1)
 
             elif op == TAG_TENSORDOT():
                 var k = ctx.tape.axes[top_id].copy()
                 if p0 >= 0 or p1 >= 0:
-                    var a = ctx.tape.values[p0]
-                    var b = ctx.tape.values[p1]
+                    var a = ctx.tape.values[p0].copy()
+                    var b = ctx.tape.values[p1].copy()
                     var sa = a._shape.copy()
                     var sb = b._shape.copy()
                     var na = len(sa)
@@ -1338,11 +1579,11 @@ struct GradTensor(Copyable, Movable):
                     i = k
                     while i < nb:
                         b_outer = b_outer * sb[i]; i = i + 1
-                    var a2 = tensor.reshape(a, List[Int]([a_outer, a_inner]))
-                    var b2 = tensor.reshape(b, List[Int]([b_inner, b_outer]))
-                    var y2 = tensor.reshape(g_out, List[Int]([a_outer, b_outer]))
+                    var a2 = tensor.reshape(a, ([a_outer, a_inner]))
+                    var b2 = tensor.reshape(b, ([b_inner, b_outer]))
+                    var y2 = tensor.reshape(g_out, ([a_outer, b_outer]))
                     fn _t2(t: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
-                        return tensor.permute(t, List[Int]([1,0]))
+                        return tensor.permute(t, ([1,0]))
                     if p0 >= 0:
                         var g0_2d = tensor.matmul(y2, _t2(b2))
                         var g0 = tensor.reshape(g0_2d, sa)
@@ -1360,19 +1601,19 @@ struct GradTensor(Copyable, Movable):
                 var axis = ctx.tape.axes[top_id].copy()
                 # index leaf id was stashed in orders[top_id][0] as Float64; convert back to Int
                 var list_ids = ctx.tape.orders[top_id].copy()
-                var mid = list_ids[0]
-                var idx_f = ctx.tape.values[mid]
+                var mid = list_ids[0].copy()
+                var idx_f = ctx.tape.values[mid].copy()
                 var index = to_int(idx_f)
 
                 # dL/dsrc = gather(g_out, axis, index)
                 if p1 >= 0:
-                    var g_src = tensor.gather(g_out, axis, index)
+                    var g_src = tensor.gather(g_out, axis, (index))
                     ctx.tape.grads[p1] = ctx.tape.grads[p1].add(g_src)
                     stack.append(p1)
 
                 # dL/dself = g_out masked by zeros at overwritten positions
                 if p0 >= 0:
-                    var base = ctx.tape.values[p0]
+                    var base = ctx.tape.values[p0].copy()
                     var ones = tensor.zeros(base._shape.copy()).add_scalar(1.0)  # mask of ones
                     # zeros like src to scatter zeros into mask
                     var zsrc = tensor.zeros(ctx.tape.values[p1]._shape.copy())
@@ -1383,8 +1624,8 @@ struct GradTensor(Copyable, Movable):
 
             elif op == TAG_WHERE():
                 var list_ids = ctx.tape.orders[top_id].copy()
-                var mid = list_ids[0]
-                var m01 = ctx.tape.values[mid]
+                var mid = list_ids[0].copy()
+                var m01 = ctx.tape.values[mid].copy()
                 if p0 >= 0:
                     var ma = broadcast_to_shape(m01, ctx.tape.values[p0]._shape.copy())
                     var ga = g_out.mul(ma)
@@ -1401,7 +1642,7 @@ struct GradTensor(Copyable, Movable):
             elif op == TAG_MASKED_SELECT_ELEM():
                 # y = x * (mask>0); mask stored as Float64 leaf in p1
                 if p0 >= 0:
-                    var mf = ctx.tape.values[p1]
+                    var mf = ctx.tape.values[p1].copy()
                     var mi = to_int(mf)
                     var m01 = tensor.to_float64(mi.ne_scalar(0))
                     var gin = g_out.mul(m01)
@@ -1412,7 +1653,7 @@ struct GradTensor(Copyable, Movable):
                 # Recover index leaf id from orders slot
                 var list_ids = ctx.tape.orders[top_id].copy()
                 var idx_id = list_ids[0]
-                var idx_f = ctx.tape.values[idx_id]
+                var idx_f = ctx.tape.values[idx_id].copy()
                 var idx = to_int(idx_f)
                 # Grad wrt base (p0): mask out overwritten positions
                 if p0 >= 0:
@@ -1441,12 +1682,12 @@ struct GradTensor(Copyable, Movable):
                     while i < k:
                         var j = js[i]
                         # extract slice i of grad_out along axis, then scatter_add into position j
-                        var slice_i = tensor.index_axis(g_out, axis, i)
+                        var slice_i = g_out.index_axis( axis, i)
                         var slice_i_exp = tensor.unsqueeze(slice_i, axis)
                         # build full index tensor filled with j
                         var idx_full = tensor.zeros(shp).add_scalar(Float64(j))
                         var idx_int  = to_int(idx_full)
-                        gin = tensor.scatter_add(gin, axis, idx_int, slice_i_exp)
+                        gin = gin.scatter_add( axis, idx_int, slice_i_exp)
                         i = i + 1
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
@@ -1456,18 +1697,18 @@ struct GradTensor(Copyable, Movable):
                  # parent: p0 = x ; p1 holds index leaf (Float64)
                 var axis = ctx.tape.axes[top_id].copy()
                 var idx_leaf = p1
-           
-                var idx_f = ctx.tape.values[idx_leaf]
+
+                var idx_f = ctx.tape.values[idx_leaf].copy()
                 var index = to_int(idx_f)
 
                 if p0 >= 0:
                     # dL/dx = scatter_add(axis, index, g_out)
-                    var x = ctx.tape.values[p0]
+                    var x = ctx.tape.values[p0].copy()
                     var gx = tensor.zeros(x._shape.copy())
                     gx = gx.scatter_add(axis, index, g_out)   #kernel scatter_add
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gx)
                     stack.append(p0)
-            
+
 
             elif op == TAG_INDEX_AXIS():
                 # y = index_axis(x, axis, idx); dx is g_out placed at idx along axis, zeros elsewhere.
@@ -1481,20 +1722,38 @@ struct GradTensor(Copyable, Movable):
                     var idx_full = tensor.zeros(shp).add_scalar(idx_scalar)   # Float64
                     var idx_int = to_int(idx_full)                             # Tensor[Int]
                     var zeros = tensor.zeros(shp)
-                    var gin = tensor.scatter_add(zeros, axis, idx_int, gout)
+                    var gin = zeros.scatter_add( axis, idx_int, gout)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
                 # y = gather(x, axis, index); grads: dx = scatter_add(grad_y, axis, index)
                 if p0 >= 0:
                     var axis = ctx.tape.axes[top_id].copy()
-                    var idx_f = ctx.tape.values[p1]              # stored as Float64
+                    var idx_f = ctx.tape.values[p1].copy()              # stored as Float64
                     var idx = to_int(idx_f)                      # cast back to Int indices
-                    var x = ctx.tape.values[p0]
+                    var x = ctx.tape.values[p0].copy()
                     var zeros = tensor.zeros(x._shape.copy())
-                    var gin = tensor.scatter_add(zeros, axis, idx, g_out)
+                    var gin = zeros.scatter_add( axis, idx, g_out)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
+
+
+            elif op == TAG_DIV():
+                # y = a / b
+                if p0 >= 0:
+                    # dL/da = g_out * (1 / b)
+                    var invb = tensor.reciprocal(ctx.tape.values[p1])
+                    var ga = g_out.mul(invb)
+                    ctx.tape.grads[p0] = ctx.tape.grads[p0].add(ga)
+                    stack.append(p0)
+                if p1 >= 0:
+                    # dL/db = -g_out * a / (b*b)
+                    var a_val = ctx.tape.values[p0].copy()
+                    var invb = tensor.reciprocal(ctx.tape.values[p1])
+                    var invb2 = invb.mul(invb)
+                    var gb = g_out.mul(a_val).mul(invb2).mul_scalar(-1.0)
+                    ctx.tape.grads[p1] = ctx.tape.grads[p1].add(gb)
+                    stack.append(p1)
 
 
             elif op == TAG_REPEAT():
@@ -1511,32 +1770,32 @@ struct GradTensor(Copyable, Movable):
                     i = 0
                     while i < len(shp):
                         if reps[i] > 1:
-                            gout2 = tensor.sum_axis(gout2, axis=(2*i + 1), keepdims=True)
+                            gout2 = gout2.sum( axis=(2*i + 1), keepdims=True)
                         i = i + 1
-                    var gin = tensor.reshape(gout2, shp)
+                    var gin = gout2.reshape( shp)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
                 if p0 >= 0:
-                    var b = ctx.tape.values[p1]
-                    var bt = _apply_permute(b, List[Int]([1, 0]))
+                    var b = ctx.tape.values[p1].copy()
+                    var bt = _apply_permute(b, ([1, 0]))
                     var dA = tensor.matmul(g_out, bt)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(dA)
                     stack.append(p0)
                 if p1 >= 0:
-                    var a = ctx.tape.values[p0]
-                    var at = _apply_permute(a, List[Int]([1, 0]))
+                    var a = ctx.tape.values[p0].copy()
+                    var at = _apply_permute(a, ([1, 0]))
                     var dB = tensor.matmul(at, g_out)
                     ctx.tape.grads[p1] = ctx.tape.grads[p1].add(dB)
                     stack.append(p1)
 
             elif op == TAG_MAXS():
                 if p0 >= 0:
-                    var c = ctx.tape.scalars[top_id]
+                    var c = ctx.tape.scalars[top_id].copy()
                     var x = ctx.tape.values[p0].copy()
-                    var y = ctx.tape.values[top_id]      # y = max(x, c)
+                    var y = ctx.tape.values[top_id].copy()      # y = max(x, c)
                     # mask = (y == x)
-                    var mask = tensor.eq(y, x)
+                    var mask = y.eq( x)
                     var zeros = tensor.zeros(x._shape.copy())
                     var gin = tensor.where(mask, g_out, zeros)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
@@ -1545,10 +1804,10 @@ struct GradTensor(Copyable, Movable):
             elif op == TAG_MINS():
                 # scalar s was saved in scalars[top_id]
                 if p0 >= 0:
-                    var s = ctx.tape.scalars[top_id]
-                    var x = ctx.tape.values[p0]
-             
-                    var m = to_int(x.lt_scalar(s))
+                    var s = ctx.tape.scalars[top_id].copy()
+                    var x = ctx.tape.values[p0].copy()
+
+                    var m =  (x.lt_scalar(s))
                     var mf = tensor.to_float64(m)
                     var gin = g_out.mul(mf)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
@@ -1556,28 +1815,28 @@ struct GradTensor(Copyable, Movable):
 
             elif op == TAG_SQRT():
                 if p0 >= 0:
-                    var y = ctx.tape.values[top_id]         # y = sqrt(x)
-                    var gin = g_out.mul( tensor.mul_scalar( tensor.reciprocal(y), 0.5) )
+                    var y = ctx.tape.values[top_id].copy()         # y = sqrt(x)
+                    var gin = g_out.mul( tensor.reciprocal(y).mul_scalar(  0.5) )
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
             elif op == TAG_EXP():
                 if p0 >= 0:
-                    var y = ctx.tape.values[top_id]         # y = exp(x)
+                    var y = ctx.tape.values[top_id].copy()         # y = exp(x)
                     var gin = g_out.mul(y)                  # d/dx exp = exp
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
             elif op == TAG_LOG():
                 if p0 >= 0:
-                    var x = ctx.tape.values[p0]
-                    var gin = g_out.div(x)                  # d/dx log = 1/x
+                    var x = ctx.tape.values[p0].copy()
+                    var gin = tensor.div_t(g_out,x)                  # d/dx log = 1/x
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
             elif op == TAG_TANH():
                 if p0 >= 0:
-                    var y = ctx.tape.values[top_id]         # y = tanh(x)
+                    var y = ctx.tape.values[top_id].copy()         # y = tanh(x)
                     var one = tensor.zeros(y._shape.copy()).add_scalar(1.0)
                     var gin = g_out.mul( one.sub( y.mul(y) ) )  # 1 - y^2
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
@@ -1585,7 +1844,7 @@ struct GradTensor(Copyable, Movable):
 
             elif op == TAG_SIGMOID():
                 if p0 >= 0:
-                    var y = ctx.tape.values[top_id]         # y = sigmoid(x)
+                    var y = ctx.tape.values[top_id].copy()       # y = sigmoid(x)
                     var one = tensor.zeros(y._shape.copy()).add_scalar(1.0)
                     var gin = g_out.mul( y.mul( one.sub(y) ) )   # y*(1-y)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
@@ -1593,24 +1852,24 @@ struct GradTensor(Copyable, Movable):
 
             elif op == TAG_ABS():
                 if p0 >= 0:
-                    var x = ctx.tape.values[p0]
-                    var signx = tensor.sign(x)
+                    var x = ctx.tape.values[p0].copy()
+                    var signx = x.sign()
                     var gin = g_out.mul(signx)              # subgradient; at 0 => 0
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
             elif op == TAG_LOG1P():
                 if p0 >= 0:
-                    var x = ctx.tape.values[p0]
+                    var x = ctx.tape.values[p0].copy()
                     var one = tensor.zeros(x._shape.copy()).add_scalar(1.0)
-                    var gin = g_out.div( one.add(x) )       # 1/(1+x)
+                    var gin = tensor.div_t(g_out, one.add(x) )       # 1/(1+x)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
             elif op == TAG_EXPM1():
                 if p0 >= 0:
-                    var x = ctx.tape.values[p0]
-                    var ex = tensor.exp(x)         # ∂/∂x expm1(x) = exp(x)
+                    var x = ctx.tape.values[p0].copy()
+                    var ex = x.exp()         # ∂/∂x expm1(x) = exp(x)
                     var gin = g_out.mul(ex)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
@@ -1622,10 +1881,10 @@ struct GradTensor(Copyable, Movable):
                     var keep = ctx.tape.keep[top_id].copy()
                     var x = ctx.tape.values[p0].copy()
                     if axis < 0:
-                        var m = tensor.mean(x)               # scalar
+                        var m = x.mean()               # scalar
                         var xm = x.sub(m)
-                        var v  = tensor.mean(xm.mul(xm))
-                        var sd = tensor.sqrt(v.add_scalar(eps))
+                        var v  = xm.mul(xm.mean())
+                        var sd = v.add_scalar(eps).sqrt()
                         var n = 1
                         var i = 0
                         while i < len(x._shape):
@@ -1633,21 +1892,21 @@ struct GradTensor(Copyable, Movable):
                             i = i + 1
                         var nf = Float64(n)
                         var coeff = tensor.zeros(sd._shape.copy()).add_scalar(1.0 / nf)
-                        var gscale = coeff.div(sd)           # 1/(n*sd)
+                        var gscale = tensor.div_t(coeff,sd)           # 1/(n*sd)
                         var gout = g_out.mul(gscale)         # scalar scale
                         var gin = xm.mul(gout)               # (x-m)/(n*sd) * g_out
                         ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                         stack.append(p0)
                     else:
-                        var mk = tensor.mean_axis(x, axis, True)  # keepdims for xm
+                        var mk = x.mean(axis)  # keepdims for xm
                         var xm = x.sub(mk)
                         var sq = xm.mul(xm)
-                        var v  = tensor.mean_axis(sq, axis, True) # keepdims True for sd broadcast
-                        var sd = tensor.sqrt(v.add_scalar(eps))
+                        var v  = sq.mean(axis) # keepdims True for sd broadcast
+                        var sd = v.add_scalar(eps).sqrt()
                         var n = x._shape[axis]
                         var nf = Float64(n)
                         var coeff = tensor.zeros(sd._shape.copy()).add_scalar(1.0 / nf)
-                        var gscale = coeff.div(sd)           # [.. keepdims ..]
+                        var gscale = tensor.div_t(coeff,sd)           # [.. keepdims ..]
                         var gout = g_out.copy()
                         if not keep:
                             gout = tensor.unsqueeze(gout, axis)
@@ -1657,23 +1916,23 @@ struct GradTensor(Copyable, Movable):
                         stack.append(p0)
 
                 if p0 >= 0:
-                    var x = ctx.tape.values[p0]
-                    var gin = g_out.mul( tensor.exp(x) )    # d/dx expm1 = exp
+                    var x = ctx.tape.values[p0].copy()
+                    var gin = g_out.mul( x.exp() )    # d/dx expm1 = exp
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
                     stack.append(p0)
 
             elif op == TAG_CLAMP_DISABLED():
                 if p0 >= 0:
-                    var x  = ctx.tape.values[p0]
-                    var lo = ctx.tape.scalars[top_id]       # min
+                    var x  = ctx.tape.values[p0].copy()
+                    var lo = ctx.tape.scalars[top_id].copy()       # min
                     var hi = ctx.tape.orders[top_id][0]     # store hi in orders[0] as Float64 bitcast? not safe
 
                 if p0 >= 0:
                     var c = ctx.tape.scalars[top_id]
                     var x = ctx.tape.values[p0].copy()
-                    var y = ctx.tape.values[top_id]      # y = min(x, c)
+                    var y = ctx.tape.values[top_id].copy()      # y = min(x, c)
                     # mask = (y == x)
-                    var mask = tensor.eq(y, x)
+                    var mask = y.eq( x)
                     var zeros = tensor.zeros(x._shape.copy())
                     var gin = tensor.where(mask, g_out, zeros)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
@@ -1683,7 +1942,7 @@ struct GradTensor(Copyable, Movable):
                 if p0 >= 0:
                     var x = ctx.tape.values[p0].copy()
                     var y = ctx.tape.values[top_id].copy()      # y = max(x, 0)
-                    var mask = tensor.eq(y, x)           # true where x>0 (ties at 0 => subgrad=0)
+                    var mask = y.eq( x)           # true where x>0 (ties at 0 => subgrad=0)
                     var zeros = tensor.zeros(x._shape.copy())
                     var gin = tensor.where(mask, g_out, zeros)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
@@ -1693,18 +1952,61 @@ struct GradTensor(Copyable, Movable):
                 if p0 >= 0:
                     var a = ctx.tape.scalars[top_id].copy()     # slope
                     var x = ctx.tape.values[p0].copy()
-                    var y_relu = tensor.maximum_scalar(x, 0.0)
-                    var mask_pos = tensor.eq(y_relu, x)  # x > 0
+                    var y_relu = x.maximum_scalar( 0.0)
+                    var mask_pos = y_relu.eq( x)  # x > 0
                     var zeros = tensor.zeros(x._shape.copy())
                     var part_pos = tensor.where(mask_pos, g_out, zeros)
 
                     # negative part contributes alpha where x < 0:
-                    var y_min0 = tensor.minimum_scalar(x, 0.0)  # (<=0)
-                    var mask_neg = tensor.eq(y_min0, x)         # x < 0
+                    var y_min0 = x.minimum_scalar(0.0)  # (<=0)
+                    var mask_neg = y_min0.eq( x)         # x < 0
                     var part_neg = tensor.where(mask_neg, g_out.mul_scalar(a), zeros)
 
                     var gin = part_pos.add(part_neg)
                     ctx.tape.grads[p0] = ctx.tape.grads[p0].add(gin)
+                    stack.append(p0)
+
+            elif op == TAG_CLIP() or op == TAG_CLAMP() or op == TAG_CLAMP_DISA():
+                # y = clamp(x, lo, hi)
+                # والدها طبق نوار: p0=x, p1=lo, p2=hi
+                var x  = ctx.tape.values[p0].copy()
+                var lo = ctx.tape.values[p1].copy()
+                var hi = ctx.tape.values[p2].copy()
+
+                # ماسک‌ها: داخل بازه، زیر lo، بالای hi
+                # فرض: API تنسورها has: gt, lt, and, cast_to_float, where, mul, add, etc.
+                var m_in  = tensor.and_t(x.gt(lo), x.lt( hi))      # (x>lo) & (x<hi)
+                var m_lo  = x.lt( lo)                                    # x<lo
+                var m_hi  = x.gt( hi)                                    # x>hi
+
+                # dL/dx: g_out در ناحیه درون‌بازه عبور می‌کند، بیرون بازه صفر
+                if p0 >= 0:
+                    var pass_through = tensor.where(m_in, g_out, tensor.zeros(g_out.shape()))
+                    ctx.tape.grads[p0] = ctx.tape.grads[p0].add(pass_through)
+                    stack.append(p0)
+
+                # dL/dlo: اگر x<lo آوت‌پوت دقیقاً lo است ⇒ dy/dlo = 1
+                if p1 >= 0:
+                    var g_lo = tensor.where(m_lo, g_out, tensor.zeros(g_out.shape()))
+                    ctx.tape.grads[p1] = ctx.tape.grads[p1].add(g_lo)
+                    stack.append(p1)
+
+                # dL/dhi: اگر x>hi آوت‌پوت دقیقاً hi است ⇒ dy/dhi = 1
+                if p2 >= 0:
+                    var g_hi = tensor.where(m_hi, g_out, tensor.zeros(g_out.shape()))
+                    ctx.tape.grads[p2] = ctx.tape.grads[p2].add(g_hi)
+                    stack.append(p2)
+
+            elif op == TAG_CLIP() or op == TAG_CLAMP_DISABLED():
+                # y = clamp(x, lo, hi)
+                var x  = ctx.tape.values[p0].copy()
+                var lo = ctx.tape.values[p1].copy()
+                var hi = ctx.tape.values[p2].copy()
+
+                var m_in = tensor.and_t(x.gt( lo), x.lt( hi))
+                if p0 >= 0:
+                    var pass_grad = tensor.where(m_in, g_out, tensor.zeros(g_out.shape()))
+                    ctx.tape.grads[p0] = ctx.tape.grads[p0].add(pass_grad)
                     stack.append(p0)
 
         # Final consistency: coerce grad shapes to value shapes
@@ -1764,11 +2066,11 @@ fn nll_loss(
     # -log p_y
     var picked = log_probs.gather(ctx, axis, target).neg(ctx)
 
-    # class weighting 
+    # class weighting
     var use_w = len(class_weight._shape) > 0
     if use_w:
         var wgt  = GradTensor.from_tensor(ctx, class_weight, False)  # [C]
-        var wsel = wgt.gather(ctx, 0, target)                  
+        var wsel = wgt.gather(ctx, 0, target)
         picked = picked.mul(ctx, wsel)
 
     return _reduce_loss(ctx, picked, reduction)
@@ -1790,7 +2092,7 @@ fn cross_entropy(
 
 # Binary Cross-Entropy with logits (numerically stable) + optional pos_weight + reduction
 # logits: GradTensor (هر شکلی), target: Tensor[Float64]
-# pos_weight: Tensor[Float64] (broadcastable به شکل logits) 
+# pos_weight: Tensor[Float64] (broadcastable به شکل logits)
 fn bce_with_logits(
     mut ctx: GradContext,
     logits: GradTensor,
@@ -1832,7 +2134,7 @@ fn binary_cross_entropy(
     weight: tensor.Tensor[Float64] = tensor.zeros(List[Int]([0])).add_scalar(0.0),
     reduction: String = String("mean")
 ) -> GradTensor:
-    var p = probs.clip(ctx, eps, 1.0 - eps)              
+    var p = probs.clip(ctx, eps, 1.0 - eps)
     var t = GradTensor.from_tensor(ctx, target, False)
 
     var shape = ctx.tape.values[p.id]._shape.copy()
@@ -1844,7 +2146,7 @@ fn binary_cross_entropy(
     var term_neg = one.sub(ctx, t).mul(ctx, one.sub(ctx, p).log(ctx)).neg(ctx)
     var loss     = term_pos.add(ctx, term_neg)
 
-   
+
     var use_w = len(weight._shape) > 0
     if use_w:
         var w = GradTensor.from_tensor(ctx, weight, False)
@@ -1891,3 +2193,21 @@ fn mask_or(a: tensor.Tensor[Int], b: tensor.Tensor[Int]) -> tensor.Tensor[Int]:
     var fb = tensor.to_float64(b)
     var s = fa.add(fb)
     return to_int(s.ne_scalar(0))
+
+@always_inline
+fn to_int(x: tensor.Tensor[Float64]) -> tensor.Tensor[Int]:
+    # Convert Float64 tensor to Int tensor with the same shape.
+    var shp = x.shape().copy()
+    var n = len(x._data)
+
+    # Allocate by (shape, fill) to avoid ctor ambiguity.
+    var out = tensor.Tensor[Int](shp, Int(0))
+
+    var i = 0
+    while i < n:
+        # Optional strict check if you expect true integers:
+        # assert(x._data[i] == Float64(Int(x._data[i])))
+        out._data[i] = Int(x._data[i])
+        i = i + 1
+
+    return out.copy()
