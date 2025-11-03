@@ -19,7 +19,7 @@ fn _be32_from_int(x: Int) -> List[UInt8]:
     out.append(UInt8((x >> 8) & 255))
     out.append(UInt8(x & 255))
     return out.copy()
- 
+
 
 @always_inline
 fn _ceil_div(a: Int, b: Int) -> Int:
@@ -39,7 +39,7 @@ fn crc32(bytes: List[UInt8], start: Int, end: Int) -> Int:
         i += 1
     return crc ^ 0xFFFFFFFF
 
- 
+
 
 # ---- Bit packers ---- #
 fn _pack_bits_from_u8(values: List[UInt8], bits: Int, count: Int) -> List[UInt8]:
@@ -142,9 +142,9 @@ struct HC:
     var head: List[Int]; var prev: List[Int]
     fn __init__(out self, n: Int):
         self.head = List[Int](); self.prev = List[Int]()
-        var i = 0;  
+        var i = 0;
         while i < 65536: self.head.append(-1); i += 1
-        i = 0; 
+        i = 0;
         while i < n: self.prev.append(-1); i += 1
 fn _insert(mut hc: HC, data: List[UInt8], pos: Int) -> None:
     if pos + 2 >= len(data): return
@@ -159,7 +159,7 @@ fn _find_best(hc: HC, data: List[UInt8], pos: Int, wnd: Int, max_len: Int, chain
     while cur >= 0 and chain < chain_cap and (pos - cur) <= max_back:
         var j = 0
         while j < max_len and pos + j < len(data) and data[cur + j] == data[pos + j]: j += 1
-        if j >= 3 and j > best_len: best_len = j; best_dist = pos - cur; 
+        if j >= 3 and j > best_len: best_len = j; best_dist = pos - cur;
         if best_len == max_len: break
         cur = hc.prev[cur]; chain += 1
     return (best_len, best_dist)
@@ -281,14 +281,14 @@ struct Huff(Copyable, Movable):
     var count:        List[Int]
     var values:       List[Int]
     var max_bits:     Int
- 
+
     fn __init__(out self):
         self.first_code   = List[Int]()
         self.first_symbol = List[Int]()
         self.count        = List[Int]()
         self.values       = List[Int]()
         self.max_bits     = 0
-        
+
     fn __copyinit__(out self, other: Self):
         self.first_code   = other.first_code.copy()
         self.first_symbol = other.first_symbol.copy()
@@ -299,7 +299,7 @@ struct Huff(Copyable, Movable):
 
 fn _build_huffman(code_lengths: List[Int], max_bits: Int) -> (Bool, Huff):
     var h = Huff(); h.max_bits = max_bits
-    var count = List[Int](); var i = 0; 
+    var count = List[Int](); var i = 0;
     while i <= max_bits: count.append(0); i += 1
     var n = len(code_lengths); var sym = 0; var values = List[Int]()
     while sym < n:
@@ -307,13 +307,13 @@ fn _build_huffman(code_lengths: List[Int], max_bits: Int) -> (Bool, Huff):
         if l < 0 or l > max_bits: return (False, h.copy())
         if l > 0: count[l] = count[l] + 1
         sym += 1
-    var first_code = List[Int](); var first_symbol = List[Int](); i = 0; 
+    var first_code = List[Int](); var first_symbol = List[Int](); i = 0;
     while i <= max_bits: first_code.append(0); first_symbol.append(0); i += 1
     var code = 0; var s = 0; i = 1
     while i <= max_bits:
         first_code[i] = code; first_symbol[i] = s
         code = (code + count[i]) << 1; s += count[i]; i += 1
-    var next = List[Int](); i = 0; 
+    var next = List[Int](); i = 0;
     while i <= max_bits: next.append(0); i += 1
     sym = 0
     while sym < n:
@@ -332,12 +332,12 @@ struct CLE(Copyable, Movable):
     var sym:   Int
     var ebits: Int
     var extra: Int
- 
+
     fn __init__(out self, sym: Int = 0, ebits: Int = 0, extra: Int = 0):
         self.sym   = sym
         self.ebits = ebits
         self.extra = extra
- 
+
     fn __copyinit__(out self, other: Self):
         self.sym   = other.sym
         self.ebits = other.ebits
@@ -358,7 +358,6 @@ fn _rle_len_stream(lens: List[Int]) -> List[CLE]:
                 run += 1
                 j += 1
 
-            # بهینه: برای 3..10 از کُد 17 استفاده کن؛ برای 11..138 از کُد 18
             if run >= 11:
                 out.append(CLE(18, 7, run - 11))        # repeat zero 11..138
             elif run >= 3:
@@ -457,9 +456,9 @@ fn deflate_dynamic_stream(data: List[UInt8]) -> List[UInt8]:
     while last_dist >= 0 and dist[last_dist] == 0: last_dist -= 1
     if last_dist < 0: last_dist = 0
 
-    var HLIT  = last_lit + 1 - 257; 
+    var HLIT  = last_lit + 1 - 257;
     if HLIT  < 0: HLIT  = 0
-    var HDIST = last_dist + 1;      
+    var HDIST = last_dist + 1;
     if HDIST < 1: HDIST = 1
 
     var lit_len  = _lens_from_hist(lit,  15)
@@ -478,7 +477,7 @@ fn deflate_dynamic_stream(data: List[UInt8]) -> List[UInt8]:
 
     var last_cl = 18
     while last_cl >= 0 and cl_len[ORDER[last_cl]] == 0: last_cl -= 1
-    var HCLEN = last_cl + 1 - 4; 
+    var HCLEN = last_cl + 1 - 4;
     if HCLEN < 0: HCLEN = 0
 
     var okcl  = _build_huffman(cl_len, 7)
@@ -576,7 +575,7 @@ fn _le32(x: Int) -> List[UInt8]:
 fn zlib_stored(data: List[UInt8]) -> List[UInt8]:
     var out = List[UInt8]()
 
-    # CMF/FLG معتبر (بدون فشرده‌سازی تاثیری در این بایت‌ها ندارد، فقط باید mod 31 درست باشد)
+
     var CMF = 0x78
     var FLG = 0
     var t = 0
@@ -627,7 +626,7 @@ fn zlib_deflate(data: List[UInt8], mode: Int) -> List[UInt8]:
     elif mode == 1:
         var out = List[UInt8](); _zlib_header(out)
         var defl = deflate_fixed_stream(data.copy())
-        var i = 0; 
+        var i = 0;
         while i < len(defl): out.append(defl[i]); i += 1
         _zlib_footer(data, out); return out.copy()
     else: return zlib_stored(data.copy())
@@ -642,12 +641,12 @@ fn _fixed_code_len(sym: Int) -> Int:
 
 fn _bitcost_fixed(bytes: List[UInt8]) -> Int:
     # cost of encoding bytes as literals under fixed huffman + end-of-block
-    var hist = List[Int](); var i = 0; 
+    var hist = List[Int](); var i = 0;
     while i < 288: hist.append(0); i += 1
-    i = 0; 
+    i = 0;
     while i < len(bytes): hist[Int(bytes[i])] = hist[Int(bytes[i])] + 1; i += 1
     hist[256] = hist[256] + 1
-    var cost = 0; i = 0; 
+    var cost = 0; i = 0;
     while i < 288:
         var c = hist[i]
         if c > 0: cost += c * _fixed_code_len(i)
@@ -657,11 +656,11 @@ fn _bitcost_fixed(bytes: List[UInt8]) -> Int:
 @always_inline
 fn _paeth(a: Int, b: Int, c: Int) -> Int:
     var p = a + b - c
-    var pa = p - a; 
+    var pa = p - a;
     if pa < 0: pa = -pa
-    var pb = p - b; 
+    var pb = p - b;
     if pb < 0: pb = -pb
-    var pc = p - c; 
+    var pc = p - c;
     if pc < 0: pc = -pc
     if pa <= pb and pa <= pc: return a
     if pb <= pc: return b
@@ -754,7 +753,7 @@ fn _append_chunk(mut outList: List[UInt8],
     var crc_val = crc32(outList, crc_start, len(outList))
     var C = _be32_from_int(crc_val)
     outList.append(C[0]); outList.append(C[1]); outList.append(C[2]); outList.append(C[3])
- 
+
 
 
 # ---- Main encode ---- #
@@ -766,7 +765,7 @@ fn png_from_hwc_u8(width: Int, height: Int, channels: Int, data: List[UInt8],
     if channels < 1 or channels > 4: return (False, List[UInt8]())
     if len(data) != width * height * channels: return (False, List[UInt8]())
 
-    # فقط 8 بیت و بدون پالت/بدون Adam7
+
     var bit_depth = 8
     var ctype = 2   # فرض: RGB
     if channels == 1: ctype = 0  # Gray
@@ -780,7 +779,6 @@ fn png_from_hwc_u8(width: Int, height: Int, channels: Int, data: List[UInt8],
     # print("[png] begin(simple) W=", width, " H=", height, " C=", channels, " data.len=", len(data))
     # print("[png] mode= direct  ctype=", ctype, " bit_depth=", bit_depth, " bpp=", bpp, " interlace=0 filter=0 zlib=stored")
 
-    # اسکن‌لاین‌ها با فیلتر=0
     var scan = _build_scan_filtered(width, height, bytes_per_sample, channels, data.copy(), 0)
     # print("[png] scan.len=", len(scan))
 
