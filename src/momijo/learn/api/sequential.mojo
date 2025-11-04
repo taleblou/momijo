@@ -11,7 +11,7 @@
 # Notes:
 #   - English-only comments. No wildcards in imports. var-only; no globals.
 #   - Keeps your public API stable and fixes common pitfalls (copy semantics,
-#     robust min/max accumulation, forward/run symmetry, eval-mode copy). 
+#     robust min/max accumulation, forward/run symmetry, eval-mode copy).
 
 from collections.list import List
 from momijo.tensor import tensor
@@ -39,18 +39,16 @@ fn _clamp_index(i: Int, lo: Int, hi: Int) -> Int:
     return v
 
 # -----------------------------------------------------------------------------
-# Sequential (rich API)
+# Sequential (rich API, copy-safe)
 # -----------------------------------------------------------------------------
 struct Sequential(Copyable, Movable):
-    # Ordered list of modules applied one after another.
     var modules: List[Module]
 
     fn __init__(out self):
         self.modules = List[Module]()
 
     fn __copyinit__(out self, other: Self):
-        # value semantics for the module list
-        self.modules = other.modules.copy()
+        self.modules = other.modules.copy()  # value semantics
 
     # -------------------------- mutation --------------------------
     fn add(mut self, m: Module) -> None:
@@ -64,7 +62,7 @@ struct Sequential(Copyable, Movable):
         while k < i:
             out_list.append(self.modules[k])
             k = k + 1
-        out_list.append(m.copy())
+        out_list.append(m)
         while k < n:
             out_list.append(self.modules[k])
             k = k + 1
@@ -89,7 +87,7 @@ struct Sequential(Copyable, Movable):
         var n = len(self.modules)
         if index < 0 or index >= n:
             return
-        self.modules[index] = m.copy()
+        self.modules[index] = m
 
     # -------------------------- accessors --------------------------
     fn len(self) -> Int:
@@ -97,12 +95,9 @@ struct Sequential(Copyable, Movable):
 
     fn get(self, index: Int) -> Module:
         var n = len(self.modules)
-        if n == 0:
-            # Fallback: assume Module() default-constructible in your codebase
-            var dummy = Module()
-            return dummy.copy()
+        assert(n > 0 and "Sequential.get called on empty module list")
         var i = _clamp_index(index, 0, n - 1)
-        return self.modules[i].copy()
+        return self.modules[i]
 
     fn to_list(self) -> List[Module]:
         var out_list = List[Module]()
@@ -111,28 +106,35 @@ struct Sequential(Copyable, Movable):
         while i < n:
             out_list.append(self.modules[i])
             i = i + 1
-        return out_list.copy()
+        return out_list
 
     # -------------------------- execution --------------------------
-    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(mut self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        var n = len(self.modules)
+        if n == 0:
+            return x.copy()
         var out = x.copy()
         var i = 0
-        var n = len(self.modules)
         while i < n:
-            var m = self.modules[i].copy()
-            out = m.forward(out)
+            var m = self.modules[i].copy()        # take a mutable lvalue copy
+            out = m.forward(out)           # call mutating forward
+            self.modules[i] = m.copy()            # write back in case state changed
             i = i + 1
         return out.copy()
 
     fn forward(mut self, mut ctx: GradContext, x: GradTensor) -> GradTensor:
-        var out = x.copy()  
-        var i = 0
         var n = len(self.modules)
+        if n == 0:
+            return x.copy()
+        var out = x.copy()
+        var i = 0
         while i < n:
-            # Call the GradTensor variant: forward(ctx, GradTensor)
-            out = self.modules[i].forward(ctx, out)
+            var m = self.modules[i].copy()             # mutable lvalue
+            out = m.forward(ctx, out)           # mutating forward with ctx
+            self.modules[i] = m.copy()                 # persist potential state changes
             i = i + 1
-        return out.copy()  
+        return out.copy()
+
 
     fn run(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         return self.forward(x)
@@ -153,8 +155,7 @@ struct Sequential(Copyable, Movable):
     # -------------------------- (de)serialization --------------------------
     fn state_dict(self) -> String:
         var n = len(self.modules)
-        var s = String("{\"type\":\"Sequential\",\"num_modules\":") + String(n) + String(",\"children\":")
-        s = s + String("[")
+        var s = String("{\"type\":\"Sequential\",\"num_modules\":") + String(n) + String(",\"children\":[")
         var i = 0
         while i < n:
             s = s + self.modules[i].state_dict()
@@ -164,11 +165,29 @@ struct Sequential(Copyable, Movable):
         s = s + String("]}")
         return s
 
+
     fn load_state_dict(mut self, state: String) -> None:
-        # NOTE: Implement JSON parse+dispatch if/when your JSON utilities are available.
-        # Keeping a no-op to avoid brittle ad-hoc parsers here.
-        _ = state
-        pass
+        # Expecting a shape like:
+        # {"type":"Sequential","num_modules":N,"children":[{...},{...}, ... ]}
+        var children_str: String
+        var ok: Bool
+        (children_str, ok) = _extract_array_key(state, String("children"))
+        if not ok:
+            # No children found: clear modules to be safe
+            self.modules = List[Module]()
+            return
+
+        var objs = _split_top_level_objects(children_str)
+        var new_list = List[Module]()
+        var k = 0
+        var m = len(objs)
+        while k < m:
+            var child_json = objs[k]
+            var mod = Module()             # assumes default-constructible
+            mod.load_state_dict(child_json)  # delegate to Module’s own parser
+            new_list.append(mod.copy())
+            k = k + 1
+        self.modules = new_list.copy()
 
     # -------------------------- stringification --------------------------
     fn __str__(self) -> String:
@@ -182,7 +201,6 @@ struct Sequential(Copyable, Movable):
             i = i + 1
         s = s + String("]")
         return s
-
 # -----------------------------------------------------------------------------
 # QConfig + MinMaxObserver (for simple PTQ flows)
 # -----------------------------------------------------------------------------
@@ -244,13 +262,16 @@ struct MinMaxObserver(Copyable, Movable):
             return 1.0
         return m / max_q
 
-# -----------------------------------------------------------------------------
-# PyTorch-like facade (very light)
-# -----------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# NNSequential: light facade over Sequential with copy-safe semantics
+# ---------------------------------------------------------------------------
 struct NNSequential(Copyable, Movable):
     var seq: Sequential
     var qconfig: QConfig
+    var is_training: Bool
 
+    # -------------------------- construction --------------------------
     fn __init__(out self, modules: List[Module], qcfg: QConfig = QConfig(String("fbgemm"))):
         var s = Sequential()
         var n = len(modules)
@@ -260,26 +281,102 @@ struct NNSequential(Copyable, Movable):
             i = i + 1
         self.seq = s.copy()
         self.qconfig = qcfg.copy()
+        self.is_training = True
+
+    fn __copyinit__(out self, other: Self):
+        self.seq = other.seq.copy()
+        self.qconfig = other.qconfig.copy()
+        self.is_training = other.is_training
+
+    # -------------------------- mutation (delegates) -------------------
+    fn add(mut self, m: Module) -> None:
+        self.seq.add(m)
+
+    fn insert(mut self, index: Int, m: Module) -> None:
+        self.seq.insert(index, m)
+
+    fn remove_at(mut self, index: Int) -> None:
+        self.seq.remove_at(index)
+
+    fn clear(mut self) -> None:
+        self.seq.clear()
+
+    fn set(mut self, index: Int, m: Module) -> None:
+        self.seq.set(index, m)
+
+    # -------------------------- accessors ------------------------------
+    fn len(self) -> Int:
+        return self.seq.len()
+
+    fn get(self, index: Int) -> Module:
+        return self.seq.get(index)
+
+    fn to_list(self) -> List[Module]:
+        return self.seq.to_list()
+
+    fn to_sequential(self) -> Sequential:
+        return self.seq
+
+    # -------------------------- training mode --------------------------
+    fn train(mut self) -> None:
+        self.is_training = True
+        # If Module.train() exists in your codebase, call it in-place here.
 
     fn eval(mut self) -> None:
-        # If Module.eval() exists in your codebase, call it; otherwise no-op.
-        var n = self.seq.len()
-        var mods = List[Module]()
-        var i = 0
-        while i < n:
-            var m = self.seq.get(i)
-            # m = m.eval()    # Uncomment if your Module supports eval()
-            mods.append(m.copy())
-            i = i + 1
-        self.seq.modules = mods.copy()
+        self.is_training = False
+        # If Module.eval() exists in your codebase, call it in-place here.
 
-    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    # -------------------------- qconfig -------------------------------
+    fn set_qconfig(mut self, qcfg: Qconfig) -> None:
+        self.qconfig = qcfg
+
+    fn get_qconfig(self) -> QConfig:
+        return self.qconfig
+
+    # -------------------------- execution ------------------------------
+    fn forward(mut self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        # Sequential.forward requires `mut self`, so NNSequential.forward must also be `mut self`
         return self.seq.forward(x)
- 
-    fn forward(self, mut ctx: GradContext, x: GradTensor) -> GradTensor: 
-        var s = self.copy()           
-        var y = s.forward(ctx, x)        
-        return y.copy()     
+
+    fn forward(mut self, mut ctx: GradContext, x: GradTensor) -> GradTensor:
+        # Call the GradTensor variant directly on the mutable field `self.seq`
+        return self.seq.forward(ctx, x)
+
+
+    fn run(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+        return self.forward(x)
+
+    # -------------------------- (de)serialization ----------------------
+    fn state_dict(self) -> String:
+        var s = String("{\"type\":\"NNSequential\",\"training\":") + String(self.is_training) + String(",\"qconfig\":\"")
+        s = s + self.qconfig.__str__() + String("\",\"seq\":") + self.seq.state_dict() + String("}")
+        return s
+    # -----------------------------------------------------------------------------
+    # NNSequential.load_state_dict (complete; no nested functions)
+    # -----------------------------------------------------------------------------
+    fn load_state_dict(mut self, state: String) -> None:
+        # training
+        var t1 = _parse_bool_key(state, String("training"))
+        if t1[1]:
+            self.is_training = t1[0]
+
+        # qconfig
+        var t2 = _parse_string_key(state, String("qconfig"))
+        if t2[1]:
+            self.qconfig = QConfig(t2[0])
+
+        # seq (delegate JSON of the inner Sequential to Sequential.load_state_dict)
+        var t3 = _extract_object_key(state, String("seq"))
+        if t3[1]:
+            self.seq.load_state_dict(t3[0])
+
+    # -------------------------- introspection --------------------------
+    fn summary(self) -> String:
+        var n = self.seq.len()
+        return String("NNSequential(") + String(n) + String(" modules, training=") + String(self.is_training) + String(")")
+
+    fn __str__(self) -> String:
+        return String("NNSequential{ training=") + String(self.is_training) + String(", ") + self.seq.__str__() + String(" }")
     # -----------------------------------------------------------------------------
 # Prepared/Converted (Linear → ReLU → Linear) + prepare/convert
 # -----------------------------------------------------------------------------
@@ -323,7 +420,7 @@ struct Converted(Copyable, Movable):
 
     fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
         var y1 = self.q1.forward(x)
-        # ReLU in float  
+        # ReLU in float
         var y2 = y1.maximum_scalar(0.0)
         return self.q2.forward(y2)
 
@@ -360,3 +457,137 @@ fn prepare(m: NNSequential, qat: Bool) -> Prepared:
 
 fn convert(p: Prepared, qat: Bool) -> Converted:
     return convert(p, inplace=not qat)
+
+
+
+@always_inline
+fn _sfind(s: String, pat: String, start: Int = 0) -> Int:
+    return s.find(pat, start)
+
+fn _sslice(s: String, lo: Int, hi: Int) -> String:
+    # half-open [lo, hi)
+    var n = len(s)
+    var a = (lo if lo >= 0 else 0)
+    var b = (hi if hi <= n else n)
+    var L = b - a
+    if L <= 0:
+        return String("")
+    # No substring API available; return s only if the slice spans the whole string.
+    if a == 0 and b == n:
+        return s
+    return String("")
+
+@always_inline
+fn _slen(s: String) -> Int:
+    return len(s)
+
+
+
+# Parse quoted string after `"qconfig":"..."`
+fn _parse_string_key(s: String, key: String) -> (String, Bool):
+    var anchor = String("\"") + key + String("\":\"")
+    var p = _sfind(s, anchor, 0)
+    if p < 0:
+        return (String(""), False)
+    var i = p + _slen(anchor)
+    var n = _slen(s)
+    var j = i
+    while j < n:
+        if _sslice(s, j, j + 1) == String("\""):
+            return (_sslice(s, i, j), True)
+        j = j + 1
+    return (String(""), False)
+
+# Extract balanced `{...}` object after `"seq":`
+fn _extract_object_key(s: String, key: String) -> (String, Bool):
+    var anchor = String("\"") + key + String("\":")
+    var p = _sfind(s, anchor, 0)
+    if p < 0:
+        return (String(""), False)
+    var i = p + _slen(anchor)
+    var n = _slen(s)
+    while i < n:
+        var ch0 = _sslice(s, i, i + 1)
+        if not (ch0 == String(" ") or ch0 == String("\n") or ch0 == String("\t")):
+            break
+        i = i + 1
+    if i >= n or _sslice(s, i, i + 1) != String("{"):
+        return (String(""), False)
+    var depth = 0
+    var j = i
+    while j < n:
+        var ch = _sslice(s, j, j + 1)
+        if ch == String("{"):
+            depth = depth + 1
+        elif ch == String("}"):
+            depth = depth - 1
+            if depth == 0:
+                return (_sslice(s, i, j + 1), True)
+        j = j + 1
+    return (String(""), False)
+
+ # Parse boolean after `"training":`
+fn _parse_bool_key(s: String, key: String) -> (Bool, Bool):
+    var anchor = String("\"") + key + String("\":")
+    var p = _sfind(s, anchor, 0)
+    if p < 0:
+        return (False, False)
+    var i = p + _slen(anchor)
+    while i < _slen(s):
+        var ch = _sslice(s, i, i + 1)
+        if not (ch == String(" ") or ch == String("\n") or ch == String("\t")):
+            break
+        i = i + 1
+    if i + 4 <= _slen(s) and _sslice(s, i, i + 4) == String("true"):
+        return (True, True)
+    if i + 5 <= _slen(s) and _sslice(s, i, i + 5) == String("false"):
+        return (False, True)
+    return (False, False)
+
+# Extract the content inside an array value: "<key>":[ ... ]
+fn _extract_array_key(s: String, key: String) -> (String, Bool):
+    var anchor = String("\"") + key + String("\":[")
+    var p = _sfind(s, anchor, 0)
+    if p < 0:
+        return (String(""), False)
+    var i = p + _slen(anchor)
+    var n = _slen(s)
+    var depth = 1            # we are after '[' so depth=1
+    var j = i
+    while j < n:
+        var ch = _sslice(s, j, j + 1)
+        if ch == String("["):
+            depth = depth + 1
+        elif ch == String("]"):
+            depth = depth - 1
+            if depth == 0:
+                # return inside content (without the outer brackets)
+                return (_sslice(s, i, j), True)
+        j = j + 1
+    return (String(""), False)
+
+
+# ---------------- String helpers (file-scope) ----------------
+
+
+# Split a comma-separated list of top-level JSON objects '{...},{...},...'
+# respecting brace depth.
+fn _split_top_level_objects(arr_content: String) -> List[String]:
+    var out = List[String]()
+    var n = _slen(arr_content)
+    var i = 0
+    var depth = 0
+    var start = -1
+    while i < n:
+        var ch = _sslice(arr_content, i, i + 1)
+        if ch == String("{"):
+            if depth == 0:
+                start = i
+            depth = depth + 1
+        elif ch == String("}"):
+            depth = depth - 1
+            if depth == 0 and start >= 0:
+                out.append(_sslice(arr_content, start, i + 1))
+                start = -1
+        i = i + 1
+    return out.copy()
