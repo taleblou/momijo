@@ -5,7 +5,7 @@
 # Description: Stable softmax/log_softmax and loss functions.
 
 from collections.list import List
-from momijo.tensor import tensor 
+from momijo.tensor import tensor
 
 # --- helpers ---
 
@@ -106,7 +106,7 @@ fn mse_loss(
     var C = y_pred.shape()[1]
     var ones_n1_T = tensor.ones([N, 1]).transpose()  # (1,N)
     var total = ones_n1_T.matmul(row)         # (1,1)
-    return _scalar(total) / Float64(N * C)   
+    return _scalar(total) / Float64(N * C)
 
 
 
@@ -128,11 +128,13 @@ fn _safe_log(x: tensor.Tensor[Float64], eps: Float64) -> tensor.Tensor[Float64]:
 # Reduce helpers (mean/sum over all elements)
 # Convention: library is expected to return a scalar tensor (shape [1]) for full reductions.
 fn _reduce_mean(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
-    # mean over all dims; axis=None, keepdim=False (implementation should produce a scalar tensor)
-    return x.mean(None, False)
+    # API supports mean() without args → full reduction
+    return x.mean()
 
+@always_inline
 fn _reduce_sum(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
-    return x.sum(None, False)
+    # API supports sum() without args → full reduction
+    return x.sum()
 
 # Ones-like helper with a scalar fill
 fn _filled_like(x: tensor.Tensor[Float64], v: Float64) -> tensor.Tensor[Float64]:
