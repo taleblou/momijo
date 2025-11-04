@@ -88,33 +88,55 @@ fn _pow_scalar(x: Float64, n: Int) -> Float64:
 # -----------------------------------------------------------------------------
 # StepLR: decay base_lr by gamma every step_size steps
 # -----------------------------------------------------------------------------
-
-struct StepLR:
+struct StepLR(Copyable, Movable):
     var base_lr: Float64
     var gamma: Float64
     var step_size: Int
     var last_epoch: Int
     var current_lr: Float64
 
-    fn __init__(out self, base_lr: Float64, step_size: Int, gamma: Float64 = 0.1, last_epoch: Int = -1):
-        assert(step_size > 0)
-        assert(gamma > 0.0)
-        assert(base_lr >= 0.0)
-        self.base_lr = base_lr
-        self.gamma = gamma
-        self.step_size = step_size
-        self.last_epoch = last_epoch
-        self.current_lr = base_lr
+    fn __init__(
+        out self,
+        base_lr: Float64,
+        step_size: Int,
+        gamma: Float64 = 0.1,
+        last_epoch: Int = -1
+    ):
+        # ---- sanitize inputs (no assert) ----
+        var ss = step_size
+        if ss <= 0: ss = 1
+
+        var g = gamma
+        if g <= 0.0: g = 0.1
+
+        var lr0 = base_lr
+        if lr0 < 0.0: lr0 = 0.0
+
+        var le = last_epoch  # can be -1 for "just created"
+
+        self.base_lr   = lr0
+        self.gamma     = g
+        self.step_size = ss
+        self.last_epoch = le
+        self.current_lr = lr0
 
     fn get_lr(self) -> Float64:
         return self.current_lr
 
     fn set_base_lr(mut self, lr: Float64):
-        assert(lr >= 0.0)
-        self.base_lr = lr
+        # keep non-negative
+        var v = lr
+        if v < 0.0: v = 0.0
+        self.base_lr = v
+        # do not auto-recompute here; user can call step()/step_to() to refresh
 
     fn _compute_lr(self, epoch: Int) -> Float64:
-        var k = epoch // self.step_size
+        # k = floor(epoch / step_size)
+        var k = (epoch // self.step_size)
+        if k <= 0:
+            return self.base_lr
+
+        # scale = gamma^k  (iterative to avoid pow)
         var scale = 1.0
         var i = 0
         while i < k:
@@ -123,6 +145,7 @@ struct StepLR:
         return self.base_lr * scale
 
     fn step(mut self) -> Float64:
+        # Typical usage: call once per epoch AFTER optimizer step
         self.last_epoch = self.last_epoch + 1
         if self.last_epoch < 0:
             self.current_lr = self.base_lr
@@ -131,7 +154,10 @@ struct StepLR:
         return self.current_lr
 
     fn step_to(mut self, epoch: Int) -> Float64:
-        self.last_epoch = epoch
+        # Directly jump to epoch index
+        var e = epoch
+        # allow any integer; negative means "pre-start"
+        self.last_epoch = e
         if self.last_epoch < 0:
             self.current_lr = self.base_lr
             return self.current_lr
@@ -148,48 +174,81 @@ struct StepLR:
         return s
 
     fn load_state_dict(mut self, state: String):
+        # Minimal safe restore:
+        # Since 'state' is not strict JSON (single quotes), and we avoid heavy parsing here,
+        # we reset to a consistent start; callers may set fields explicitly if they need.
         self.current_lr = self.base_lr
         self.last_epoch = -1
 
 # -----------------------------------------------------------------------------
 # ExponentialLR: lr = base_lr * gamma^t
 # -----------------------------------------------------------------------------
-
-struct ExponentialLR:
+struct ExponentialLR(Copyable, Movable):
     var base_lr: Float64
     var gamma: Float64
     var last_epoch: Int
     var current_lr: Float64
 
-    fn __init__(out self, base_lr: Float64, gamma: Float64 = 0.99, last_epoch: Int = -1):
-        assert(base_lr >= 0.0)
-        assert(gamma > 0.0)
-        self.base_lr = base_lr
-        self.gamma = gamma
-        self.last_epoch = last_epoch
-        self.current_lr = base_lr
+    fn __init__(
+        out self,
+        base_lr: Float64,
+        gamma: Float64 = 0.99,
+        last_epoch: Int = -1
+    ):
+        # ---- sanitize inputs ----
+        var lr0 = base_lr
+        if lr0 < 0.0: lr0 = 0.0
+
+        var g = gamma
+        if g <= 0.0: g = 0.99
+
+        self.base_lr   = lr0
+        self.gamma     = g
+        self.last_epoch = last_epoch     # -1 => not started
+        self.current_lr = lr0
 
     fn get_lr(self) -> Float64:
         return self.current_lr
 
+    fn set_base_lr(mut self, lr: Float64):
+        var v = lr
+        if v < 0.0: v = 0.0
+        self.base_lr = v
+        # do not auto-recompute current_lr; call step()/step_to() as needed
+
+    fn set_gamma(mut self, g: Float64):
+        var v = g
+        if v <= 0.0: v = 0.99
+        self.gamma = v
+
     fn _compute_lr(self, t: Int) -> Float64:
-        if t <= 0:
+        # t clamped to >= 0
+        var steps = t
+        if steps <= 0:
             return self.base_lr
+
+        # scale = gamma^steps via iterative multiply (avoid pow)
         var scale = 1.0
         var i = 0
-        while i < t:
+        while i < steps:
             scale = scale * self.gamma
             i = i + 1
         return self.base_lr * scale
 
     fn step(mut self) -> Float64:
+        # typical usage: call once per epoch after optimizer step
         self.last_epoch = self.last_epoch + 1
-        self.current_lr = self._compute_lr(_max(Float64(self.last_epoch), 0.0) as Int)
+        var t = self.last_epoch
+        if t < 0: t = 0
+        self.current_lr = self._compute_lr(t)
         return self.current_lr
 
     fn step_to(mut self, epoch: Int) -> Float64:
+        # jump directly to a given epoch
         self.last_epoch = epoch
-        self.current_lr = self._compute_lr(_max(Float64(epoch), 0.0) as Int)
+        var t = epoch
+        if t < 0: t = 0
+        self.current_lr = self._compute_lr(t)
         return self.current_lr
 
     fn state_dict(self) -> String:
@@ -201,9 +260,9 @@ struct ExponentialLR:
         return s
 
     fn load_state_dict(mut self, state: String):
+        # Minimal safe restore (no parser for non-JSON string provided)
         self.current_lr = self.base_lr
         self.last_epoch = -1
-
 # -----------------------------------------------------------------------------
 # MultiStepLR: decay at specific epochs in milestones
 # -----------------------------------------------------------------------------
@@ -283,7 +342,7 @@ struct MultiStepLR:
 # PolynomialLR: lr = min_lr + (base_lr - min_lr) * (1 - t/T_max)^power
 # -----------------------------------------------------------------------------
 
-struct PolynomialLR:
+struct PolynomialLR(Copyable, Movable):
     var base_lr: Float64
     var min_lr: Float64
     var power: Float64
@@ -291,63 +350,133 @@ struct PolynomialLR:
     var last_epoch: Int
     var current_lr: Float64
 
-    fn __init__(out self, base_lr: Float64, T_max: Int, power: Float64 = 1.0, min_lr: Float64 = 0.0, last_epoch: Int = -1):
-        assert(T_max > 0)
-        assert(base_lr >= 0.0)
-        assert(min_lr >= 0.0)
-        assert(base_lr >= min_lr)
-        assert(power >= 0.0)
-        self.base_lr = base_lr
-        self.min_lr = min_lr
-        self.power = power
-        self.T_max = T_max
-        self.last_epoch = last_epoch
-        self.current_lr = base_lr
+    fn __init__(
+        out self,
+        base_lr: Float64,
+        T_max: Int,
+        power: Float64 = 1.0,
+        min_lr: Float64 = 0.0,
+        last_epoch: Int = -1
+    ):
+        # ---- sanitize inputs (no asserts) ----
+        var Tm = T_max
+        if Tm <= 0: Tm = 1
+
+        var lr0 = base_lr
+        if lr0 < 0.0: lr0 = 0.0
+
+        var lmin = min_lr
+        if lmin < 0.0: lmin = 0.0
+
+        # enforce invariant base_lr >= min_lr
+        if lr0 < lmin:
+            lr0 = lmin
+
+        var p = power
+        if p < 0.0: p = 0.0
+
+        self.base_lr = lr0
+        self.min_lr  = lmin
+        self.power   = p
+        self.T_max   = Tm
+        self.last_epoch = last_epoch       # -1 => not started
+        self.current_lr = lr0
 
     fn get_lr(self) -> Float64:
         return self.current_lr
 
-    fn _compute_lr(self, t: Int) -> Float64:
-        var tt = t
-        if tt < 0:
-            tt = 0
-        if tt > self.T_max:
-            tt = self.T_max
-        # (1 - t/T_max)^power using repeated multiplication for integer power if possible
-        var frac = 1.0 - (Float64(tt) / Float64(self.T_max))
+    fn set_base_lr(mut self, lr: Float64):
+        var v = lr
+        if v < 0.0: v = 0.0
+        if v < self.min_lr: v = self.min_lr
+        self.base_lr = v
+
+    fn set_min_lr(mut self, lr: Float64):
+        var v = lr
+        if v < 0.0: v = 0.0
+        if self.base_lr < v:
+            self.base_lr = v
+        self.min_lr = v
+
+    fn set_power(mut self, p: Float64):
+        var v = p
+        if v < 0.0: v = 0.0
+        self.power = v
+
+    @always_inline
+    fn _ln_approx_around1(f: Float64) -> Float64:
+        # تقریب تیلور ln(f) دور و بر 1: ln f ≈ (f-1) - (f-1)^2/2 + (f-1)^3/3 - (f-1)^4/4
+        var x = f
+        if x <= 0.0: x = 1e-12
+        var d  = x - 1.0
+        var d2 = d * d
+        var d3 = d2 * d
+        var d4 = d3 * d
+        return d - 0.5 * d2 + (1.0/3.0) * d3 - 0.25 * d4
+
+    fn _pow_frac(self, frac: Float64, power: Float64) -> Float64:
+        # محاسبهٔ frac^power بدون math pow/exp
+        # اگر power عدد صحیح باشد، ضرب تکراری؛ در غیر اینصورت از exp(p*ln(frac)) با تقریب ln استفاده می‌کنیم.
+        var f = frac
+        if f < 0.0: f = 0.0
+        if f > 1.0: f = 1.0
+
+        # quick outs
+        if power == 0.0: return 1.0
+        if f == 0.0:     return 0.0
+        if f == 1.0:     return 1.0
+
+        var ip = Int(power)
+        var rem = power - Float64(ip)
+
+        # integer part
         var decay = 1.0
-        if self.power == 0.0:
-            decay = 1.0
-        else:
+        if ip > 0:
             var k = 0
-            while k < Int(self.power):
-                decay = decay * frac
+            while k < ip:
+                decay = decay * f
                 k = k + 1
-            # fractional power crude refinement
-            var rem = self.power - Float64(Int(self.power))
-            if rem > 0.0:
-                # use 4-term binomial series approximation for small rem
-                var lnx = 0.0
-                # ln(frac) ~ series; clamp frac to avoid issues
-                var f = frac
-                if f <= 0.0:
-                    f = 1e-12
-                # use ln approximation by taylor around 1: ln f ≈ (f-1) - (f-1)^2/2 + ...
-                var d = f - 1.0
-                var d2 = d * d
-                var d3 = d2 * d
-                var d4 = d3 * d
-                lnx = d - 0.5 * d2 + (1.0/3.0) * d3 - 0.25 * d4
-                decay = decay * (1.0 + rem * lnx)
+        # fractional part using ln approx around 1
+        if rem > 0.0:
+            var lnx = self._ln_approx_around1(f)    # ~ ln(f)
+            var exp_arg = rem * lnx
+            # exp(z) ≈ 1 + z + z^2/2 + z^3/6 (سری کوتاه)
+            var z  = exp_arg
+            var z2 = z * z
+            var z3 = z2 * z
+            var exp_approx = 1.0 + z + 0.5 * z2 + (1.0/6.0) * z3
+            decay = decay * exp_approx
+
+        # clamp for numeric safety
+        if decay < 0.0: decay = 0.0
+        if decay > 1.0: decay = 1.0
+        return decay
+
+    fn _compute_lr(self, t: Int) -> Float64:
+        # clamp t to [0, T_max]
+        var tt = t
+        if tt < 0: tt = 0
+        if tt > self.T_max: tt = self.T_max
+
+        # decay = (1 - t/T_max)^power
+        var frac = 1.0 - (Float64(tt) / Float64(self.T_max))
+        var decay = self._pow_frac(frac, self.power)
+
         return self.min_lr + (self.base_lr - self.min_lr) * decay
 
     fn step(mut self) -> Float64:
         self.last_epoch = self.last_epoch + 1
+        if self.last_epoch < 0:
+            self.current_lr = self.base_lr
+            return self.current_lr
         self.current_lr = self._compute_lr(self.last_epoch)
         return self.current_lr
 
     fn step_to(mut self, epoch: Int) -> Float64:
         self.last_epoch = epoch
+        if epoch < 0:
+            self.current_lr = self.base_lr
+            return self.current_lr
         self.current_lr = self._compute_lr(epoch)
         return self.current_lr
 
@@ -362,15 +491,16 @@ struct PolynomialLR:
         return s
 
     fn load_state_dict(mut self, state: String):
+        # بازگردانی حداقلی امن (پارسر برای استرینگ non-JSON اضافه نشده)
         self.current_lr = self.base_lr
         self.last_epoch = -1
-
 # -----------------------------------------------------------------------------
 # CosineAnnealingLR
 # lr(t) = min_lr + 0.5*(base_lr - min_lr)*(1 + cos(pi*t/T_max)), t in [0, T_max]
 # -----------------------------------------------------------------------------
 
-struct CosineAnnealingLR:
+
+struct CosineAnnealingLR(Copyable, Movable):
     var base_lr: Float64
     var min_lr: Float64
     var T_max: Int
@@ -378,38 +508,60 @@ struct CosineAnnealingLR:
     var current_lr: Float64
 
     fn __init__(out self, base_lr: Float64, T_max: Int, min_lr: Float64 = 0.0, last_epoch: Int = -1):
-        assert(T_max > 0)
-        assert(base_lr >= 0.0)
-        assert(min_lr >= 0.0)
-        assert(base_lr >= min_lr)
-        self.base_lr = base_lr
-        self.min_lr = min_lr
-        self.T_max = T_max
-        self.last_epoch = last_epoch
-        self.current_lr = base_lr
+        # ---- sanitize inputs (no assert) ----
+        var Tm = T_max
+        if Tm <= 0: Tm = 1
+
+        var lr0 = base_lr
+        if lr0 < 0.0: lr0 = 0.0
+
+        var lmin = min_lr
+        if lmin < 0.0: lmin = 0.0
+
+        # enforce invariant base_lr >= min_lr
+        if lr0 < lmin:
+            # bring base up to min
+            lr0 = lmin
+
+        self.base_lr = lr0
+        self.min_lr = lmin
+        self.T_max = Tm
+        self.last_epoch = last_epoch   # -1 means "not started"
+        self.current_lr = lr0
 
     fn get_lr(self) -> Float64:
         return self.current_lr
 
     fn set_base_lr(mut self, lr: Float64):
-        assert(lr >= 0.0)
-        assert(lr >= self.min_lr)
-        self.base_lr = lr
+        var v = lr
+        if v < 0.0: v = 0.0
+        # keep invariant base_lr >= min_lr
+        if v < self.min_lr:
+            v = self.min_lr
+        self.base_lr = v
+        # not auto-recomputing current_lr; call step()/step_to() after changing
 
     fn set_min_lr(mut self, lr: Float64):
-        assert(lr >= 0.0)
-        assert(self.base_lr >= lr)
-        self.min_lr = lr
+        var v = lr
+        if v < 0.0: v = 0.0
+        # keep invariant base_lr >= min_lr
+        if self.base_lr < v:
+            self.base_lr = v
+        self.min_lr = v
 
     fn _compute_lr(self, t: Int) -> Float64:
+        # clamp t into [0, T_max]
         var tt = t
-        if tt < 0:
-            tt = 0
-        if tt > self.T_max:
-            tt = self.T_max
-        var pi = 3.1415926535897932384626433832795
-        var cos_term = _cos_approx(pi * (Float64(tt) / Float64(self.T_max)))
-        var frac = 0.5 * (1.0 + cos_term)
+        if tt < 0: tt = 0
+        if tt > self.T_max: tt = self.T_max
+
+        # r in [0,1]
+        var r = Float64(tt) / Float64(self.T_max)
+        # cos(pi * r) approximation
+        var c = _cos_pi_approx(r)
+        # standard cosine annealing formula:
+        # lr = min_lr + 0.5*(base_lr - min_lr)*(1 + cos(pi * t/T_max))
+        var frac = 0.5 * (1.0 + c)
         return self.min_lr + (self.base_lr - self.min_lr) * frac
 
     fn step(mut self) -> Float64:
@@ -438,15 +590,23 @@ struct CosineAnnealingLR:
         return s
 
     fn load_state_dict(mut self, state: String):
+        # Minimal safe restore (state parsing intentionally omitted):
         self.current_lr = self.base_lr
         self.last_epoch = -1
-
 # -----------------------------------------------------------------------------
 # CosineAnnealingWarmRestarts
 # Warm restarts with periods: T_0, T_0*T_mult, T_0*T_mult^2, ...
 # -----------------------------------------------------------------------------
+@always_inline
+fn _cos_pi_approx(r: Float64) -> Float64:
+    # cos(π r) ≈ 1 - 4 r^2 + (4/3) r^4,   r∈[0,1]
+    var x = r
+    if x < 0.0: x = 0.0
+    if x > 1.0: x = 1.0
+    var x2 = x * x
+    return 1.0 - 4.0 * x2 + (4.0 / 3.0) * x2 * x2
 
-struct CosineAnnealingWarmRestarts:
+struct CosineAnnealingWarmRestarts(Copyable, Movable):
     var base_lr: Float64
     var min_lr: Float64
     var T_0: Int
@@ -456,50 +616,107 @@ struct CosineAnnealingWarmRestarts:
 
     # internal counters
     var _Ti: Int     # current cycle length
-    var _t_cur: Int  # position in current cycle
+    var _t_cur: Int  # position in current cycle (0.._Ti-1)
 
-    fn __init__(out self, base_lr: Float64, T_0: Int, T_mult: Int = 1, min_lr: Float64 = 0.0, last_epoch: Int = -1):
-        assert(base_lr >= 0.0)
-        assert(min_lr >= 0.0)
-        assert(base_lr >= min_lr)
-        assert(T_0 > 0)
-        assert(T_mult >= 1)
-        self.base_lr = base_lr
-        self.min_lr = min_lr
-        self.T_0 = T_0
-        self.T_mult = T_mult
-        self.last_epoch = last_epoch
-        self.current_lr = base_lr
-        self._Ti = T_0
-        self._t_cur = -1
+    fn __init__(
+        out self,
+        base_lr: Float64,
+        T_0: Int,
+        T_mult: Int = 1,
+        min_lr: Float64 = 0.0,
+        last_epoch: Int = -1
+    ):
+        # ---- sanitize inputs ----
+        var lr0 = base_lr
+        if lr0 < 0.0: lr0 = 0.0
+
+        var lmin = min_lr
+        if lmin < 0.0: lmin = 0.0
+
+        if lr0 < lmin:
+            lr0 = lmin
+
+        var t0 = T_0
+        if t0 <= 0: t0 = 1
+
+        var tm = T_mult
+        if tm < 1: tm = 1
+
+        self.base_lr = lr0
+        self.min_lr  = lmin
+        self.T_0     = t0
+        self.T_mult  = tm
+        self.last_epoch = last_epoch   # -1 => not started
+        self.current_lr = lr0
+        self._Ti = t0
+        self._t_cur = -1               # so that first step() sets it to 0
 
     fn get_lr(self) -> Float64:
         return self.current_lr
 
+    fn set_base_lr(mut self, lr: Float64):
+        var v = lr
+        if v < 0.0: v = 0.0
+        if v < self.min_lr: v = self.min_lr
+        self.base_lr = v
+        # current_lr به صورت تنبل با step()/step_to() به‌روز می‌شود
+
+    fn set_min_lr(mut self, lr: Float64):
+        var v = lr
+        if v < 0.0: v = 0.0
+        if self.base_lr < v:
+            self.base_lr = v
+        self.min_lr = v
+
     fn _compute_lr(self) -> Float64:
-        var pi = 3.1415926535897932384626433832795
-        var cos_term = _cos_approx(pi * (Float64(self._t_cur) / Float64(self._Ti)))
-        var frac = 0.5 * (1.0 + cos_term)
+        # r = t_cur / Ti  ϵ [0,1]
+        var tt = self._t_cur
+        if tt < 0: tt = 0
+        if tt > self._Ti: tt = self._Ti
+        var r = Float64(tt) / Float64(self._Ti)
+        var c = _cos_pi_approx(r)
+        # lr = min_lr + 0.5*(base_lr - min_lr)*(1 + cos(pi * r))
+        var frac = 0.5 * (1.0 + c)
         return self.min_lr + (self.base_lr - self.min_lr) * frac
 
+    fn _advance_cycle(mut self):
+        # Called when current cycle is finished
+        self._t_cur = 0
+        # grow cycle length if T_mult > 1
+        var next_T = self._Ti * self.T_mult
+        if next_T <= 0: next_T = self._Ti  # safety
+        self._Ti = next_T
+
     fn step(mut self) -> Float64:
+        # Typical: call once per epoch AFTER optimizer step
         self.last_epoch = self.last_epoch + 1
+
+        # advance position in current cycle
         self._t_cur = self._t_cur + 1
         if self._t_cur >= self._Ti:
-            self._t_cur = 0
-            self._Ti = self._Ti * self.T_mult
+            self._advance_cycle()
+
         self.current_lr = self._compute_lr()
         return self.current_lr
 
     fn step_to(mut self, epoch: Int) -> Float64:
-        # recompute cycle position from scratch
+        # Recompute cycle position deterministically from epoch
         self.last_epoch = epoch
-        var remaining = _max(Float64(epoch), 0.0) as Int
+        var e = epoch
+        if e < 0: e = 0
+
+        # start from the first cycle
         self._Ti = self.T_0
-        self._t_cur = 0
+        var remaining = e
+
+        # subtract full cycles
         while remaining >= self._Ti:
             remaining = remaining - self._Ti
-            self._Ti = self._Ti * self.T_mult
+            var nxt = self._Ti * self.T_mult
+            if nxt <= 0: nxt = self._Ti    # safety
+            self._Ti = nxt
+
+        # remaining is position in current cycle
         self._t_cur = remaining
         self.current_lr = self._compute_lr()
         return self.current_lr
@@ -517,6 +734,7 @@ struct CosineAnnealingWarmRestarts:
         return s
 
     fn load_state_dict(mut self, state: String):
+        # Minimal safe restore (no parser for non-JSON string)
         self.current_lr = self.base_lr
         self.last_epoch = -1
         self._Ti = self.T_0
@@ -526,41 +744,76 @@ struct CosineAnnealingWarmRestarts:
 # LinearWarmup: linearly increase LR from start_lr to base_lr over warmup_steps
 # -----------------------------------------------------------------------------
 
-struct LinearWarmup:
+struct LinearWarmup(Copyable, Movable):
     var start_lr: Float64
     var base_lr: Float64
     var warmup_steps: Int
     var last_epoch: Int
     var current_lr: Float64
 
-    fn __init__(out self, start_lr: Float64, base_lr: Float64, warmup_steps: Int, last_epoch: Int = -1):
-        assert(warmup_steps > 0)
-        assert(start_lr >= 0.0)
-        assert(base_lr >= 0.0)
-        self.start_lr = start_lr
-        self.base_lr = base_lr
-        self.warmup_steps = warmup_steps
-        self.last_epoch = last_epoch
-        self.current_lr = start_lr
+    fn __init__(
+        out self,
+        start_lr: Float64,
+        base_lr: Float64,
+        warmup_steps: Int,
+        last_epoch: Int = -1
+    ):
+        # ---- sanitize inputs ----
+        var s = start_lr
+        if s < 0.0: s = 0.0
+
+        var b = base_lr
+        if b < 0.0: b = 0.0
+
+        var ws = warmup_steps
+        if ws <= 0: ws = 1
+
+        self.start_lr = s
+        self.base_lr = b
+        self.warmup_steps = ws
+        self.last_epoch = last_epoch      # -1 => not started
+        # مقدار جاری را با start_lr شروع می‌کنیم
+        self.current_lr = s
 
     fn get_lr(self) -> Float64:
         return self.current_lr
 
+    fn set_start_lr(mut self, lr: Float64):
+        var v = lr
+        if v < 0.0: v = 0.0
+        self.start_lr = v
+        # بروزرسانی current_lr به‌صورت تنبل با step()/step_to()
+
+    fn set_base_lr(mut self, lr: Float64):
+        var v = lr
+        if v < 0.0: v = 0.0
+        self.base_lr = v
+
+    fn set_warmup_steps(mut self, steps: Int):
+        var k = steps
+        if k <= 0: k = 1
+        self.warmup_steps = k
+
     fn _compute_lr(self, t: Int) -> Float64:
+        # t منفی را صفر می‌گیریم
         var tt = t
-        if tt < 0:
-            tt = 0
+        if tt < 0: tt = 0
+
         if tt >= self.warmup_steps:
             return self.base_lr
+
+        # lr = start + (base-start) * tt / warmup_steps
         var frac = Float64(tt) / Float64(self.warmup_steps)
         return self.start_lr + (self.base_lr - self.start_lr) * frac
 
     fn step(mut self) -> Float64:
+        # معمولاً هر epoch یک‌بار، بعد از optimizer.step()
         self.last_epoch = self.last_epoch + 1
         self.current_lr = self._compute_lr(self.last_epoch)
         return self.current_lr
 
     fn step_to(mut self, epoch: Int) -> Float64:
+        # پرش مستقیم به اندیس epoch دلخواه
         self.last_epoch = epoch
         self.current_lr = self._compute_lr(epoch)
         return self.current_lr
@@ -575,9 +828,9 @@ struct LinearWarmup:
         return s
 
     fn load_state_dict(mut self, state: String):
+        # بازگردانی حداقلی امن (پارسر برای استرینگ غیر-JSON نداریم)
         self.current_lr = self.start_lr
         self.last_epoch = -1
-
 # -----------------------------------------------------------------------------
 # WarmupThen: compose a warmup scheduler with a main scheduler
 #   For t < warmup_steps: delegate to warmup; else to main (with shifted epoch)
@@ -637,51 +890,133 @@ struct WarmupThen:
 # ChainedLR: run schedulers in sequence across spans [len_0, len_1, ...]
 # -----------------------------------------------------------------------------
 
-struct ChainedLR:
-    var schedulers: List[CosineAnnealingLR]  # could be heterogeneous; keep a common type in practice
-    var spans: List[Int]                      # number of steps per scheduler (last can be -1 for "rest")
+struct ChainedLR(Copyable, Movable):
+    var schedulers: List[CosineAnnealingLR]
+    var spans: List[Int]          # spans[i] >= 0, except a negative span to mean "rest"
     var last_epoch: Int
     var current_lr: Float64
 
     fn __init__(out self, schedulers: List[CosineAnnealingLR], spans: List[Int]):
-        assert(len(schedulers) == len(spans))
-        self.schedulers = schedulers
-        self.spans = spans
+        # ---- sanitize inputs ----
+        var n_s = len(schedulers)
+        var n_p = len(spans)
+
+        var sch = List[CosineAnnealingLR]()
+        var spn = List[Int]()
+
+        if n_s <= 0:
+            # empty chain -> stable zero LR
+            self.schedulers = sch
+            self.spans = spn
+            self.last_epoch = -1
+            self.current_lr = 0.0
+            return
+
+        # align lengths
+        var n = n_s
+        if n_p < n_s:
+            # copy given and pad the rest with a single "rest" (-1) only at the last
+            var i = 0
+            while i < n_p:
+                spn.append(spans[i])
+                i = i + 1
+            while i < n_s - 1:
+                spn.append(0)   # zero-length span for middle placeholders
+                i = i + 1
+            spn.append(-1)      # last takes the rest
+        else:
+            # truncate extra spans if any
+            var i = 0
+            while i < n_s:
+                spn.append(spans[i])
+                i = i + 1
+
+        # normalize spans: non-last negatives become 0; keep last negative as "rest"
+        var last_idx = n - 1
+        var i = 0
+        while i < n:
+            var v = spn[i]
+            if i == last_idx:
+                # allow negative meaning "rest of time"
+                # but if zero/negatives are not desired, keep as -1
+                if v == 0:
+                    spn[i] = -1
+                # if positive, keep it as is (chain will clamp beyond)
+            else:
+                # non-last negative spans become 0-length
+                if v < 0:
+                    spn[i] = 0
+            i = i + 1
+
+        # copy schedulers
+        var j = 0
+        while j < n_s:
+            sch.append(schedulers[j])
+            j = j + 1
+
+        self.schedulers = sch
+        self.spans = spn
         self.last_epoch = -1
-        self.current_lr = schedulers[0].get_lr()
+        # initial LR = first scheduler's current lr
+        self.current_lr = self.schedulers[0].get_lr()
 
     fn get_lr(self) -> Float64:
         return self.current_lr
 
     fn _locate(self, t: Int) -> (Int, Int):
-        # returns (which, local_t)
+        # Returns (which_scheduler_idx, local_t) for the chain.
+        var n = len(self.schedulers)
+        if n == 0:
+            return (0, 0)
+
         var acc = 0
         var i = 0
-        while i < len(self.spans):
+        while i < n:
             var sp = self.spans[i]
             if sp < 0:
+                # "rest of time" → stick with this scheduler
                 return (i, t - acc)
             if t < acc + sp:
                 return (i, t - acc)
             acc = acc + sp
             i = i + 1
-        # beyond all spans -> clamp to last
-        var last = len(self.spans) - 1
-        return (last, self.spans[last] - 1)
+
+        # beyond all spans: clamp to last scheduler
+        var last = n - 1
+        var last_span = self.spans[last]
+        if last_span < 0:
+            # last is "rest"
+            return (last, t - (acc - last_span))  # local t doesn't really matter; use step_to below
+        # positive finite span: clamp to its last valid local step
+        var loc = last_span - 1
+        if loc < 0: loc = 0
+        return (last, loc)
 
     fn step(mut self) -> Float64:
         self.last_epoch = self.last_epoch + 1
+        var n = len(self.schedulers)
+        if n == 0:
+            # empty chain: keep stable
+            return self.current_lr
+
         var which_local = self._locate(self.last_epoch)
         var idx = which_local[0]
         var loc = which_local[1]
+
+        # step underlying scheduler "to" the local epoch
         self.current_lr = self.schedulers[idx].step_to(loc)
         return self.current_lr
 
     fn step_to(mut self, epoch: Int) -> Float64:
         self.last_epoch = epoch
+        var n = len(self.schedulers)
+        if n == 0:
+            return self.current_lr
+
         var which_local = self._locate(epoch)
         var idx = which_local[0]
         var loc = which_local[1]
+
         self.current_lr = self.schedulers[idx].step_to(loc)
         return self.current_lr
 
@@ -692,9 +1027,12 @@ struct ChainedLR:
         return s
 
     fn load_state_dict(mut self, state: String):
+        # Minimal safe restore
         self.last_epoch = -1
         if len(self.schedulers) > 0:
             self.current_lr = self.schedulers[0].get_lr()
+        else:
+            self.current_lr = 0.0
 
 # -----------------------------------------------------------------------------
 # ReduceLROnPlateau: reduce LR by factor if metric does not improve for 'patience' steps
@@ -703,7 +1041,8 @@ struct ChainedLR:
 #   - 'max' : improvement if metric > best + threshold
 # -----------------------------------------------------------------------------
 
-struct ReduceLROnPlateau:
+
+struct ReduceLROnPlateau(Copyable, Movable):
     var lr: Float64
     var factor: Float64
     var patience: Int
@@ -726,24 +1065,55 @@ struct ReduceLROnPlateau:
         min_lr: Float64 = 0.0,
         mode: String = "min"
     ):
-        assert(lr >= 0.0)
-        assert(factor > 0.0)
-        assert(patience >= 0)
-        assert(threshold >= 0.0)
-        assert(cooldown >= 0)
-        assert(min_lr >= 0.0)
+        # ---- sanitize inputs (no asserts) ----
+        var v_lr = lr
+        if v_lr < 0.0: v_lr = 0.0
 
-        self.lr = lr
-        self.factor = factor
-        self.patience = patience
-        self.threshold = threshold
-        self.cooldown = cooldown
-        self.min_lr = min_lr
-        self.mode_max = False
+        var v_factor = factor
+        if v_factor <= 0.0: v_factor = 0.1
+
+        var v_pat = patience
+        if v_pat < 0: v_pat = 0
+
+        var v_thr = threshold
+        if v_thr < 0.0: v_thr = 0.0
+
+        var v_cd = cooldown
+        if v_cd < 0: v_cd = 0
+
+        var v_min = min_lr
+        if v_min < 0.0: v_min = 0.0
+        if v_lr < v_min: v_lr = v_min
+
+        var is_max = False
         if mode == String("max"):
-            self.mode_max = True
+            is_max = True
+
+        self.lr = v_lr
+        self.factor = v_factor
+        self.patience = v_pat
+        self.threshold = v_thr
+        self.cooldown = v_cd
+        self.min_lr = v_min
+        self.mode_max = is_max
 
         # initialize best
+        if self.mode_max:
+            self._best = -1.7976931348623157e308   # ~ -DBL_MAX
+        else:
+            self._best = 1.7976931348623157e308    # ~  DBL_MAX
+        self._num_bad = 0
+        self._cooldown = 0
+
+    fn get_lr(self) -> Float64:
+        return self.lr
+
+    fn set_mode(mut self, mode: String):
+        var is_max = False
+        if mode == String("max"):
+            is_max = True
+        self.mode_max = is_max
+        # reset best accordingly (optional; keep existing best if you prefer)
         if self.mode_max:
             self._best = -1.7976931348623157e308
         else:
@@ -751,16 +1121,42 @@ struct ReduceLROnPlateau:
         self._num_bad = 0
         self._cooldown = 0
 
-    fn get_lr(self) -> Float64:
-        return self.lr
+    fn set_min_lr(mut self, v: Float64):
+        var x = v
+        if x < 0.0: x = 0.0
+        self.min_lr = x
+        if self.lr < self.min_lr:
+            self.lr = self.min_lr
+
+    fn set_factor(mut self, v: Float64):
+        var x = v
+        if x <= 0.0: x = 0.1
+        self.factor = x
+
+    fn set_patience(mut self, k: Int):
+        var x = k
+        if x < 0: x = 0
+        self.patience = x
+
+    fn set_threshold(mut self, v: Float64):
+        var x = v
+        if x < 0.0: x = 0.0
+        self.threshold = x
+
+    fn set_cooldown(mut self, v: Int):
+        var x = v
+        if x < 0: x = 0
+        self.cooldown = x
 
     fn _is_improved(self, metric: Float64) -> Bool:
         if self.mode_max:
+            # improvement if metric strictly larger than best + threshold
             return metric > self._best + self.threshold
+        # mode 'min'
         return metric < self._best - self.threshold
 
     fn step(mut self, metric: Float64) -> Float64:
-        # cooldown handling
+        # cooldown handling (counts down to zero)
         if self._cooldown > 0:
             self._cooldown = self._cooldown - 1
 
@@ -769,12 +1165,17 @@ struct ReduceLROnPlateau:
             self._num_bad = 0
             return self.lr
 
+        # No improvement
         self._num_bad = self._num_bad + 1
+
+        # Reduce if patience exceeded and not cooling down
         if self._num_bad > self.patience and self._cooldown == 0:
-            # reduce
-            self.lr = self.lr * self.factor
-            if self.lr < self.min_lr:
-                self.lr = self.min_lr
+            var new_lr = self.lr * self.factor
+            if new_lr < self.min_lr:
+                new_lr = self.min_lr
+            # apply
+            self.lr = new_lr
+            # start cooldown and reset counters
             self._cooldown = self.cooldown
             self._num_bad = 0
         return self.lr
@@ -794,10 +1195,12 @@ struct ReduceLROnPlateau:
         return s
 
     fn load_state_dict(mut self, state: String):
-        # reset minimal
+        # Minimal safe restore (پارسر برای استرینگ غیر-JSON اضافه نشده)
         if self.mode_max:
             self._best = -1.7976931348623157e308
         else:
             self._best = 1.7976931348623157e308
         self._num_bad = 0
         self._cooldown = 0
+        if self.lr < self.min_lr:
+            self.lr = self.min_lr
