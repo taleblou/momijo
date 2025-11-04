@@ -741,3 +741,42 @@ fn _apply_hardtanh_inplace(mut y: tensor.Tensor[Float64]):
     while i < n:
         y._data[i] = _hardtanh(y._data[i])
         i = i + 1
+
+
+@always_inline
+fn linear_mse_grads(
+    x: tensor.Tensor[Float64],
+    y_hat: tensor.Tensor[Float64],
+    y: tensor.Tensor[Float64],
+    mut dW: tensor.Tensor[Float64],
+    mut dB: tensor.Tensor[Float64]
+):
+    var N    = x.shape()[0]
+    var InF  = x.shape()[1]
+    var OutF = y_hat.shape()[1]
+
+    # Scale matches losses.mse() mean reduction over ALL elements
+    var scale = 2.0 / Float64(N * OutF)
+
+    # zero grads
+    var j = 0
+    while j < len(dW._data):
+        dW._data[j] = 0.0
+        j = j + 1
+    j = 0
+    while j < len(dB._data):
+        dB._data[j] = 0.0
+        j = j + 1
+
+    var i = 0
+    while i < N:
+        var o = 0
+        while o < OutF:
+            var gy = scale * (y_hat._data[i*OutF + o] - y._data[i*OutF + o])
+            dB._data[o] = dB._data[o] + gy
+            var k = 0
+            while k < InF:
+                dW._data[o*InF + k] = dW._data[o*InF + k] + gy * x._data[i*InF + k]
+                k = k + 1
+            o = o + 1
+        i = i + 1
