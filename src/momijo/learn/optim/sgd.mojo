@@ -10,19 +10,48 @@ from momijo.learn.nn.layers import Linear
 from collections.list import List
 from momijo.learn.nn.conv import Conv2d
 
-struct SGD:
+
+struct SGD(Copyable, Movable):
     var lr: Float64
-    fn __init__(out self, lr: Float64 = 0.01): self.lr = lr
-    fn __copyinit__(out self, other: Self): self.lr = other.lr
-    fn step_linear(mut self, mut layer: Linear, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
-        layer.weight = layer.weight - (dW * self.lr)
-        layer.bias = layer.bias - (db * self.lr)
 
+    fn __init__(out self, lr: Float64 = 0.01):
+        self.lr = lr
 
+    fn __copyinit__(out self, other: Self):
+        self.lr = other.lr
 
-fn step_conv2d(mut self, mut layer: Conv2d, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
-    layer.weight = layer.weight - (dW * self.lr)
-    layer.bias   = layer.bias   - (db * self.lr)
+    # --------------------------- Linear ---------------------------------------
+    fn step_linear(
+        mut self,
+        mut layer: Linear,
+        dW: tensor.Tensor[Float64],
+        db: tensor.Tensor[Float64]
+    ):
+        # weight <- weight - lr * dW
+        var scaled_w = dW.mul_scalar( self.lr)
+        layer.weight = layer.weight.sub( scaled_w)
+
+        # bias_t <- bias_t - lr * db   (only if bias flag is on and buffers are non-empty)
+        if layer.bias and len(layer.bias_t._data) > 0 and len(db._data) > 0:
+            var scaled_b = db.mul_scalar(self.lr)
+            layer.bias_t = layer.bias_t.sub( scaled_b)
+
+    # --------------------------- Conv2d ---------------------------------------
+    fn step_conv2d(
+        mut self,
+        mut layer: Conv2d,
+        dW: tensor.Tensor[Float64],
+        db: tensor.Tensor[Float64]
+    ):
+        # weight <- weight - lr * dW
+        var scaled_w = dW.mul_scalar( self.lr)
+        layer.weight = layer.weight.sub( scaled_w)
+
+        # bias_t <- bias_t - lr * db   (only if bias flag is on and buffers are non-empty)
+        if layer.bias and len(layer.bias_t._data) > 0 and len(db._data) > 0:
+            var scaled_b = db.mul_scalar( self.lr)
+            layer.bias_t = layer.bias_t.sub( scaled_b)
+
 
 
 #-----------------------------------------------------------------------------
