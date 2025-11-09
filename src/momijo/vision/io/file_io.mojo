@@ -334,7 +334,6 @@ fn _write_file_raw(path: String, raw_ptr: UnsafePointer[UInt8], n: Int) -> Bool:
 
 fn read_all_bytes(path: String) raises -> List[UInt8]:
     var out = List[UInt8]()
-    # ⬇️ حتماً حالت باینری
     with open(path, "r") as f:
         while True:
             var chunk = f.read_bytes(65536)
