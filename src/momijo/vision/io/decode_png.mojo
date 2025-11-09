@@ -114,13 +114,13 @@ fn _parse_chunks(bytes: List[UInt8]) -> (Bool, Int, Int, Int, Int, Int, List[UIn
             h = _be32(bytes[start+4], bytes[start+5], bytes[start+6], bytes[start+7])
             bit_depth  = Int(bytes[start+8]); color_type = Int(bytes[start+9]); interlace  = Int(bytes[start+12])
         elif t0==UInt8(0x50) and t1==UInt8(0x4C) and t2==UInt8(0x54) and t3==UInt8(0x45):
-            var i = start; 
+            var i = start;
             while i < end: plte.append(bytes[i]); i += 1
         elif t0==UInt8(0x74) and t1==UInt8(0x52) and t2==UInt8(0x4E) and t3==UInt8(0x53):
-            var j = start; 
+            var j = start;
             while j < end: trns.append(bytes[j]); j += 1
         elif t0==UInt8(0x49) and t1==UInt8(0x44) and t2==UInt8(0x41) and t3==UInt8(0x54):
-            var k = start; 
+            var k = start;
             while k < end: idat.append(bytes[k]); k += 1
         elif t0==UInt8(0x49) and t1==UInt8(0x45) and t2==UInt8(0x4E) and t3==UInt8(0x44):
             break
@@ -150,7 +150,7 @@ fn _collect_scan(w: Int, h: Int, scan_channels: Int, bit_depth: Int, interlace: 
         else: row_bytes = ((pw * bit_depth + 7) // 8) * scan_channels
         var need = ph * (1 + row_bytes)
         if cur + need > len(infl): return (False, List[UInt8]())
-        var sub = List[UInt8](); var t = 0; 
+        var sub = List[UInt8](); var t = 0;
         while t < need: sub.append(infl[cur+t]); t += 1
         cur += need
         var okp = png_unfilter(pw, ph, scan_channels, sub.copy(), bit_depth)
@@ -178,7 +178,7 @@ fn decode_png_bytes(bytes: List[UInt8]) -> (Bool, Int, Int, Int, List[UInt8]):
     else: return (False,0,0,0,List[UInt8]())
 
     var pk = _collect_scan(w,h,scan_channels,bit_depth,interlace,infl.copy())
-    if not pk[0]: return (False,0,0,0,List[UInt8]())
+    if not pk[0]:  return (False,0,0,0,List[UInt8]())
     var packed = pk[1].copy()
 
     if bit_depth == 16:
@@ -230,3 +230,12 @@ fn decode_png_bytes_u16(bytes: List[UInt8]) -> (Bool, Int, Int, Int, List[UInt16
         out.append(UInt16(v))
         i += 2
     return (True, w, h, scan_channels, out.copy())
+
+
+# Returns: (ok, w, h, bit_depth, color_type, plte, trns)
+fn parse_png_header(bytes: List[UInt8]) -> (Bool, Int, Int, Int, Int, List[UInt8], List[UInt8]):
+    var P = _parse_chunks(bytes.copy())
+    if not P[0]:
+        return (False, 0, 0, 0, 0, List[UInt8](), List[UInt8]())
+    # P: (ok,w,h,bit_depth,color_type,interlace,plte,trns,idat)
+    return (True, P[1], P[2], P[3], P[4], P[6].copy(), P[7].copy())
