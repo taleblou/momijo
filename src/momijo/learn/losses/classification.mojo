@@ -9,8 +9,8 @@
 #   - Cross-Entropy (multi-class) for index or one-hot targets
 #   - Binary Cross-Entropy (with logits)
 #   - Focal Loss (binary & multi-class via logits)
-#   Primary implementations are backend-agnostic (List[Float64]/List[List[Float64]]).
-#   This file ALSO includes thin adapters for momijo.tensor.Tensor[Float64] so you
+#   Primary implementations are backend-agnostic (List[Float32]/List[List[Float32]]).
+#   This file ALSO includes thin adapters for momijo.tensor.Tensor[Float32] so you
 #   can use the same APIs with tensors without touching the core logic.
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
@@ -25,19 +25,19 @@ from momijo.tensor import tensor   # used by the optional tensor adapters below
 # =============================================================================
 
 @always_inline
-fn _eps() -> Float64:
+fn _eps() -> Float32:
     return 1e-12
 
 @always_inline
-fn _abs(x: Float64) -> Float64:
+fn _abs(x: Float32) -> Float32:
     return -x if x < 0.0 else x
 
 @always_inline
-fn _max(a: Float64, b: Float64) -> Float64:
+fn _max(a: Float32, b: Float32) -> Float32:
     return a if a > b else b
 
 @always_inline
-fn _clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
+fn _clamp(x: Float32, lo: Float32, hi: Float32) -> Float32:
     var v = x
     if v < lo: v = lo
     if v > hi: v = hi
@@ -45,7 +45,7 @@ fn _clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
 
 # Crude exp/log fallbacks (range-limited) — good enough for demos/tests.
 # For production, wire to a high-quality math/tensor implementation.
-fn _exp(x_in: Float64) -> Float64:
+fn _exp(x_in: Float32) -> Float32:
     var x = _clamp(x_in, -40.0, 40.0)   # prevent overflow
     # 5th-order Taylor around 0 with e^x = (e^(x/2))^2 trick
     var h = x * 0.5
@@ -56,7 +56,7 @@ fn _exp(x_in: Float64) -> Float64:
     var t = 1.0 + h + (h2 * 0.5) + (h3 * (1.0 / 6.0)) + (h4 * 0.0416666666667) + (h5 * 0.0083333333333)
     return t * t
 
-fn _log(x_in: Float64) -> Float64:
+fn _log(x_in: Float32) -> Float32:
     # Newton iteration on f(y)=exp(y)-x: y_{k+1} = y_k - 1 + x/exp(y_k)
     var x = _max(x_in, _eps())
     var y = x - 1.0  # initial guess near ln(1+u) ~ u
@@ -72,14 +72,14 @@ fn _log(x_in: Float64) -> Float64:
 # =============================================================================
 
 # logsumexp over one row
-fn _log_sum_exp(row: List[Float64]) -> Float64:
+fn _log_sum_exp(row: List[Float32]) -> Float32:
     var m = row[0]
     var i = 1
     while i < len(row):
         if row[i] > m:
             m = row[i]
         i = i + 1
-    var s: Float64 = 0.0
+    var s: Float32 = 0.0
     i = 0
     while i < len(row):
         s = s + _exp(row[i] - m)
@@ -87,8 +87,8 @@ fn _log_sum_exp(row: List[Float64]) -> Float64:
     return m + _log(s + _eps())
 
 # Softmax probabilities (row-wise)
-fn _softmax_row(row: List[Float64]) -> List[Float64]:
-    var out = List[Float64]()
+fn _softmax_row(row: List[Float32]) -> List[Float32]:
+    var out = List[Float32]()
     out.reserve(len(row))
     var lse = _log_sum_exp(row)
     var i = 0
@@ -98,13 +98,13 @@ fn _softmax_row(row: List[Float64]) -> List[Float64]:
     return out
 
 # (1 - p)^gamma using log/exp with clamping
-fn _pow1m(p: Float64, gamma: Float64) -> Float64:
+fn _pow1m(p: Float32, gamma: Float32) -> Float32:
     var q = _clamp(1.0 - p, _eps(), 1.0)
     return _exp(gamma * _log(q))
 
 # Sigmoid(x) = 1 / (1 + exp(-x))
 @always_inline
-fn _sigmoid(x: Float64) -> Float64:
+fn _sigmoid(x: Float32) -> Float32:
     if x >= 0.0:
         var z = _exp(-x)
         return 1.0 / (1.0 + z)
@@ -117,10 +117,10 @@ fn _sigmoid(x: Float64) -> Float64:
 # =============================================================================
 
 # Targets are indices (0..C-1) — logits: [N][C], target_index: [N]
-fn cross_entropy(logits: List[List[Float64]], target_index: List[Int]) -> Float64:
+fn cross_entropy(logits: List[List[Float32]], target_index: List[Int]) -> Float32:
     var n = len(logits)
     if n == 0: return 0.0
-    var total: Float64 = 0.0
+    var total: Float32 = 0.0
     var i = 0
     while i < n:
         var row = logits[i]
@@ -128,19 +128,19 @@ fn cross_entropy(logits: List[List[Float64]], target_index: List[Int]) -> Float6
         var lse = _log_sum_exp(row)
         total = total + (lse - row[t])   # -log softmax = logsumexp - logit[t]
         i = i + 1
-    return total / Float64(n)
+    return total / Float32(n)
 
 # Targets are one-hot rows — logits: [N][C], target_one_hot: [N][C]
-fn cross_entropy(logits: List[List[Float64]], target_one_hot: List[List[Float64]]) -> Float64:
+fn cross_entropy(logits: List[List[Float32]], target_one_hot: List[List[Float32]]) -> Float32:
     var n = len(logits)
     if n == 0: return 0.0
-    var total: Float64 = 0.0
+    var total: Float32 = 0.0
     var i = 0
     while i < n:
         var row = logits[i]
         var trow = target_one_hot[i]
         var lse = _log_sum_exp(row)
-        var ce_i: Float64 = 0.0
+        var ce_i: Float32 = 0.0
         var j = 0
         while j < len(row):
             var y = trow[j]
@@ -149,7 +149,7 @@ fn cross_entropy(logits: List[List[Float64]], target_one_hot: List[List[Float64]
             j = j + 1
         total = total + ce_i
         i = i + 1
-    return total / Float64(n)
+    return total / Float32(n)
 
 # =============================================================================
 # Binary Cross-Entropy (with logits)
@@ -158,32 +158,32 @@ fn cross_entropy(logits: List[List[Float64]], target_one_hot: List[List[Float64]
 #   BCE(x,y) = max(x,0) - x*y + log(1 + exp(-|x|))
 
 @always_inline
-fn _bce_logit_scalar(logit: Float64, target: Float64) -> Float64:
+fn _bce_logit_scalar(logit: Float32, target: Float32) -> Float32:
     var x = logit
     var y = _clamp(target, 0.0, 1.0)
     return _max(x, 0.0) - (x * y) + _log(1.0 + _exp(-_abs(x)) + _eps())
 
 # Vector: logits/targets are length-N
-fn binary_cross_entropy(logits: List[Float64], targets: List[Float64]) -> Float64:
+fn binary_cross_entropy(logits: List[Float32], targets: List[Float32]) -> Float32:
     var n = len(logits)
     if n == 0: return 0.0
-    var total: Float64 = 0.0
+    var total: Float32 = 0.0
     var i = 0
     while i < n:
         total = total + _bce_logit_scalar(logits[i], targets[i])
         i = i + 1
-    return total / Float64(n)
+    return total / Float32(n)
 
 # Batched: logits/targets are [N][K] (K independent binary tasks per sample)
-fn binary_cross_entropy(logits: List[List[Float64]], targets: List[List[Float64]]) -> Float64:
+fn binary_cross_entropy(logits: List[List[Float32]], targets: List[List[Float32]]) -> Float32:
     var n = len(logits)
     if n == 0: return 0.0
-    var total: Float64 = 0.0
+    var total: Float32 = 0.0
     var i = 0
     while i < n:
         total = total + binary_cross_entropy(logits[i], targets[i])
         i = i + 1
-    return total / Float64(n)
+    return total / Float32(n)
 
 # =============================================================================
 # Focal Loss (with logits)
@@ -191,14 +191,14 @@ fn binary_cross_entropy(logits: List[List[Float64]], targets: List[List[Float64]
 
 # Binary focal loss: logits/targets are length-N
 fn focal_loss_binary_with_logits(
-    logits: List[Float64],
-    targets: List[Float64],
-    gamma: Float64 = 2.0,
-    alpha: Float64 = 0.25
-) -> Float64:
+    logits: List[Float32],
+    targets: List[Float32],
+    gamma: Float32 = 2.0,
+    alpha: Float32 = 0.25
+) -> Float32:
     var n = len(logits)
     if n == 0: return 0.0
-    var total: Float64 = 0.0
+    var total: Float32 = 0.0
     var i = 0
     while i < n:
         var x = logits[i]
@@ -210,18 +210,18 @@ fn focal_loss_binary_with_logits(
         var mod = _pow1m(pt, gamma)         # (1 - pt)^gamma
         total = total + (w * mod * ce)
         i = i + 1
-    return total / Float64(n)
+    return total / Float32(n)
 
 # Multi-class focal (targets are indices) — logits: [N][C], target_index: [N]
 fn focal_loss_multiclass_with_logits(
-    logits: List[List[Float64]],
+    logits: List[List[Float32]],
     target_index: List[Int],
-    gamma: Float64 = 2.0,
-    alpha: Float64 = 0.25
-) -> Float64:
+    gamma: Float32 = 2.0,
+    alpha: Float32 = 0.25
+) -> Float32:
     var n = len(logits)
     if n == 0: return 0.0
-    var total: Float64 = 0.0
+    var total: Float32 = 0.0
     var i = 0
     while i < n:
         var probs = _softmax_row(logits[i])
@@ -231,18 +231,18 @@ fn focal_loss_multiclass_with_logits(
         var mod = _pow1m(pt, gamma)
         total = total + (alpha * mod * ce_i)       # class-balanced with single alpha
         i = i + 1
-    return total / Float64(n)
+    return total / Float32(n)
 
 # Multi-class focal (one-hot targets) — logits: [N][C], target_one_hot: [N][C]
 fn focal_loss_multiclass_with_logits(
-    logits: List[List[Float64]],
-    target_one_hot: List[List[Float64]],
-    gamma: Float64 = 2.0,
-    alpha: Float64 = 0.25
-) -> Float64:
+    logits: List[List[Float32]],
+    target_one_hot: List[List[Float32]],
+    gamma: Float32 = 2.0,
+    alpha: Float32 = 0.25
+) -> Float32:
     var n = len(logits)
     if n == 0: return 0.0
-    var total: Float64 = 0.0
+    var total: Float32 = 0.0
     var i = 0
     while i < n:
         var probs = _softmax_row(logits[i])
@@ -257,42 +257,42 @@ fn focal_loss_multiclass_with_logits(
                 total = total + (alpha * mod * ce_j)
             j = j + 1
         i = i + 1
-    return total / Float64(n)
+    return total / Float32(n)
 
 # =============================================================================
 # momijo.tensor ADAPTERS (optional)
 # =============================================================================
-# These overloads allow calling the same losses with tensor.Tensor[Float64].
+# These overloads allow calling the same losses with tensor.Tensor[Float32].
 # We keep this section small and isolated; if your tensor API names differ,
 # edit only the four adapter hooks _t_shape1/_t_shape2/_t_get1/_t_get2 below.
 
 # ---- Adapter hooks: change these bodies to match your real Tensor API ----
 
 @always_inline
-fn _t_shape1(t: tensor.Tensor[Float64]) -> Int:
+fn _t_shape1(t: tensor.Tensor[Float32]) -> Int:
     # Replace with your real accessor, e.g., t.shape()[0]
     return tensor.shape1(t)
 
 @always_inline
-fn _t_shape2(t: tensor.Tensor[Float64]) -> (Int, Int):
+fn _t_shape2(t: tensor.Tensor[Float32]) -> (Int, Int):
     # Replace with your real accessor, e.g., (t.shape()[0], t.shape()[1])
     return tensor.shape2(t)
 
 @always_inline
-fn _t_get1(t: tensor.Tensor[Float64], i: Int) -> Float64:
+fn _t_get1(t: tensor.Tensor[Float32], i: Int) -> Float32:
     # Replace with your real accessor, e.g., t.get([i])
     return tensor.get1_f64(t, i)
 
 @always_inline
-fn _t_get2(t: tensor.Tensor[Float64], i: Int, j: Int) -> Float64:
+fn _t_get2(t: tensor.Tensor[Float32], i: Int, j: Int) -> Float32:
     # Replace with your real accessor, e.g., t.get([i, j])
     return tensor.get2_f64(t, i, j)
 
 # ---- Converters: Tensor -> List / List[List] ----
 
-fn _t_to_list1(t: tensor.Tensor[Float64]) -> List[Float64]:
+fn _t_to_list1(t: tensor.Tensor[Float32]) -> List[Float32]:
     var n = _t_shape1(t)
-    var out = List[Float64]()
+    var out = List[Float32]()
     out.reserve(n)
     var i = 0
     while i < n:
@@ -300,14 +300,14 @@ fn _t_to_list1(t: tensor.Tensor[Float64]) -> List[Float64]:
         i = i + 1
     return out
 
-fn _t_to_list2(t: tensor.Tensor[Float64]) -> List[List[Float64]]:
+fn _t_to_list2(t: tensor.Tensor[Float32]) -> List[List[Float32]]:
     var dims = _t_shape2(t)
     var n = dims[0]; var c = dims[1]
-    var rows = List[List[Float64]]()
+    var rows = List[List[Float32]]()
     rows.reserve(n)
     var i = 0
     while i < n:
-        var row = List[Float64]()
+        var row = List[Float32]()
         row.reserve(c)
         var j = 0
         while j < c:
@@ -320,46 +320,44 @@ fn _t_to_list2(t: tensor.Tensor[Float64]) -> List[List[Float64]]:
 # ---- Tensor overloads calling the list implementations ----
 
 # CE: logits NxC (Tensor), targets index List[Int]
-fn cross_entropy(logits: tensor.Tensor[Float64], target_index: List[Int]) -> Float64:
+fn cross_entropy(logits: tensor.Tensor[Float32], target_index: List[Int]) -> Float32:
     return cross_entropy(_t_to_list2(logits), target_index)
 
 # CE: logits NxC (Tensor), targets one-hot NxC (Tensor)
-fn cross_entropy(logits: tensor.Tensor[Float64], target_one_hot: tensor.Tensor[Float64]) -> Float64:
+fn cross_entropy(logits: tensor.Tensor[Float32], target_one_hot: tensor.Tensor[Float32]) -> Float32:
     return cross_entropy(_t_to_list2(logits), _t_to_list2(target_one_hot))
 
 # BCE (vector): logits len-N (Tensor), targets len-N (Tensor)
-fn binary_cross_entropy(logits: tensor.Tensor[Float64], targets: tensor.Tensor[Float64]) -> Float64:
+fn binary_cross_entropy(logits: tensor.Tensor[Float32], targets: tensor.Tensor[Float32]) -> Float32:
     return binary_cross_entropy(_t_to_list1(logits), _t_to_list1(targets))
 
 # BCE (batched): logits NxK (Tensor), targets NxK (Tensor)
-fn binary_cross_entropy(logits: tensor.Tensor[Float64], targets: tensor.Tensor[Float64]) -> Float64:
+fn binary_cross_entropy(logits: tensor.Tensor[Float32], targets: tensor.Tensor[Float32]) -> Float32:
     return binary_cross_entropy(_t_to_list2(logits), _t_to_list2(targets))
 
 # Focal (binary): logits len-N (Tensor), targets len-N (Tensor)
 fn focal_loss_binary_with_logits(
-    logits: tensor.Tensor[Float64],
-    targets: tensor.Tensor[Float64],
-    gamma: Float64 = 2.0,
-    alpha: Float64 = 0.25
-) -> Float64:
+    logits: tensor.Tensor[Float32],
+    targets: tensor.Tensor[Float32],
+    gamma: Float32 = 2.0,
+    alpha: Float32 = 0.25
+) -> Float32:
     return focal_loss_binary_with_logits(_t_to_list1(logits), _t_to_list1(targets), gamma, alpha)
 
 # Focal (multiclass, index): logits NxC (Tensor), target index List[Int]
 fn focal_loss_multiclass_with_logits(
-    logits: tensor.Tensor[Float64],
+    logits: tensor.Tensor[Float32],
     target_index: List[Int],
-    gamma: Float64 = 2.0,
-    alpha: Float64 = 0.25
-) -> Float64:
+    gamma: Float32 = 2.0,
+    alpha: Float32 = 0.25
+) -> Float32:
     return focal_loss_multiclass_with_logits(_t_to_list2(logits), target_index, gamma, alpha)
 
 # Focal (multiclass, one-hot): logits NxC (Tensor), targets NxC (Tensor)
 fn focal_loss_multiclass_with_logits(
-    logits: tensor.Tensor[Float64],
-    target_one_hot: tensor.Tensor[Float64],
-    gamma: Float64 = 2.0,
-    alpha: Float64 = 0.25
-) -> Float64:
+    logits: tensor.Tensor[Float32],
+    target_one_hot: tensor.Tensor[Float32],
+    gamma: Float32 = 2.0,
+    alpha: Float32 = 0.25
+) -> Float32:
     return focal_loss_multiclass_with_logits(_t_to_list2(logits), _t_to_list2(target_one_hot), gamma, alpha)
-
- 
