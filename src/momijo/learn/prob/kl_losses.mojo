@@ -25,14 +25,14 @@ from momijo.tensor import tensor
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn _clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
+fn _clamp(x: Float32, lo: Float32, hi: Float32) -> Float32:
     var v = x
     if v < lo: v = lo
     if v > hi: v = hi
     return v
 
 # Exponential approximation on a bounded range using (1 + x/n)^n with n=64
-fn _exp64(x: Float64) -> Float64:
+fn _exp64(x: Float32) -> Float32:
     var xv = _clamp(x, -50.0, 50.0)
     var n = 64.0
     var base = 1.0 + (xv / n)
@@ -47,7 +47,7 @@ fn _exp64(x: Float64) -> Float64:
 
 # Natural log approximation via range reduction and atanh-series.
 # ln(x) = ln(m) + k*ln2, reduce x = m*2^k, with m in ~[0.75, 1.5]
-fn _log64(x: Float64) -> Float64:
+fn _log64(x: Float32) -> Float32:
     if x <= 0.0:
         # represent -inf by a large negative number
         return -1.7976931348623157e308
@@ -67,31 +67,31 @@ fn _log64(x: Float64) -> Float64:
     var i = 1
     while i <= 6:       # 6 odd terms are enough for losses
         term = term * t2
-        var denom = Float64(2 * i + 1)
+        var denom = Float32(2 * i + 1)
         sum = sum + (term / denom)
         i = i + 1
-    return 2.0 * sum + Float64(k) * ln2
+    return 2.0 * sum + Float32(k) * ln2
 
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
 
-fn _eps() -> Float64:
+fn _eps() -> Float32:
     # Minimum positive for probability/variance clamping
     return 1e-12
 
-fn _clamp_prob(x: Float64) -> Float64:
+fn _clamp_prob(x: Float32) -> Float32:
     var e = _eps()
     var one = 1.0 - e
     if x < e: return e
     if x > one: return one
     return x
 
-fn _assert_same_len(a: List[Float64], b: List[Float64]) -> None:
+fn _assert_same_len(a: List[Float32], b: List[Float32]) -> None:
     assert(len(a) == len(b))
 
 @always_inline
-fn _assert_same_shape_t(a: tensor.Tensor[Float64], b: tensor.Tensor[Float64]) -> None:
+fn _assert_same_shape_t(a: tensor.Tensor[Float32], b: tensor.Tensor[Float32]) -> None:
     var sa = a.shape(); var sb = b.shape()
     assert(len(sa) == len(sb))
     var i = 0
@@ -110,11 +110,11 @@ fn _numel(shape: List[Int]) -> Int:
     return p
 
 # Reduce over last dimension for 2D tensors: [N, D] -> [N]
-fn _reduce_lastdim_sum_2d(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+fn _reduce_lastdim_sum_2d(x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
     var shp = x.shape()
     assert(len(shp) == 2)
     var n = shp[0]; var d = shp[1]
-    var out = tensor.Tensor[Float64]([n], 0.0)
+    var out = tensor.Tensor[Float32]([n], 0.0)
     var xd = x._data; var yd = out._data
     var i = 0
     while i < n:
@@ -135,8 +135,8 @@ fn _reduce_lastdim_sum_2d(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
 #   0.5 * [ log(var_q / var_p) + (var_p + (mu_p - mu_q)^2) / var_q - 1 ]
 # We use log-variance (logvar = log(var)) for stability.
 
-fn kl_normal_normal_scalar(mu_p: Float64, logvar_p: Float64,
-                           mu_q: Float64, logvar_q: Float64) -> Float64:
+fn kl_normal_normal_scalar(mu_p: Float32, logvar_p: Float32,
+                           mu_q: Float32, logvar_q: Float32) -> Float32:
     var var_p = _exp64(logvar_p)
     var var_q = _exp64(logvar_q)
     var e = _eps()
@@ -150,8 +150,8 @@ fn kl_normal_normal_scalar(mu_p: Float64, logvar_p: Float64,
     if kl < 0.0: return 0.0
     return kl
 
-fn kl_normal_normal_diag(mu_p: List[Float64], logvar_p: List[Float64],
-                         mu_q: List[Float64], logvar_q: List[Float64]) -> Float64:
+fn kl_normal_normal_diag(mu_p: List[Float32], logvar_p: List[Float32],
+                         mu_q: List[Float32], logvar_q: List[Float32]) -> Float32:
     _assert_same_len(mu_p, mu_q)
     _assert_same_len(logvar_p, logvar_q)
     _assert_same_len(mu_p, logvar_p)
@@ -165,8 +165,8 @@ fn kl_normal_normal_diag(mu_p: List[Float64], logvar_p: List[Float64],
     if acc < 0.0: return 0.0
     return acc
 
-# Typed overload using Normal structs (expects fields mean: Float64, std: Float64)
-fn kl_divergence(p: Normal, q: Normal) -> Float64:
+# Typed overload using Normal structs (expects fields mean: Float32, std: Float32)
+fn kl_divergence(p: Normal, q: Normal) -> Float32:
     var mu_p = p.mean
     var mu_q = q.mean
 
@@ -186,7 +186,7 @@ fn kl_divergence(p: Normal, q: Normal) -> Float64:
 # -----------------------------------------------------------------------------
 # KL( Ber(p) || Ber(q) ) = p*log(p/q) + (1-p)*log((1-p)/(1-q))
 
-fn kl_bernoulli_scalar(p: Float64, q: Float64) -> Float64:
+fn kl_bernoulli_scalar(p: Float32, q: Float32) -> Float32:
     var pc = _clamp_prob(p)
     var qc = _clamp_prob(q)
 
@@ -197,7 +197,7 @@ fn kl_bernoulli_scalar(p: Float64, q: Float64) -> Float64:
     if kl < 0.0: return 0.0
     return kl
 
-fn kl_bernoulli_vector(p: List[Float64], q: List[Float64]) -> Float64:
+fn kl_bernoulli_vector(p: List[Float32], q: List[Float32]) -> Float32:
     _assert_same_len(p, q)
     var n = len(p)
     var acc = 0.0
@@ -208,8 +208,8 @@ fn kl_bernoulli_vector(p: List[Float64], q: List[Float64]) -> Float64:
     if acc < 0.0: return 0.0
     return acc
 
-# Typed overload using Bernoulli structs (expects field p: Float64)
-fn kl_divergence(p: Bernoulli, q: Bernoulli) -> Float64:
+# Typed overload using Bernoulli structs (expects field p: Float32)
+fn kl_divergence(p: Bernoulli, q: Bernoulli) -> Float32:
     return kl_bernoulli_scalar(p.p, q.p)
 
 # -----------------------------------------------------------------------------
@@ -217,7 +217,7 @@ fn kl_divergence(p: Bernoulli, q: Bernoulli) -> Float64:
 # -----------------------------------------------------------------------------
 # KL( Cat(p) || Cat(q) ) = sum_i p_i * log(p_i / q_i)
 
-fn kl_categorical(p: List[Float64], q: List[Float64]) -> Float64:
+fn kl_categorical(p: List[Float32], q: List[Float32]) -> Float32:
     _assert_same_len(p, q)
     var n = len(p)
     var acc = 0.0
@@ -234,14 +234,14 @@ fn kl_categorical(p: List[Float64], q: List[Float64]) -> Float64:
 # Generic shim (kept for backward compatibility)
 # -----------------------------------------------------------------------------
 # NOTE: Keep a distinct name to avoid overload ambiguity.
-fn kl_divergence_any(p, q) -> Float64:
+fn kl_divergence_any(p, q) -> Float32:
     # Prefer calling one of the typed or explicit helpers.
     return 0.0
 
 # -----------------------------------------------------------------------------
 #                             TENSOR VARIANTS
 # -----------------------------------------------------------------------------
-# All tensor variants use Float64 tensors and return either a scalar sum or a
+# All tensor variants use Float32 tensors and return either a scalar sum or a
 # 1D tensor for 2D inputs (batch-wise reduction over the last dimension).
 # -----------------------------------------------------------------------------
 
@@ -249,11 +249,11 @@ fn kl_divergence_any(p, q) -> Float64:
 
 # Sum over all elements (any shape, shapes must match)
 fn kl_normal_normal_diag_sum(
-    mu_p: tensor.Tensor[Float64],
-    logvar_p: tensor.Tensor[Float64],
-    mu_q: tensor.Tensor[Float64],
-    logvar_q: tensor.Tensor[Float64]
-) -> Float64:
+    mu_p: tensor.Tensor[Float32],
+    logvar_p: tensor.Tensor[Float32],
+    mu_q: tensor.Tensor[Float32],
+    logvar_q: tensor.Tensor[Float32]
+) -> Float32:
     _assert_same_shape_t(mu_p, mu_q)
     _assert_same_shape_t(logvar_p, logvar_q)
     _assert_same_shape_t(mu_p, logvar_p)
@@ -285,11 +285,11 @@ fn kl_normal_normal_diag_sum(
 
 # Batch-wise for 2D: inputs [N, D] -> returns [N], reduce over D
 fn kl_normal_normal_diag_batched(
-    mu_p: tensor.Tensor[Float64],
-    logvar_p: tensor.Tensor[Float64],
-    mu_q: tensor.Tensor[Float64],
-    logvar_q: tensor.Tensor[Float64]
-) -> tensor.Tensor[Float64]:
+    mu_p: tensor.Tensor[Float32],
+    logvar_p: tensor.Tensor[Float32],
+    mu_q: tensor.Tensor[Float32],
+    logvar_q: tensor.Tensor[Float32]
+) -> tensor.Tensor[Float32]:
     _assert_same_shape_t(mu_p, mu_q)
     _assert_same_shape_t(logvar_p, logvar_q)
     _assert_same_shape_t(mu_p, logvar_p)
@@ -298,7 +298,7 @@ fn kl_normal_normal_diag_batched(
     assert(len(shp) == 2)
     var n = shp[0]; var d = shp[1]
 
-    var row_kl = tensor.Tensor[Float64]([n, d], 0.0)
+    var row_kl = tensor.Tensor[Float32]([n, d], 0.0)
     var rdata = row_kl._data
     var mup = mu_p._data
     var lvp = logvar_p._data
@@ -328,9 +328,9 @@ fn kl_normal_normal_diag_batched(
 
 # Sum over all elements
 fn kl_bernoulli_sum(
-    p: tensor.Tensor[Float64],
-    q: tensor.Tensor[Float64]
-) -> Float64:
+    p: tensor.Tensor[Float32],
+    q: tensor.Tensor[Float32]
+) -> Float32:
     _assert_same_shape_t(p, q)
     var shp = p.shape()
     var n = _numel(shp)
@@ -351,15 +351,15 @@ fn kl_bernoulli_sum(
 
 # Batch-wise for 2D: [N, D] -> [N]
 fn kl_bernoulli_batched(
-    p2d: tensor.Tensor[Float64],
-    q2d: tensor.Tensor[Float64]
-) -> tensor.Tensor[Float64]:
+    p2d: tensor.Tensor[Float32],
+    q2d: tensor.Tensor[Float32]
+) -> tensor.Tensor[Float32]:
     _assert_same_shape_t(p2d, q2d)
     var shp = p2d.shape()
     assert(len(shp) == 2)
     var n = shp[0]; var d = shp[1]
 
-    var buf = tensor.Tensor[Float64]([n, d], 0.0)
+    var buf = tensor.Tensor[Float32]([n, d], 0.0)
     var bd = buf._data
     var pd = p2d._data; var qd = q2d._data
 
@@ -383,9 +383,9 @@ fn kl_bernoulli_batched(
 
 # Sum over all elements
 fn kl_categorical_sum(
-    p: tensor.Tensor[Float64],
-    q: tensor.Tensor[Float64]
-) -> Float64:
+    p: tensor.Tensor[Float32],
+    q: tensor.Tensor[Float32]
+) -> Float32:
     _assert_same_shape_t(p, q)
     var shp = p.shape()
     var n = _numel(shp)
@@ -403,15 +403,15 @@ fn kl_categorical_sum(
 
 # Batch-wise for 2D: [N, D] -> [N]
 fn kl_categorical_batched(
-    p2d: tensor.Tensor[Float64],
-    q2d: tensor.Tensor[Float64]
-) -> tensor.Tensor[Float64]:
+    p2d: tensor.Tensor[Float32],
+    q2d: tensor.Tensor[Float32]
+) -> tensor.Tensor[Float32]:
     _assert_same_shape_t(p2d, q2d)
     var shp = p2d.shape()
     assert(len(shp) == 2)
     var n = shp[0]; var d = shp[1]
 
-    var buf = tensor.Tensor[Float64]([n, d], 0.0)
+    var buf = tensor.Tensor[Float32]([n, d], 0.0)
     var bd = buf._data
     var pd = p2d._data; var qd = q2d._data
 
