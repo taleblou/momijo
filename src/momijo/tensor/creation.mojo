@@ -11,12 +11,12 @@
 #   (deterministic across calls).
 
 from collections.list import List
-from momijo.tensor.tensor import Tensor 
+from momijo.tensor.tensor import Tensor
 from momijo.tensor.helpers import (
     compute_row_major_strides,
     astype_with,
     copy_list_int,
-    numel, 
+    numel,
     # Identity
     id_i8, id_i16, id_i32, id_i64, id_int,
     id_u8, id_u16, id_u32, id_u64,
@@ -103,6 +103,11 @@ struct RNG64(Copyable, Movable):
         var u = self.next_u64()
         var hi = u >> 11
         return Float64(hi) / 9007199254740992.0  # 2^53
+    @always_inline
+    fn next_f32(mut self) -> Float32:
+        var u = self.next_u64()
+        var hi = u >> 11
+        return Float32(hi) / 9007199254740992.0  # 2^53
 
     # Unbiased Int in [low, high)
     @always_inline
@@ -124,6 +129,8 @@ fn init_rng(seed: Optional[Int]) -> RNG64:
     if seed is None:
         return RNG64(0xD1B54A32D192ED03)
     return RNG64(UInt64(seed.value()))
+
+
 
 # -------------------- generic builders / fillers -------------------- #
 
@@ -178,8 +185,8 @@ fn zeros[T: ImplicitlyCopyable & Copyable & Movable](
 # ------------------------------ dtype-specific ------------------------------
 
 @always_inline
-fn zeros(shape: List[Int]) -> Tensor[Float64]:
-    return zeros_with_shape[Float64](shape, to_f64_from_f64)
+fn zeros(shape: List[Int]) -> Tensor[Float32]:
+    return zeros_with_shape[Float32](shape, to_f32_from_f64)
 
 @always_inline
 fn zeros_f64(shape: List[Int]) -> Tensor[Float64]:
@@ -217,7 +224,7 @@ fn zeros_like(x: Tensor[Float32]) -> Tensor[Float32]:
 fn zeros_like(x: Tensor[Int]) -> Tensor[Int]:
     return zeros_with_shape[Int](x.shape(), to_int_from_f64)
 
-    
+
 
 
 # ------------------------------ full ---------------------------------
@@ -279,7 +286,7 @@ fn ones_with_shape[T: ImplicitlyCopyable & Copyable & Movable](
 @always_inline
 fn ones(shape: List[Int]) -> Tensor[Float64]:
     return ones_with_shape[Float64](shape, to_f64_from_f64)
-    
+
 @always_inline
 fn ones_f64(shape: List[Int]) -> Tensor[Float64]:
     return ones_with_shape[Float64](shape, to_f64_from_f64)
@@ -455,7 +462,7 @@ fn arange_i16(start: Int, stop: Int = -1, step: Int = 1) -> Tensor[Int16]:
 @always_inline
 fn arange_i32(start: Int, stop: Int = -1, step: Int = 1) -> Tensor[Int32]:
     return arange_with[Int32](start, to_i32_from_int, stop, step)
-    
+
 @always_inline
 fn arange_i64(start: Int, stop: Int = -1, step: Int = 1) -> Tensor[Int64]:
     return arange_with[Int64](start, to_i64_from_int, stop, step)
@@ -481,8 +488,10 @@ fn arange_f16(start: Int, stop: Int = -1, step: Int = 1) -> Tensor[Float16]:
     return arange_with[Float16](start, to_f16_from_int, stop, step)
 
 
-# ------------------------------ random ------------------------------ #
-# Generic randu with converter from Float64 -> T
+# ------------------------------
+# Uniform: randu_with and wrappers
+# ------------------------------
+
 fn randu_with[T: ImplicitlyCopyable & Copyable & Movable](
     shape: List[Int],
     f: fn (Float64) -> T,
@@ -496,6 +505,7 @@ fn randu_with[T: ImplicitlyCopyable & Copyable & Movable](
     xs.reserve(n)
     var rng = init_rng(seed)
     var scale = high - low
+
     var i = 0
     var lim = (n // 8) * 8
     while i < lim:
@@ -511,10 +521,10 @@ fn randu_with[T: ImplicitlyCopyable & Copyable & Movable](
     while i < n:
         xs.append(f(low + scale * rng.next_f64()))
         i = i + 1
-    # Note: this constructor form matches your existing randu_with
+
+    # Tensor ctor: (data, shape)
     return Tensor[T](xs, sh)
 
-# Wrappers (uniform, shape-based)
 @always_inline
 fn randu_f64(shape: List[Int], low: Float64 = 0.0, high: Float64 = 1.0, seed: Optional[Int] = None) -> Tensor[Float64]:
     return randu_with[Float64](shape, to_f64_from_f64, low, high, seed)
@@ -523,7 +533,7 @@ fn randu_f64(shape: List[Int], low: Float64 = 0.0, high: Float64 = 1.0, seed: Op
 fn randu_f32(shape: List[Int], low: Float64 = 0.0, high: Float64 = 1.0, seed: Optional[Int] = None) -> Tensor[Float32]:
     return randu_with[Float32](shape, to_f32_from_f64, low, high, seed)
 
-# Like-helpers (Float32/64)
+# Like-helpers
 @always_inline
 fn rand_like_f64(x: Tensor[Float64], seed: Optional[Int] = None) -> Tensor[Float64]:
     return randu_f64(x.shape(), 0.0, 1.0, seed)
@@ -532,51 +542,22 @@ fn rand_like_f64(x: Tensor[Float64], seed: Optional[Int] = None) -> Tensor[Float
 fn rand_like_f32(x: Tensor[Float32], seed: Optional[Int] = None) -> Tensor[Float32]:
     return randu_f32(x.shape(), 0.0, 1.0, seed)
 
-# ------------------------------ normal ------------------------------ #
-# Box–Muller core: generate N(0,1) and map Float64 -> T 
-# Core: generate N(0,1) like `x` and map with `f`
-fn randn_like_with[T: ImplicitlyCopyable & Copyable & Movable](
-    x: Tensor[T],
-    f: fn (Float64) -> T,
-    seed: Optional[Int] = None
-) -> Tensor[T]:
-    var shape = x.shape()
-    var n = numel(shape)
+# ------------------------------
+# Normal(0,1): Box–Muller (Float64 core)
+# ------------------------------
 
-    var out = List[T]()
-    out.reserve(n)
-
-    var rng = init_rng(seed)
-
-    var i = 0
-    while i < n:
-        var u1: Float64 = rng.next_f64()
-        var u2: Float64 = rng.next_f64()
-        if u1 < Float64(1e-12):
-            u1 = Float64(1e-12)
-
-        var r: Float64 = sqrt(Float64(-2.0) * log(u1))
-        var theta: Float64 = Float64(6.283185307179586) * u2   # 2π
-        var z0: Float64 = r * cos(theta)
-        var z1: Float64 = r * sin(theta)
-
-        out.append(f(z0))
-        if i + 1 < n:
-            out.append(f(z1))
-        i = i + 2
-
-    # Note: this constructor form matches your randn_like_with
-    return Tensor[T](shape, out)
-
-# Shape-based generator (this is what tensor.randn([2,3]) expects)
-fn randn_with_shape[T: ImplicitlyCopyable & Copyable & Movable](
+# Tensor-like (uses x.shape())
+fn _randn_like_with_f64core[T: ImplicitlyCopyable & Copyable & Movable](
     shape: List[Int],
-    f: fn (Float64) -> T,
+    map64: fn (Float64) -> T,
     seed: Optional[Int] = None
 ) -> Tensor[T]:
-    var n = numel(shape)
+    var sh = copy_list_int(shape)
+    var n = numel(sh)
+
     var out = List[T]()
     out.reserve(n)
+
     var rng = init_rng(seed)
 
     var i = 0
@@ -591,46 +572,87 @@ fn randn_with_shape[T: ImplicitlyCopyable & Copyable & Movable](
         var z0: Float64 = r * cos(theta)
         var z1: Float64 = r * sin(theta)
 
-        out.append(f(z0))
+        out.append(map64(z0))
         if i + 1 < n:
-            out.append(f(z1))
+            out.append(map64(z1))
         i = i + 2
+    return Tensor[T](out, sh)
 
-    # Tensor constructor is (shape: List[Int], flat: List[T]) in your code
-    return Tensor[T](shape, out)
+# Tensor-like (Float32 core math, useful for pure f32 path)
+fn _randn_like_with_f32core[T: ImplicitlyCopyable & Copyable & Movable](
+    shape: List[Int],
+    map32: fn (Float32) -> T,
+    seed: Optional[Int] = None
+) -> Tensor[T]:
+    var sh = copy_list_int(shape)
+    var n = numel(sh)
 
+    var out = List[T]()
+    out.reserve(n)
 
+    var rng = init_rng(seed)
 
-# Convenience overloads by dtype (Tensor-based)
-@always_inline
-fn randn(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
-    var tmp = Tensor[Float64](shape.copy(), Float64(0))  # (shape, fill)
-    return randn_like_with[Float64](tmp, to_f64_from_f64, seed)
+    var i = 0
+    while i < n:
+        var u1: Float32 = rng.next_f32()
+        var u2: Float32 = rng.next_f32()
+        if u1 < Float32(1e-12):
+            u1 = Float32(1e-12)
 
-@always_inline
+        var r: Float32 = sqrt(Float32(-2.0) * log(u1))
+        var theta: Float32 = Float32(6.283185307179586) * u2  # 2π
+        var z0: Float32 = r * cos(theta)
+        var z1: Float32 = r * sin(theta)
+
+        out.append(map32(z0))
+        if i + 1 < n:
+            out.append(map32(z1))
+        i = i + 2
+    return Tensor[T](out, sh)
+
+# ------------------------------
+# Public randn overloads (exact signatures requested)
+# ------------------------------
+
+# 1) randn for Int "shape" ⇒ Int tensor (via Float64 core, then cast)
+fn randn(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Int]:
+    return _randn_like_with_f64core[Int](shape, to_int_from_f64, seed)
+
+# # 2) randn where "shape" is List[Float32] ⇒ Float32 tensor
+# fn randn(shape: List[Float32], seed: Optional[Int] = None) -> Tensor[Float32]:
+#     var sh = _shape_from_f32(shape)
+#     return _randn_like_with_f32core[Float32](sh, to_f32_from_f32, seed)
+
+# # 3) randn where "shape" is List[Float64] ⇒ Float64 tensor
+# fn randn(shape: List[Float64], seed: Optional[Int] = None) -> Tensor[Float64]:
+#     var sh = _shape_from_f64(shape)
+#     return _randn_like_with_f64core[Float64](sh, to_f64_from_f64, seed)
+
+# 4) randn like(tensor) overloads
 fn randn(x: Tensor[Float64], seed: Optional[Int] = None) -> Tensor[Float64]:
-    return randn_like_with[Float64](x, to_f64_from_f64, seed)
+    return _randn_like_with_f64core[Float64](x.shape(), to_f64_from_f64, seed)
 
-@always_inline
 fn randn(x: Tensor[Float32], seed: Optional[Int] = None) -> Tensor[Float32]:
-    return randn_like_with[Float32](x, to_f32_from_f64, seed)
+    return _randn_like_with_f32core[Float32](x.shape(), to_f32_from_f32, seed)
 
-@always_inline
 fn randn(x: Tensor[Int], seed: Optional[Int] = None) -> Tensor[Int]:
-    return randn_like_with[Int](x, to_int_from_f64, seed)
-    
+    return _randn_like_with_f64core[Int](x.shape(), to_int_from_f64, seed)
+
+# ------------------------------
+# Optional convenience: explicit dtype helpers
+# ------------------------------
+
 @always_inline
 fn randn_f64(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
-    return randn_with_shape[Float64](shape, to_f64_from_f64, seed)
+    return _randn_like_with_f64core[Float64](shape, to_f64_from_f64, seed)
 
 @always_inline
 fn randn_f32(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float32]:
-    return randn_with_shape[Float32](shape, to_f32_from_f64, seed)
+    return _randn_like_with_f32core[Float32](shape, to_f32_from_f32, seed)
 
 @always_inline
 fn randn_int(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Int]:
-    return randn_with_shape[Int](shape, to_int_from_f64, seed)
- 
+    return _randn_like_with_f64core[Int](shape, to_int_from_f64, seed)
 
 # ============================== NEW: rand (uniform) like randn ==============================
 
@@ -767,10 +789,10 @@ fn randperm_int(n: Int, seed: Optional[Int] = None) -> Tensor[Int]:
 
     # shuffle in-place if length > 1
     if nn > 1:
-        var rng = init_rng(seed)              
+        var rng = init_rng(seed)
         var j = nn - 1
         while j > 0:
-            # next_i32(lo, hi) ⇒ [lo, hi)   
+            # next_i32(lo, hi) ⇒ [lo, hi)
             var k = rng.next_i32(0, j + 1)
             var tmp = xs[j]; xs[j] = xs[k]; xs[k] = tmp
             j -= 1
@@ -842,7 +864,7 @@ fn bernoulli_f32_alias(shape: List[Int], p: Float32, seed: Optional[Int] = None)
 
 
 
- 
+
 
 
 @always_inline
@@ -864,7 +886,7 @@ fn bernoulli_f64_alias(shape: List[Int], p: Int, seed: Optional[Int] = None) -> 
 
 # ---------------------------- *_like aliases ----------------------------
 
- 
+
 
 # ------------------------------ random (all numeric) ------------------------------
 
@@ -1125,7 +1147,45 @@ fn empty_tensor_with[T: ImplicitlyCopyable & Copyable & Movable](
     var strides = compute_row_major_strides(shp)
     return Tensor[T](data, shp, strides, 0)
 
-    
+@always_inline
+fn empty_tensor_with[T: ImplicitlyCopyable & Copyable & Movable](
+    from_f32: fn (Float32) -> T,
+    shape: Optional[List[Int]] = None
+) -> Tensor[T]:
+    # Resolve shape (default to [0])
+    var shp = List[Int]()
+    if shape is None:
+        shp.append(0)
+    else:
+        shp = shape.value().copy()
+
+    # Compute element count
+    var n = 1
+    var i = 0
+    var r = len(shp)
+    while i < r:
+        n = n * shp[i]
+        i += 1
+
+    # Allocate and fill with zeros (unrolled)
+    var data = List[T]()
+    data.reserve(n)
+    var z = from_f32(0.0)
+
+    var k = 0
+    var lim = (n // 8) * 8
+    while k < lim:
+        data.append(z); data.append(z); data.append(z); data.append(z)
+        data.append(z); data.append(z); data.append(z); data.append(z)
+        k += 8
+    while k < n:
+        data.append(z)
+        k += 1
+
+    # Row-major strides and construct tensor (offset = 0)
+    var strides = compute_row_major_strides(shp)
+    return Tensor[T](data, shp, strides, 0)
+
 fn empty_tensor[T: ImplicitlyCopyable & Copyable & Movable]() -> Tensor[T]:
     var data = List[T]()        # no elements
     var shape = List[Int]()     # 1D with zero length
@@ -1135,6 +1195,9 @@ fn empty_tensor[T: ImplicitlyCopyable & Copyable & Movable]() -> Tensor[T]:
 @always_inline
 fn empty_f64() -> Tensor[Float64]:
     return empty_tensor_with[Float64](to_f64_from_f64, None)
+@always_inline
+fn empty_f32() -> Tensor[Float32]:
+    return empty_tensor_with[Float32](to_f32_from_f32, None)
 @always_inline
 fn empty(shape: List[Int]) -> Tensor[Float64]:
     return empty_tensor_with[Float64](to_f64_from_f64, shape.copy())
@@ -1164,7 +1227,7 @@ fn empty_like(x: Tensor[Int]) -> Tensor[Int]:
     return empty_tensor_with[Int](to_int_from_f64, x.shape())
 
 
- 
+
 @always_inline
 fn from_list_float64(data: List[Float64]) -> Tensor[Float64]:
     # 1D tensor from a flat list (row-major)
@@ -1172,8 +1235,8 @@ fn from_list_float64(data: List[Float64]) -> Tensor[Float64]:
     shape.append(len(data))
     var strides = compute_row_major_strides(shape)
     return Tensor[Float64](data.copy(), shape, strides, 0)
- 
- 
+
+
 @always_inline
 fn from_list_float32(data: List[Float32]) -> Tensor[Float32]:
     # 1D tensor from a flat list (row-major)
@@ -1379,10 +1442,10 @@ fn scalar_zero_tensor[T: ImplicitlyCopyable & Copyable & Movable](
     return Tensor[T](data, shape, strides, 0)
 
 
- 
 
 
- 
+
+
 
 
 @always_inline
@@ -1393,7 +1456,7 @@ fn scalar_f64(x: Float32) -> Tensor[Float64]:
     return full[Float64](List[Int](), Float64(x))
 @always_inline
 fn scalar_f64(x: Int) -> Tensor[Float64]:
-    return full[Float64](List[Int](), Float64(x)) 
+    return full[Float64](List[Int](), Float64(x))
 
 
 @always_inline
@@ -1404,7 +1467,7 @@ fn scalar_f32(x: Float32) -> Tensor[Float32]:
     return full[Float32](List[Int](), Float32(x))
 @always_inline
 fn scalar_f32(x: Int) -> Tensor[Float32]:
-    return full[Float32](List[Int](), Float32(x)) 
+    return full[Float32](List[Int](), Float32(x))
 
 @always_inline
 fn scalar_int(x: Float64) -> Tensor[Int]:
@@ -1414,15 +1477,15 @@ fn scalar_int(x: Float32) -> Tensor[Int]:
     return full[Int](List[Int](), Int(x))
 @always_inline
 fn scalar_int(x: Int) -> Tensor[Int]:
-    return full[Int](List[Int](), Int(x)) 
+    return full[Int](List[Int](), Int(x))
 
 # -----------------------------------------------------------------------------
 # Normal distribution samplers
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn _randn_shape_f64(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]: 
-    var like = empty_tensor_with[Float64](to_f64_from_f64, Optional[List[Int]](shape.copy())) 
+fn _randn_shape_f64(shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
+    var like = empty_tensor_with[Float64](to_f64_from_f64, Optional[List[Int]](shape.copy()))
     return randn_like_with[Float64](like, to_f64_from_f64, seed)
 
 # Main API (Float64 default) — matches: tensor.normal(3.0, 0.5, [2])
@@ -1432,9 +1495,15 @@ fn normal(mean: Float64, std: Float64, shape: List[Int], seed: Optional[Int] = N
     z = z.mul_scalar(std)                     # scale by std
     z = z.add_scalar(mean)                    # shift by mean
     return z.copy()
- 
+
 @always_inline
 fn normal_f32(mean: Float32, std: Float32, shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float32]:
     var z64 = _randn_shape_f64(shape, seed)        # sample in f64 for stability
     var y64 = z64.mul_scalar(Float64(std)).add_scalar(Float64(mean))
     return y64.to_float32()
+
+
+# @always_inline
+# fn zeros_like(x: tensor.GradTensor) -> tensor.GradTensor:
+#     var z = tensor.zeros_like(x.value)
+#     return tensor.GradTensor(z, x.ctx)
