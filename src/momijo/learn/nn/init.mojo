@@ -22,10 +22,10 @@ from momijo.tensor import tensor   # optional Tensor overloads
 # Small math helpers (backend-agnostic)
 # ------------------------------------------------------------
 
-fn _sqrt64(x: Float64) -> Float64:
+fn _sqrt64(x: Float32) -> Float32:
     if x <= 0.0:
         return 0.0
-    var g: Float64 = x
+    var g: Float32 = x
     var i: Int = 0
     while i < 12:
         g = 0.5 * (g + x / g)
@@ -63,7 +63,7 @@ fn compute_fan_in_out(shape: List[Int]) -> (Int, Int):
 # ------------------------------------------------------------
 # Nonlinearity gain (similar to torch.nn.init.calculate_gain)
 # ------------------------------------------------------------
-fn calculate_gain(nonlinearity: String, param: Float64 = 0.0) -> Float64:
+fn calculate_gain(nonlinearity: String, param: Float32 = 0.0) -> Float32:
     if nonlinearity == String("linear"):
         return 1.0
     if nonlinearity == String("sigmoid"):
@@ -87,34 +87,34 @@ fn calculate_gain(nonlinearity: String, param: Float64 = 0.0) -> Float64:
 # ------------------------------------------------------------
 fn kaiming_uniform_bounds(
     shape: List[Int],
-    a: Float64 = 0.0,
+    a: Float32 = 0.0,
     mode: String = String("fan_in"),
     nonlinearity: String = String("leaky_relu")
-) -> (Float64, Float64):
+) -> (Float32, Float32):
     var (fan_in, fan_out) = compute_fan_in_out(shape)
     var fan: Int = fan_in
     if mode == String("fan_out"):
         fan = fan_out
-    var gain: Float64 = calculate_gain(nonlinearity, a)
-    var denom: Float64 = Float64(fan)
+    var gain: Float32 = calculate_gain(nonlinearity, a)
+    var denom: Float32 = Float32(fan)
     if denom <= 0.0:
         denom = 1.0
-    var std: Float64 = gain / _sqrt64(denom)
-    var bound: Float64 = _sqrt64(3.0) * std
+    var std: Float32 = gain / _sqrt64(denom)
+    var bound: Float32 = _sqrt64(3.0) * std
     return (-bound, +bound)
 
 fn kaiming_normal_std(
     shape: List[Int],
-    a: Float64 = 0.0,
+    a: Float32 = 0.0,
     mode: String = String("fan_in"),
     nonlinearity: String = String("leaky_relu")
-) -> Float64:
+) -> Float32:
     var (fan_in, fan_out) = compute_fan_in_out(shape)
     var fan: Int = fan_in
     if mode == String("fan_out"):
         fan = fan_out
-    var gain: Float64 = calculate_gain(nonlinearity, a)
-    var denom: Float64 = Float64(fan)
+    var gain: Float32 = calculate_gain(nonlinearity, a)
+    var denom: Float32 = Float32(fan)
     if denom <= 0.0:
         denom = 1.0
     return gain / _sqrt64(denom)
@@ -122,17 +122,17 @@ fn kaiming_normal_std(
 # ------------------------------------------------------------
 # Xavier (Glorot) — Uniform bounds and Normal std
 # ------------------------------------------------------------
-fn xavier_uniform_bounds(shape: List[Int], gain: Float64 = 1.0) -> (Float64, Float64):
+fn xavier_uniform_bounds(shape: List[Int], gain: Float32 = 1.0) -> (Float32, Float32):
     var (fan_in, fan_out) = compute_fan_in_out(shape)
-    var denom: Float64 = Float64(fan_in + fan_out)
+    var denom: Float32 = Float32(fan_in + fan_out)
     if denom <= 0.0:
         denom = 1.0
-    var bound: Float64 = gain * _sqrt64(6.0 / denom)
+    var bound: Float32 = gain * _sqrt64(6.0 / denom)
     return (-bound, +bound)
 
-fn xavier_normal_std(shape: List[Int], gain: Float64 = 1.0) -> Float64:
+fn xavier_normal_std(shape: List[Int], gain: Float32 = 1.0) -> Float32:
     var (fan_in, fan_out) = compute_fan_in_out(shape)
-    var denom: Float64 = Float64(fan_in + fan_out)
+    var denom: Float32 = Float32(fan_in + fan_out)
     if denom <= 0.0:
         denom = 1.0
     # std = gain * sqrt(2 / (fan_in + fan_out))
@@ -151,39 +151,39 @@ struct SimpleLCG:
         self.state = UInt64(6364136223846793005) * self.state + UInt64(1)
         return self.state
 
-    fn rand01(mut self) -> Float64:
+    fn rand01(mut self) -> Float32:
         var x: UInt64 = self._next_u64()
         var top53: UInt64 = (x >> UInt64(11))
-        var denom: Float64 = 9007199254740992.0  # 2**53
-        return Float64(top53) / denom
+        var denom: Float32 = 9007199254740992.0  # 2**53
+        return Float32(top53) / denom
 
-    fn uniform(mut self, low: Float64, high: Float64) -> Float64:
-        var u: Float64 = self.rand01()
+    fn uniform(mut self, low: Float32, high: Float32) -> Float32:
+        var u: Float32 = self.rand01()
         return low + (high - low) * u
 
     # Standard normal N(0,1) via CLT approximation: sum(U[0,1]) over 12 draws - 6
-    fn normal01(mut self) -> Float64:
-        var s: Float64 = 0.0
+    fn normal01(mut self) -> Float32:
+        var s: Float32 = 0.0
         var i: Int = 0
         while i < 12:
             s = s + self.rand01()
             i = i + 1
         return s - 6.0
 
-    fn normal(mut self, mean: Float64, std: Float64) -> Float64:
+    fn normal(mut self, mean: Float32, std: Float32) -> Float32:
         return mean + std * self.normal01()
 
 # ------------------------------------------------------------
-# Fillers (Float64 list bootstrap)
+# Fillers (Float32 list bootstrap)
 # ------------------------------------------------------------
-fn _fill_uniform64(mut arr: List[Float64], low: Float64, high: Float64, mut rng: SimpleLCG):
+fn _fill_uniform64(mut arr: List[Float32], low: Float32, high: Float32, mut rng: SimpleLCG):
     var n: Int = len(arr)
     var i: Int = 0
     while i < n:
         arr[i] = rng.uniform(low, high)
         i = i + 1
 
-fn _fill_normal64(mut arr: List[Float64], mean: Float64, std: Float64, mut rng: SimpleLCG):
+fn _fill_normal64(mut arr: List[Float32], mean: Float32, std: Float32, mut rng: SimpleLCG):
     var n: Int = len(arr)
     var i: Int = 0
     while i < n:
@@ -192,9 +192,9 @@ fn _fill_normal64(mut arr: List[Float64], mean: Float64, std: Float64, mut rng: 
 
 # Public: Kaiming/Xavier — Uniform (List)
 fn kaiming_uniform_fill(
-    mut arr: List[Float64],
+    mut arr: List[Float32],
     shape: List[Int],
-    a: Float64 = 0.0,
+    a: Float32 = 0.0,
     mode: String = String("fan_in"),
     nonlinearity: String = String("leaky_relu"),
     mut rng: SimpleLCG = SimpleLCG()
@@ -203,9 +203,9 @@ fn kaiming_uniform_fill(
     _fill_uniform64(arr, low, high, rng)
 
 fn xavier_uniform_fill(
-    mut arr: List[Float64],
+    mut arr: List[Float32],
     shape: List[Int],
-    gain: Float64 = 1.0,
+    gain: Float32 = 1.0,
     mut rng: SimpleLCG = SimpleLCG()
 ):
     var (low, high) = xavier_uniform_bounds(shape, gain)
@@ -213,29 +213,29 @@ fn xavier_uniform_fill(
 
 # Public: Kaiming/Xavier — Normal (List)
 fn kaiming_normal_fill(
-    mut arr: List[Float64],
+    mut arr: List[Float32],
     shape: List[Int],
-    a: Float64 = 0.0,
+    a: Float32 = 0.0,
     mode: String = String("fan_in"),
     nonlinearity: String = String("leaky_relu"),
-    mean: Float64 = 0.0,
+    mean: Float32 = 0.0,
     mut rng: SimpleLCG = SimpleLCG()
 ):
-    var std: Float64 = kaiming_normal_std(shape, a, mode, nonlinearity)
+    var std: Float32 = kaiming_normal_std(shape, a, mode, nonlinearity)
     _fill_normal64(arr, mean, std, rng)
 
 fn xavier_normal_fill(
-    mut arr: List[Float64],
+    mut arr: List[Float32],
     shape: List[Int],
-    gain: Float64 = 1.0,
-    mean: Float64 = 0.0,
+    gain: Float32 = 1.0,
+    mean: Float32 = 0.0,
     mut rng: SimpleLCG = SimpleLCG()
 ):
-    var std: Float64 = xavier_normal_std(shape, gain)
+    var std: Float32 = xavier_normal_std(shape, gain)
     _fill_normal64(arr, mean, std, rng)
 
 # ------------------------------------------------------------
-# Optional Tensor overloads (Float64) — use when tensors are desired
+# Optional Tensor overloads (Float32) — use when tensors are desired
 # ------------------------------------------------------------
 fn _numel_from_shape(shape: List[Int]) -> Int:
     var n: Int = 1
@@ -248,8 +248,8 @@ fn _numel_from_shape(shape: List[Int]) -> Int:
     return n
 
 fn kaiming_uniform_fill_tensor(
-    mut t: tensor.Tensor[Float64],
-    a: Float64 = 0.0,
+    mut t: tensor.Tensor[Float32],
+    a: Float32 = 0.0,
     mode: String = String("fan_in"),
     nonlinearity: String = String("leaky_relu"),
     mut rng: SimpleLCG = SimpleLCG()
@@ -263,8 +263,8 @@ fn kaiming_uniform_fill_tensor(
         k = k + 1
 
 fn xavier_uniform_fill_tensor(
-    mut t: tensor.Tensor[Float64],
-    gain: Float64 = 1.0,
+    mut t: tensor.Tensor[Float32],
+    gain: Float32 = 1.0,
     mut rng: SimpleLCG = SimpleLCG()
 ):
     var shp = t.shape()
@@ -276,11 +276,11 @@ fn xavier_uniform_fill_tensor(
         k = k + 1
 
 fn kaiming_normal_fill_tensor(
-    mut t: tensor.Tensor[Float64],
-    a: Float64 = 0.0,
+    mut t: tensor.Tensor[Float32],
+    a: Float32 = 0.0,
     mode: String = String("fan_in"),
     nonlinearity: String = String("leaky_relu"),
-    mean: Float64 = 0.0,
+    mean: Float32 = 0.0,
     mut rng: SimpleLCG = SimpleLCG()
 ):
     var shp = t.shape()
@@ -292,9 +292,9 @@ fn kaiming_normal_fill_tensor(
         k = k + 1
 
 fn xavier_normal_fill_tensor(
-    mut t: tensor.Tensor[Float64],
-    gain: Float64 = 1.0,
-    mean: Float64 = 0.0,
+    mut t: tensor.Tensor[Float32],
+    gain: Float32 = 1.0,
+    mean: Float32 = 0.0,
     mut rng: SimpleLCG = SimpleLCG()
 ):
     var shp = t.shape()
