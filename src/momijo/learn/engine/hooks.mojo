@@ -24,9 +24,9 @@ struct TrainState:
     var global_step: Int
     var max_epochs: Int
     var steps_per_epoch: Int
-    var train_loss: Float64
-    var val_loss: Float64
-    var lr: Float64
+    var train_loss: Float32
+    var val_loss: Float32
+    var lr: Float32
 
     fn __init__(
         out self,
@@ -34,9 +34,9 @@ struct TrainState:
         global_step: Int = 0,
         max_epochs: Int = 0,
         steps_per_epoch: Int = 0,
-        train_loss: Float64 = 0.0,
-        val_loss: Float64 = 0.0,
-        lr: Float64 = 0.0
+        train_loss: Float32 = 0.0,
+        val_loss: Float32 = 0.0,
+        lr: Float32 = 0.0
     ):
         self.epoch = epoch
         self.global_step = global_step
@@ -66,10 +66,10 @@ struct BatchInfo:
                ", size=" + String(self.batch_size) + ")"
 
 struct LRUpdateInfo:
-    var prev_lr: Float64
-    var new_lr: Float64
+    var prev_lr: Float32
+    var new_lr: Float32
 
-    fn __init__(out self, prev_lr: Float64 = 0.0, new_lr: Float64 = 0.0):
+    fn __init__(out self, prev_lr: Float32 = 0.0, new_lr: Float32 = 0.0):
         self.prev_lr = prev_lr
         self.new_lr = new_lr
 
@@ -93,7 +93,7 @@ struct Hooks:
 
     # Batch-level (training)
     var _on_batch_start: List[fn(mut TrainState, BatchInfo)]
-    var _on_batch_end:   List[fn(mut TrainState, BatchInfo, Float64)]  # loss
+    var _on_batch_end:   List[fn(mut TrainState, BatchInfo, Float32)]  # loss
 
     # Validation/Test phases
     var _on_validation_start: List[fn(mut TrainState)]
@@ -113,7 +113,7 @@ struct Hooks:
         self._on_epoch_end   = List[fn(mut TrainState)]()
 
         self._on_batch_start = List[fn(mut TrainState, BatchInfo)]()
-        self._on_batch_end   = List[fn(mut TrainState, BatchInfo, Float64)]()
+        self._on_batch_end   = List[fn(mut TrainState, BatchInfo, Float32)]()
 
         self._on_validation_start = List[fn(mut TrainState)]()
         self._on_validation_end   = List[fn(mut TrainState)]()
@@ -142,7 +142,7 @@ struct Hooks:
     fn add_on_batch_start(mut self, h: fn(mut TrainState, BatchInfo)) -> None:
         self._on_batch_start.append(h)
 
-    fn add_on_batch_end(mut self, h: fn(mut TrainState, BatchInfo, Float64)) -> None:
+    fn add_on_batch_end(mut self, h: fn(mut TrainState, BatchInfo, Float32)) -> None:
         self._on_batch_end.append(h)
 
     fn add_on_validation_start(mut self, h: fn(mut TrainState)) -> None:
@@ -198,7 +198,7 @@ struct Hooks:
             self._on_batch_start[i](state, info)
             i = i + 1
 
-    fn on_batch_end(mut self, mut state: TrainState, info: BatchInfo, loss: Float64) -> None:
+    fn on_batch_end(mut self, mut state: TrainState, info: BatchInfo, loss: Float32) -> None:
         var i = 0
         while i < len(self._on_batch_end):
             self._on_batch_end[i](state, info, loss)
@@ -252,7 +252,7 @@ struct Hooks:
         self._on_epoch_end   = List[fn(mut TrainState)]()
 
         self._on_batch_start = List[fn(mut TrainState, BatchInfo)]()
-        self._on_batch_end   = List[fn(mut TrainState, BatchInfo, Float64)]()
+        self._on_batch_end   = List[fn(mut TrainState, BatchInfo, Float32)]()
 
         self._on_validation_start = List[fn(mut TrainState)]()
         self._on_validation_end   = List[fn(mut TrainState)]()
