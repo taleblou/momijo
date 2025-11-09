@@ -26,5 +26,6 @@ fn read_all_bytes(path: String) -> tensor.Tensor[UInt8]:
             return tensor.zeros_u8([0])
         var s = p.read_text()         # متن ASCII
         return _string_to_u8(s)       # متن → bytes
-    except _:
+    except e:
+        print(e)
         return tensor.zeros_u8([0])
