@@ -109,7 +109,7 @@ struct Sequential(Copyable, Movable):
         return out_list
 
     # -------------------------- execution --------------------------
-    fn forward(mut self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(mut self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var n = len(self.modules)
         if n == 0:
             return x.copy()
@@ -136,7 +136,7 @@ struct Sequential(Copyable, Movable):
         return out.copy()
 
 
-    fn run(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn run(self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         return self.forward(x)
 
     # -------------------------- introspection --------------------------
@@ -216,8 +216,8 @@ fn get_default_qconfig(backend: String = String("fbgemm")) -> QConfig:
 
 struct MinMaxObserver(Copyable, Movable):
     var has_data: Bool
-    var min_v: Float64
-    var max_v: Float64
+    var min_v: Float32
+    var max_v: Float32
 
     fn __init__(out self):
         self.has_data = False
@@ -229,7 +229,7 @@ struct MinMaxObserver(Copyable, Movable):
         self.min_v = other.min_v
         self.max_v = other.max_v
 
-    fn observe(mut self, x: tensor.Tensor[Float64]) -> None:
+    fn observe(mut self, x: tensor.Tensor[Float32]) -> None:
         var n = x.numel()
         if n == 0:
             return
@@ -249,7 +249,7 @@ struct MinMaxObserver(Copyable, Movable):
             if mn < self.min_v: self.min_v = mn
             if mx > self.max_v: self.max_v = mx
 
-    fn scale_symmetric(self, max_q: Float64 = 127.0) -> Float64:
+    fn scale_symmetric(self, max_q: Float32 = 127.0) -> Float32:
         if not self.has_data or max_q <= 0.0:
             return 1.0
         var a = self.min_v
@@ -334,7 +334,7 @@ struct NNSequential(Copyable, Movable):
         return self.qconfig
 
     # -------------------------- execution ------------------------------
-    fn forward(mut self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(mut self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         # Sequential.forward requires `mut self`, so NNSequential.forward must also be `mut self`
         return self.seq.forward(x)
 
@@ -343,7 +343,7 @@ struct NNSequential(Copyable, Movable):
         return self.seq.forward(ctx, x)
 
 
-    fn run(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn run(self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         return self.forward(x)
 
     # -------------------------- (de)serialization ----------------------
@@ -398,7 +398,7 @@ struct Prepared(Copyable, Movable):
         self.obs_w1 = MinMaxObserver()
         self.obs_w2 = MinMaxObserver()
 
-    fn forward(mut self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(mut self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         # collect activation stats
         self.obs_in.observe(x)
         var y1 = self.l1.forward(x)
@@ -418,7 +418,7 @@ struct Converted(Copyable, Movable):
         self.q1 = q1.copy()
         self.q2 = q2.copy()
 
-    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var y1 = self.q1.forward(x)
         # ReLU in float
         var y2 = y1.maximum_scalar(0.0)
