@@ -211,7 +211,7 @@ fn _clamp_int8(v: Int32) -> Int8:
     if t > 127: t = 127
     return Int8(t)
 @always_inline
-fn _round_to_i32(v: Float64) -> Int32:
+fn _round_to_i32(v: Float32) -> Int32:
     # Round half away from zero using add/sub 0.5 then trunc-to-zero cast.
     var adj = 0.5 if v >= 0.0 else -0.5
     return Int32(v + adj)
@@ -228,7 +228,7 @@ fn _numel_shape(shp: List[Int]) -> Int:
 
 # ------------------------ quant/dequant kernels (fixed) ------------------------
 
-fn quantize_symmetric_int8(x: tensor.Tensor[Float64], s: Float64) -> tensor.Tensor[Int8]:
+fn quantize_symmetric_int8(x: tensor.Tensor[Float32], s: Float32) -> tensor.Tensor[Int8]:
     # y_q = clamp(round(x / s), int8)
     # Guard s to avoid div by zero.
     var scale = s
@@ -280,23 +280,23 @@ fn matmul_i8_i8_to_i32(a: tensor.Tensor[Int8], bt: tensor.Tensor[Int8]) -> tenso
 
 fn dequantize_i32_to_f32_add_bias(
     y_i32: tensor.Tensor[Int32],
-    sf: Float64,
-    b: tensor.Tensor[Float64]
-) -> tensor.Tensor[Float64]:
+    sf: Float32,
+    b: tensor.Tensor[Float32]
+) -> tensor.Tensor[Float32]:
     # y_f32 = y_i32 * sf + b  (bias broadcast along rows)
     var ysh = y_i32.shape()
     if len(ysh) != 2:
-        return tensor.Tensor[Float64]([0, 0], 0.0)
+        return tensor.Tensor[Float32]([0, 0], 0.0)
 
     var N = ysh[0]
     var M = ysh[1]
-    var out = tensor.Tensor[Float64]([N, M], 0.0)
+    var out = tensor.Tensor[Float32]([N, M], 0.0)
 
     var i = 0
     while i < N:
         var j = 0
         while j < M:
-            out._data[i * M + j] = Float64(y_i32._data[i * M + j]) * sf + b._data[j]
+            out._data[i * M + j] = Float32(y_i32._data[i * M + j]) * sf + b._data[j]
             j = j + 1
         i = i + 1
-    return out.copy()   
+    return out.copy()
