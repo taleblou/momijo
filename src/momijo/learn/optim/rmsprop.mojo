@@ -5,19 +5,19 @@
 # Description: RMSprop optimizer for Linear layers.
 
 from collections.list import List
-from momijo.tensor import tensor 
+from momijo.tensor import tensor
 from momijo.learn.nn.conv import Conv2d
 from momijo.learn.nn.layers import Linear
 
 struct RMSprop:
-    var lr: Float64
-    var alpha: Float64
-    var eps: Float64
-    var sW: tensor.Tensor[Float64]
-    var sB: tensor.Tensor[Float64]
+    var lr: Float32
+    var alpha: Float32
+    var eps: Float32
+    var sW: tensor.Tensor[Float32]
+    var sB: tensor.Tensor[Float32]
     var _init: Bool
 
-    fn __init__(out self, lr: Float64 = 1e-3, alpha: Float64 = 0.99, eps: Float64 = 1e-8):
+    fn __init__(out self, lr: Float32 = 1e-3, alpha: Float32 = 0.99, eps: Float32 = 1e-8):
         self.lr = lr
         self.alpha = alpha
         self.eps = eps
@@ -33,7 +33,7 @@ struct RMSprop:
         self.sB = other.sB
         self._init = other._init
 
-    fn step_linear(mut self, mut layer: Linear, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
+    fn step_linear(mut self, mut layer: Linear, dW: tensor.Tensor[Float32], db: tensor.Tensor[Float32]):
         if not self._init:
             self.sW = tensor.zeros_like(dW)
             self.sB = tensor.zeros_like(db)
@@ -45,7 +45,7 @@ struct RMSprop:
 
 
 
-fn step_conv2d(mut self, mut layer: Conv2d, dW: tensor.Tensor[Float64], db: tensor.Tensor[Float64]):
+fn step_conv2d(mut self, mut layer: Conv2d, dW: tensor.Tensor[Float32], db: tensor.Tensor[Float32]):
     if not self._init:
         self.sW = tensor.zeros_like(dW); self.sB = tensor.zeros_like(db); self._init = True
     self.sW = self.alpha * self.sW + (1.0 - self.alpha) * (dW * dW)
@@ -60,7 +60,7 @@ fn step_conv2d(mut self, mut layer: Conv2d, dW: tensor.Tensor[Float64], db: tens
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn _sqrt_scalar(x: Float64) -> Float64:
+fn _sqrt_scalar(x: Float32) -> Float32:
     if x <= 0.0:
         return 0.0
     var g = x
@@ -72,7 +72,7 @@ fn _sqrt_scalar(x: Float64) -> Float64:
     return g
 
 @always_inline
-fn _clamp_min(x: Float64, lo: Float64) -> Float64:
+fn _clamp_min(x: Float32, lo: Float32) -> Float32:
     var v = x
     if v < lo:
         v = lo
@@ -89,14 +89,14 @@ fn _numel(shape: List[Int]) -> Int:
     return p
 
 # -----------------------------------------------------------------------------
-# Placeholder parameter type (Float64 demo path)
+# Placeholder parameter type (Float32 demo path)
 # -----------------------------------------------------------------------------
 
 struct OptParam:
-    var value: Float64
-    var grad: Float64
+    var value: Float32
+    var grad: Float32
 
-    fn __init__(out self, value: Float64, grad: Float64 = 0.0):
+    fn __init__(out self, value: Float32, grad: Float32 = 0.0):
         self.value = value
         self.grad = grad
 
@@ -106,35 +106,35 @@ struct OptParam:
 
 struct RMSprop:
     # Hyperparameters
-    var lr: Float64
-    var alpha: Float64
-    var eps: Float64
-    var weight_decay: Float64
-    var momentum: Float64
+    var lr: Float32
+    var alpha: Float32
+    var eps: Float32
+    var weight_decay: Float32
+    var momentum: Float32
     var centered: Bool
     var decoupled: Bool
 
     # Demo state (parallel to scalar params)
     var params: List[OptParam]
-    var square_avg: List[Float64]   # E[g^2]
-    var grad_avg: List[Float64]     # momentum buffer
-    var mean_grad: List[Float64]    # E[g] for centered variant
+    var square_avg: List[Float32]   # E[g^2]
+    var grad_avg: List[Float32]     # momentum buffer
+    var mean_grad: List[Float32]    # E[g] for centered variant
 
     # Tensor state (optional)
-    var params_t: tensor.Tensor[Float64]
-    var grads_t:  tensor.Tensor[Float64]
-    var square_avg_t: tensor.Tensor[Float64]
-    var grad_avg_t:   tensor.Tensor[Float64]
-    var mean_grad_t:  tensor.Tensor[Float64]
+    var params_t: tensor.Tensor[Float32]
+    var grads_t:  tensor.Tensor[Float32]
+    var square_avg_t: tensor.Tensor[Float32]
+    var grad_avg_t:   tensor.Tensor[Float32]
+    var mean_grad_t:  tensor.Tensor[Float32]
     var _tensor_mode: Bool
 
     fn __init__(
         out self,
-        lr: Float64 = 0.001,
-        alpha: Float64 = 0.99,
-        eps: Float64 = 1e-8,
-        weight_decay: Float64 = 0.0,
-        momentum: Float64 = 0.0,
+        lr: Float32 = 0.001,
+        alpha: Float32 = 0.99,
+        eps: Float32 = 1e-8,
+        weight_decay: Float32 = 0.0,
+        momentum: Float32 = 0.0,
         centered: Bool = False,
         decoupled: Bool = False
     ):
@@ -147,15 +147,15 @@ struct RMSprop:
         self.decoupled = decoupled
 
         self.params = List[OptParam]()
-        self.square_avg = List[Float64]()
-        self.grad_avg = List[Float64]()
-        self.mean_grad = List[Float64]()
+        self.square_avg = List[Float32]()
+        self.grad_avg = List[Float32]()
+        self.mean_grad = List[Float32]()
 
-        self.params_t = tensor.Tensor[Float64]()
-        self.grads_t  = tensor.Tensor[Float64]()
-        self.square_avg_t = tensor.Tensor[Float64]()
-        self.grad_avg_t   = tensor.Tensor[Float64]()
-        self.mean_grad_t  = tensor.Tensor[Float64]()
+        self.params_t = tensor.Tensor[Float32]()
+        self.grads_t  = tensor.Tensor[Float32]()
+        self.square_avg_t = tensor.Tensor[Float32]()
+        self.grad_avg_t   = tensor.Tensor[Float32]()
+        self.mean_grad_t  = tensor.Tensor[Float32]()
         self._tensor_mode = False
 
     # -------------------------------------------------------------------------
@@ -165,9 +165,9 @@ struct RMSprop:
     fn set_params(mut self, ps: List[OptParam]):
         self.params = ps
 
-        self.square_avg = List[Float64]()
-        self.grad_avg   = List[Float64]()
-        self.mean_grad  = List[Float64]()
+        self.square_avg = List[Float32]()
+        self.grad_avg   = List[Float32]()
+        self.mean_grad  = List[Float32]()
         var n = len(ps)
         var i = 0
         while i < n:
@@ -182,7 +182,7 @@ struct RMSprop:
     # Registration (tensor path)
     # -------------------------------------------------------------------------
 
-    fn set_params_tensor(mut self, params: tensor.Tensor[Float64], grads: tensor.Tensor[Float64]):
+    fn set_params_tensor(mut self, params: tensor.Tensor[Float32], grads: tensor.Tensor[Float32]):
         # require identical shapes
         var sp = params.shape()
         var sg = grads.shape()
@@ -196,7 +196,7 @@ struct RMSprop:
         self.grads_t  = grads
 
         # Allocate optimizer buffers as zeros with matching shape/dtype
-        var f64 = tensor.Float64()
+        var f64 = tensor.Float32()
         self.square_avg_t = tensor.zeros(sp, f64)  # E[g^2]
         self.grad_avg_t   = tensor.zeros(sp, f64)  # momentum buffer
         self.mean_grad_t  = tensor.zeros(sp, f64)  # E[g] (centered)
@@ -235,7 +235,7 @@ struct RMSprop:
         else:
             self._step_scalar()
 
-    # Scalar (Float64 demo) update
+    # Scalar (Float32 demo) update
     fn _step_scalar(mut self):
         var n = len(self.params)
         var i = 0
@@ -254,7 +254,7 @@ struct RMSprop:
             self.square_avg[i] = sq
 
             # denom
-            var denom: Float64
+            var denom: Float32
             if self.centered:
                 var mg = self.mean_grad[i]
                 mg = self.alpha * mg + (1.0 - self.alpha) * g
@@ -303,7 +303,7 @@ struct RMSprop:
             sqi = self.alpha * sqi + (1.0 - self.alpha) * (gi * gi)
             sq[i] = sqi
 
-            var denom: Float64
+            var denom: Float32
             if self.centered:
                 var mgi = mg[i]
                 mgi = self.alpha * mgi + (1.0 - self.alpha) * gi
