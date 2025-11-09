@@ -25,7 +25,7 @@
 #         - step(mut self)
 #         - zero_grad(mut self)
 #       loss_fn:
-#         - call(loss_fn, preds, targets) -> Float64 or tensor-like scalar
+#         - call(loss_fn, preds, targets) -> Float32 or tensor-like scalar
 #       dataloader:
 #         - fields: dataset, batch_size
 #         - dataset.__len__() -> Int
@@ -142,7 +142,7 @@ struct Trainer:
         # Duck-typed expectations:
         #   - it.next() -> (inputs, targets)
         #   - model.forward(inputs) or model(inputs)
-        #   - loss_fn(preds, targets) -> Float64 or tensor-like scalar
+        #   - loss_fn(preds, targets) -> Float32 or tensor-like scalar
         var step: Int = 0
         while step < batches:
             self._on_batch_start(step)
@@ -169,7 +169,7 @@ struct Trainer:
                 targets = None
 
             # -------------------- Forward & Loss ------------------------------
-            var loss_val: Float64 = 1.0  # default dummy
+            var loss_val: Float32 = 1.0  # default dummy
             if self.loss_fn is not None and model is not None and has_batch:
                 # Try calling model; prefer forward(x) if present; else call
                 var preds
@@ -185,7 +185,7 @@ struct Trainer:
                 loss_val = self._coerce_loss_to_f64(raw_loss)
 
             # -------------------- AMP scale (optional) ------------------------
-            var scaled_loss: Float64 = loss_val
+            var scaled_loss: Float32 = loss_val
             if scaler is not None:
                 scaled_loss = scaler.scale(loss_val)
 
@@ -231,14 +231,14 @@ struct Trainer:
 
     # ----------------------------- Loss helpers -------------------------------
 
-    # Conservative loss scalarization to Float64 for logging/AMP.
+    # Conservative loss scalarization to Float32 for logging/AMP.
     # We avoid hard-coding tensor methods (like .item()/.mean()) to keep it duck-typed.
-    fn _coerce_loss_to_f64(self, loss_any) -> Float64:
+    fn _coerce_loss_to_f64(self, loss_any) -> Float32:
         # Common cases first
-        if loss_any is Float64:
+        if loss_any is Float32:
             return loss_any
         if loss_any is Float32:
-            return Float64(loss_any)
+            return Float32(loss_any)
         # If a tensor-like scalar is passed, try a duck-typed `to_f64()` adapter
         # expected in user space; otherwise fallback to 1.0 to keep loop alive.
         if loss_any.to_f64 is not None:
