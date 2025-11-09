@@ -9,7 +9,7 @@
 #   - Scalar and vectorized variants
 #   - Optional sample weights
 #   - Reductions: "mean" (default) or "sum"
-#   Backend-agnostic (List[Float64]); can be wired to momijo.tensor later.
+#   Backend-agnostic (List[Float32]); can be wired to momijo.tensor later.
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
 # Website:      https://taleblou.ir/
@@ -20,15 +20,15 @@ from collections.list import List
 # --- Optional Tensor integration (adapters only; safe no-op if unused) -------
 # Import exact facades; adjust paths if your project structure differs.
 from momijo.tensor.tensor import Tensor
-from momijo.tensor.dtypes import Float32, Float64  # dtype facades  
+from momijo.tensor.dtypes import Float32, Float32  # dtype facades
 
-# Convert Tensor to flat List[Float64].
+# Convert Tensor to flat List[Float32].
 # Assumptions (pick whichever exists in your tensor API):
 #   - Preferred: t.to_list_f64() / t.to_list_f32()
 #   - Fallback:  t.flatten().numel(), and get1d(i) or get(i)
 # Edit inside these helpers if your actual API differs.
 
-fn _tensor_to_list_f64(t: Tensor[Float64]) raises -> List[Float64]:
+fn _tensor_to_list_f64(t: Tensor[Float32]) raises -> List[Float32]:
     # Fast path: direct list conversion if available
     try:
         # If your Tensor exposes a direct converter:
@@ -39,26 +39,26 @@ fn _tensor_to_list_f64(t: Tensor[Float64]) raises -> List[Float64]:
     # Generic fallback: flatten + indexed read
     var flat = t.flatten()       # expects a view contiguous in logical order
     var n = flat.numel()
-    var out = List[Float64]()
+    var out = List[Float32]()
     out.reserve(n)
     var i = 0
     while i < n:
-        # Try common indexer names; adjust 
+        # Try common indexer names; adjust
         try:
             out.append(flat.get1d(i))
         except _:
-            out.append(Float64(flat.get(i)))
+            out.append(Float32(flat.get(i)))
         i = i + 1
     return out
 
-fn _tensor_to_list_f64_from_f32(t: Tensor[Float32]) raises -> List[Float64]:
+fn _tensor_to_list_f64_from_f32(t: Tensor[Float32]) raises -> List[Float32]:
     try:
         var xs32 = t.to_list_f32()
-        var out = List[Float64]()
+        var out = List[Float32]()
         out.reserve(len(xs32))
         var i = 0
         while i < len(xs32):
-            out.append(Float64(xs32[i]))
+            out.append(Float32(xs32[i]))
             i = i + 1
         return out
     except _:
@@ -66,14 +66,14 @@ fn _tensor_to_list_f64_from_f32(t: Tensor[Float32]) raises -> List[Float64]:
 
     var flat = t.flatten()
     var n = flat.numel()
-    var out2 = List[Float64]()
+    var out2 = List[Float32]()
     out2.reserve(n)
     var j = 0
     while j < n:
         try:
-            out2.append(Float64(flat.get1d(j)))
+            out2.append(Float32(flat.get1d(j)))
         except _:
-            out2.append(Float64(flat.get(j)))
+            out2.append(Float32(flat.get(j)))
         j = j + 1
     return out2
 
@@ -82,7 +82,7 @@ fn _tensor_to_list_f64_from_f32(t: Tensor[Float32]) raises -> List[Float64]:
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn _abs(x: Float64) -> Float64:
+fn _abs(x: Float32) -> Float32:
     if x < 0.0:
         return -x
     return x
@@ -103,11 +103,11 @@ fn _check_valid_reduction(reduction: String) raises:
     if not (_is_mean(reduction) or _is_sum(reduction)):
         raise String("Invalid reduction: expected 'mean' or 'sum'.")
 
-fn _check_equal_lengths(y_pred: List[Float64], y_true: List[Float64]) raises:
+fn _check_equal_lengths(y_pred: List[Float32], y_true: List[Float32]) raises:
     if len(y_pred) != len(y_true):
         raise String("Length mismatch: y_pred and y_true must have equal lengths.")
 
-fn _check_weights_len(weights_opt: Optional[List[Float64]], n: Int) raises:
+fn _check_weights_len(weights_opt: Optional[List[Float32]], n: Int) raises:
     if weights_opt is None:
         return
     var w = weights_opt.value()
@@ -119,7 +119,7 @@ fn _check_weights_len(weights_opt: Optional[List[Float64]], n: Int) raises:
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn mse_loss(y_pred: Float64, y_true: Float64) -> Float64:
+fn mse_loss(y_pred: Float32, y_true: Float32) -> Float32:
     var diff = y_pred - y_true
     return diff * diff
 
@@ -128,11 +128,11 @@ fn mse_loss(y_pred: Float64, y_true: Float64) -> Float64:
 # -----------------------------------------------------------------------------
 
 fn mse_loss(
-    y_pred: List[Float64],
-    y_true: List[Float64],
+    y_pred: List[Float32],
+    y_true: List[Float32],
     reduction: String = String("mean"),
-    sample_weight: Optional[List[Float64]] = None
-) -> Float64:
+    sample_weight: Optional[List[Float32]] = None
+) -> Float32:
     try:
         return _mse_loss_impl(y_pred, y_true, reduction, sample_weight)
     except _:
@@ -141,11 +141,11 @@ fn mse_loss(
 
 # Internal raising implementation
 fn _mse_loss_impl(
-    y_pred: List[Float64],
-    y_true: List[Float64],
+    y_pred: List[Float32],
+    y_true: List[Float32],
     reduction: String,
-    sample_weight: Optional[List[Float64]]
-) raises -> Float64:
+    sample_weight: Optional[List[Float32]]
+) raises -> Float32:
     _check_valid_reduction(reduction)
     _check_equal_lengths(y_pred, y_true)
     var n = len(y_true)
@@ -153,8 +153,8 @@ fn _mse_loss_impl(
         return 0.0
     _check_weights_len(sample_weight, n)
 
-    var sum_val: Float64 = 0.0
-    var weight_sum: Float64 = 0.0
+    var sum_val: Float32 = 0.0
+    var weight_sum: Float32 = 0.0
     var i = 0
 
     if sample_weight is None:
@@ -164,7 +164,7 @@ fn _mse_loss_impl(
             i = i + 1
         if _is_sum(reduction):
             return sum_val
-        return sum_val / Float64(n)
+        return sum_val / Float32(n)
     else:
         var w = sample_weight.value()
         while i < n:
@@ -184,7 +184,7 @@ fn _mse_loss_impl(
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn mae_loss(y_pred: Float64, y_true: Float64) -> Float64:
+fn mae_loss(y_pred: Float32, y_true: Float32) -> Float32:
     var diff = y_pred - y_true
     return _abs(diff)
 
@@ -193,11 +193,11 @@ fn mae_loss(y_pred: Float64, y_true: Float64) -> Float64:
 # -----------------------------------------------------------------------------
 
 fn mae_loss(
-    y_pred: List[Float64],
-    y_true: List[Float64],
+    y_pred: List[Float32],
+    y_true: List[Float32],
     reduction: String = String("mean"),
-    sample_weight: Optional[List[Float64]] = None
-) -> Float64:
+    sample_weight: Optional[List[Float32]] = None
+) -> Float32:
     try:
         return _mae_loss_impl(y_pred, y_true, reduction, sample_weight)
     except _:
@@ -205,11 +205,11 @@ fn mae_loss(
 
 # Internal raising implementation
 fn _mae_loss_impl(
-    y_pred: List[Float64],
-    y_true: List[Float64],
+    y_pred: List[Float32],
+    y_true: List[Float32],
     reduction: String,
-    sample_weight: Optional[List[Float64]]
-) raises -> Float64:
+    sample_weight: Optional[List[Float32]]
+) raises -> Float32:
     _check_valid_reduction(reduction)
     _check_equal_lengths(y_pred, y_true)
     var n = len(y_true)
@@ -217,8 +217,8 @@ fn _mae_loss_impl(
         return 0.0
     _check_weights_len(sample_weight, n)
 
-    var sum_val: Float64 = 0.0
-    var weight_sum: Float64 = 0.0
+    var sum_val: Float32 = 0.0
+    var weight_sum: Float32 = 0.0
     var i = 0
 
     if sample_weight is None:
@@ -228,7 +228,7 @@ fn _mae_loss_impl(
             i = i + 1
         if _is_sum(reduction):
             return sum_val
-        return sum_val / Float64(n)
+        return sum_val / Float32(n)
     else:
         var w = sample_weight.value()
         while i < n:
@@ -248,7 +248,7 @@ fn _mae_loss_impl(
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn huber_loss(y_pred: Float64, y_true: Float64, delta: Float64 = 1.0) -> Float64:
+fn huber_loss(y_pred: Float32, y_true: Float32, delta: Float32 = 1.0) -> Float32:
     var e = y_pred - y_true
     var ae = _abs(e)
     if ae <= delta:
@@ -260,12 +260,12 @@ fn huber_loss(y_pred: Float64, y_true: Float64, delta: Float64 = 1.0) -> Float64
 # -----------------------------------------------------------------------------
 
 fn huber_loss(
-    y_pred: List[Float64],
-    y_true: List[Float64],
-    delta: Float64 = 1.0,
+    y_pred: List[Float32],
+    y_true: List[Float32],
+    delta: Float32 = 1.0,
     reduction: String = String("mean"),
-    sample_weight: Optional[List[Float64]] = None
-) -> Float64:
+    sample_weight: Optional[List[Float32]] = None
+) -> Float32:
     try:
         return _huber_loss_impl(y_pred, y_true, delta, reduction, sample_weight)
     except _:
@@ -273,12 +273,12 @@ fn huber_loss(
 
 # Internal raising implementation
 fn _huber_loss_impl(
-    y_pred: List[Float64],
-    y_true: List[Float64],
-    delta: Float64,
+    y_pred: List[Float32],
+    y_true: List[Float32],
+    delta: Float32,
     reduction: String,
-    sample_weight: Optional[List[Float64]]
-) raises -> Float64:
+    sample_weight: Optional[List[Float32]]
+) raises -> Float32:
     _check_valid_reduction(reduction)
     _check_equal_lengths(y_pred, y_true)
     var n = len(y_true)
@@ -286,8 +286,8 @@ fn _huber_loss_impl(
         return 0.0
     _check_weights_len(sample_weight, n)
 
-    var sum_val: Float64 = 0.0
-    var weight_sum: Float64 = 0.0
+    var sum_val: Float32 = 0.0
+    var weight_sum: Float32 = 0.0
     var i = 0
 
     if sample_weight is None:
@@ -301,13 +301,13 @@ fn _huber_loss_impl(
             i = i + 1
         if _is_sum(reduction):
             return sum_val
-        return sum_val / Float64(n)
+        return sum_val / Float32(n)
     else:
         var w = sample_weight.value()
         while i < n:
             var e = y_pred[i] - y_true[i]
             var ae = _abs(e)
-            var li: Float64
+            var li: Float32
             if ae <= delta:
                 li = 0.5 * e * e
             else:
@@ -323,21 +323,21 @@ fn _huber_loss_impl(
         return sum_val / weight_sum
 
 # -----------------------------------------------------------------------------
-# Tensor overloads (thin adapters -> List[Float64] core)
+# Tensor overloads (thin adapters -> List[Float32] core)
 # -----------------------------------------------------------------------------
 # These wrappers keep compile surface stable even if tensor internals evolve.
 # Adjust only the two adapter functions above for API differences.
 
 fn mse_loss(
-    y_pred: Tensor[Float64],
-    y_true: Tensor[Float64],
+    y_pred: Tensor[Float32],
+    y_true: Tensor[Float32],
     reduction: String = String("mean"),
-    sample_weight: Optional[Tensor[Float64]] = None
-) -> Float64:
+    sample_weight: Optional[Tensor[Float32]] = None
+) -> Float32:
     try:
         var yp = _tensor_to_list_f64(y_pred)
         var yt = _tensor_to_list_f64(y_true)
-        var sw_opt: Optional[List[Float64]] = None
+        var sw_opt: Optional[List[Float32]] = None
         if sample_weight is not None:
             sw_opt = _tensor_to_list_f64(sample_weight.value())
         return _mse_loss_impl(yp, yt, reduction, sw_opt)
@@ -349,11 +349,11 @@ fn mse_loss(
     y_true: Tensor[Float32],
     reduction: String = String("mean"),
     sample_weight: Optional[Tensor[Float32]] = None
-) -> Float64:
+) -> Float32:
     try:
         var yp = _tensor_to_list_f64_from_f32(y_pred)
         var yt = _tensor_to_list_f64_from_f32(y_true)
-        var sw_opt: Optional[List[Float64]] = None
+        var sw_opt: Optional[List[Float32]] = None
         if sample_weight is not None:
             sw_opt = _tensor_to_list_f64_from_f32(sample_weight.value())
         return _mse_loss_impl(yp, yt, reduction, sw_opt)
@@ -361,15 +361,15 @@ fn mse_loss(
         return 0.0
 
 fn mae_loss(
-    y_pred: Tensor[Float64],
-    y_true: Tensor[Float64],
+    y_pred: Tensor[Float32],
+    y_true: Tensor[Float32],
     reduction: String = String("mean"),
-    sample_weight: Optional[Tensor[Float64]] = None
-) -> Float64:
+    sample_weight: Optional[Tensor[Float32]] = None
+) -> Float32:
     try:
         var yp = _tensor_to_list_f64(y_pred)
         var yt = _tensor_to_list_f64(y_true)
-        var sw_opt: Optional[List[Float64]] = None
+        var sw_opt: Optional[List[Float32]] = None
         if sample_weight is not None:
             sw_opt = _tensor_to_list_f64(sample_weight.value())
         return _mae_loss_impl(yp, yt, reduction, sw_opt)
@@ -381,11 +381,11 @@ fn mae_loss(
     y_true: Tensor[Float32],
     reduction: String = String("mean"),
     sample_weight: Optional[Tensor[Float32]] = None
-) -> Float64:
+) -> Float32:
     try:
         var yp = _tensor_to_list_f64_from_f32(y_pred)
         var yt = _tensor_to_list_f64_from_f32(y_true)
-        var sw_opt: Optional[List[Float64]] = None
+        var sw_opt: Optional[List[Float32]] = None
         if sample_weight is not None:
             sw_opt = _tensor_to_list_f64_from_f32(sample_weight.value())
         return _mae_loss_impl(yp, yt, reduction, sw_opt)
@@ -393,16 +393,16 @@ fn mae_loss(
         return 0.0
 
 fn huber_loss(
-    y_pred: Tensor[Float64],
-    y_true: Tensor[Float64],
-    delta: Float64 = 1.0,
+    y_pred: Tensor[Float32],
+    y_true: Tensor[Float32],
+    delta: Float32 = 1.0,
     reduction: String = String("mean"),
-    sample_weight: Optional[Tensor[Float64]] = None
-) -> Float64:
+    sample_weight: Optional[Tensor[Float32]] = None
+) -> Float32:
     try:
         var yp = _tensor_to_list_f64(y_pred)
         var yt = _tensor_to_list_f64(y_true)
-        var sw_opt: Optional[List[Float64]] = None
+        var sw_opt: Optional[List[Float32]] = None
         if sample_weight is not None:
             sw_opt = _tensor_to_list_f64(sample_weight.value())
         return _huber_loss_impl(yp, yt, delta, reduction, sw_opt)
@@ -412,14 +412,14 @@ fn huber_loss(
 fn huber_loss(
     y_pred: Tensor[Float32],
     y_true: Tensor[Float32],
-    delta: Float64 = 1.0,
+    delta: Float32 = 1.0,
     reduction: String = String("mean"),
     sample_weight: Optional[Tensor[Float32]] = None
-) -> Float64:
+) -> Float32:
     try:
         var yp = _tensor_to_list_f64_from_f32(y_pred)
         var yt = _tensor_to_list_f64_from_f32(y_true)
-        var sw_opt: Optional[List[Float64]] = None
+        var sw_opt: Optional[List[Float32]] = None
         if sample_weight is not None:
             sw_opt = _tensor_to_list_f64_from_f32(sample_weight.value())
         return _huber_loss_impl(yp, yt, delta, reduction, sw_opt)
