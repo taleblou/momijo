@@ -6,7 +6,7 @@ from collections.list import List
 from momijo.vision.image import Image, ColorSpace, Layout
 from momijo.vision.io.file_io import read_all_bytes,write_all_bytes
 from momijo.vision.io.encode_png import png_from_hwc_u8
-from momijo.vision.io.decode_png import decode_png_bytes, decode_png_bytes_u16
+from momijo.vision.io.decode_png import decode_png_bytes, decode_png_bytes_u16,parse_png_header
 
 
 fn _to_hwc_u8(packed: Image) -> (Int, Int, Int, List[UInt8]):
@@ -36,7 +36,7 @@ fn _to_hwc_u8(packed: Image) -> (Int, Int, Int, List[UInt8]):
             x += 1
         y += 1
 
-    return (H, W, C, out.copy()) 
+    return (H, W, C, out.copy())
 
 
 
@@ -114,26 +114,58 @@ fn write_png(path: String, img: Image, interlace: Int = 0, compress: Int = 2, fi
     # var (rr,rg,rb) = img.get_rgb_u8(0,0)
     # print("[chk image] TL=", rr, ",", rg, ",", rb)
     var dims = _to_hwc_u8(img.copy())
-    var H = dims[0]; var W = dims[1]; var C = dims[2]; var buf = dims[3].copy() 
+    var H = dims[0]; var W = dims[1]; var C = dims[2]; var buf = dims[3].copy()
     # debug_sample_rgb(H, W, C, buf, "pre-encode")
     if H <= 0 or W <= 0 or C < 1 or C > 4: return False
     var ok_bytes = png_from_hwc_u8(W, H, C, buf.copy(), 0, compress, 0, palette_mode, max_colors, bit_depth_out)
     if not ok_bytes[0]: return False
     return write_all_bytes(path, ok_bytes[1].copy())
 
-# Decode (u8)
-fn read_png(path: String) raises -> (Bool, Image):
-    var bytes = read_all_bytes(path)
-    var dec = decode_png_bytes(bytes.copy())
-    var ok = dec[0]
-    if not ok:
-        return (False, Image.new_hwc_u8(0,0,3,UInt8(0)))
-    var w = dec[1]; var h = dec[2]; var c = dec[3]; var buf = dec[4].copy()
-    var img = _from_hwc_u8(h, w, c, buf.copy())
-    return (True, img.copy())
+# # Decode (u8)
+# fn read_png(path: String) raises -> (Bool, Image):
+#     var bytes = read_all_bytes(path)
+#     var dec = decode_png_bytes(bytes.copy())
+#     var ok = dec[0]
+#     print(ok)
+#     if not ok:
+#         return (False, Image.new_hwc_u8(0,0,3,UInt8(0)))
+#     var w = dec[1]; var h = dec[2]; var c = dec[3]; var buf = dec[4].copy()
+#     var img = _from_hwc_u8(h, w, c, buf.copy())
+#     return (True, img.copy())
 
 # Raw u16 decode (non-indexed, 16-bit PNGs): returns channels and a flat List[UInt16]
 fn read_png_u16_raw(path: String) raises -> (Bool, Int, Int, Int, List[UInt16]):
     var bytes = read_all_bytes(path)
     var dec = decode_png_bytes_u16(bytes.copy())
     return (dec[0], dec[1], dec[2], dec[3], dec[4].copy())
+
+
+fn read_png(path: String) raises -> (Bool, Image):
+    var bytes = read_all_bytes(path)
+
+    # 1) تلاش برای دیکد کامل
+    var dec = decode_png_bytes(bytes.copy())
+    var ok = dec[0]
+    if ok:
+        var w = dec[1]; var h = dec[2]; var c = dec[3]; var buf = dec[4].copy()
+        var img = _from_hwc_u8(h, w, c, buf.copy())
+        return (True, img.copy())
+
+    # 2) FALLBACK: فقط از هدر (بدون inflate/unfilter)
+    var hdr = parse_png_header(bytes.copy())
+    if not hdr[0]:
+        return (False, Image.new_hwc_u8(0, 0, 3, UInt8(0)))
+
+    var w2 = hdr[1]; var h2 = hdr[2]
+    var color_type = hdr[4]
+
+    # نگاشت color_type به تعداد کانال‌ها
+    var C = 3
+    if color_type == 0: C = 1       # Gray
+    elif color_type == 2: C = 3     # RGB
+    elif color_type == 3: C = 3     # Indexed → اسکلت RGB
+    elif color_type == 4: C = 2     # Gray+Alpha
+    elif color_type == 6: C = 4     # RGBA
+
+    var img2 = Image.new_hwc_u8(h2, w2, C, UInt8(0))
+    return (True, img2.copy())
