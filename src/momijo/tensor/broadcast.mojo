@@ -30,14 +30,14 @@ from momijo.tensor.helpers import (
 from momijo.tensor.math import exp
 from momijo.tensor.math import log
 from momijo.tensor.math import sqrt
-from momijo.tensor.creation import empty_f64 
+from momijo.tensor.creation import empty_f64,empty_f32
 from momijo.tensor.cast import *
 
 # ============================================================
 # Broadcast utilities
 # ============================================================
 
- 
+
 # Pack result to avoid juggling multiple returns.
 struct BroadcastResult:
     var ok: Bool
@@ -49,7 +49,7 @@ struct BroadcastResult:
                 lhs_padded_b: List[Int], rhs_padded_b: List[Int]):
         self.ok = ok_b
         self.shape = shape_b.copy()
-        self.lhs_padded = lhs_padded_b.copy()   
+        self.lhs_padded = lhs_padded_b.copy()
         self.rhs_padded = rhs_padded_b.copy()
 
 
@@ -725,7 +725,7 @@ fn clip[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], lo: T, hi: T) 
     _clip_generic[T](x, out, lo, hi)
     return out
 
-# In-place: modifies x and returns it (useful to avoid allocation). 
+# In-place: modifies x and returns it (useful to avoid allocation).
 fn clip(mut x: Tensor[Float32], lo: Float32, hi: Float32) -> Tensor[Float32]:
     _clip_f32(x, x, lo, hi)
     return x
@@ -1365,7 +1365,7 @@ fn broadcast_batch_strides(in_shape: List[Int], in_strides: List[Int], out_shape
         if i == 0:
             break
         i = i - 1
-    
+
     return eff.copy()
 
 @always_inline
@@ -1386,13 +1386,13 @@ fn _zero_of[T: ImplicitlyCopyable & Copyable & Movable]() -> T:
     if T is UInt8:   return unsafe_bitcast[T](UInt8(0))
 
     if T is Bool:    return unsafe_bitcast[T](Bool(False))
- 
-    # As a last resort, prefer first-term initialization in your kernels 
+
+    # As a last resort, prefer first-term initialization in your kernels
     return unsafe_bitcast[T](Int(0))
 # ================================================================
 # Core kernel in Float64: A[..., M, N] @ x[..., N] -> [..., M]
 # ================================================================
-# matrix-vector (batched) matmul: A(..., M, N) @ x(..., N) -> y(..., M) 
+# matrix-vector (batched) matmul: A(..., M, N) @ x(..., N) -> y(..., M)
 @always_inline
 fn matmul_core_vec(A: Tensor[Float64], x: Tensor[Float64]) -> Tensor[Float64]:
     var rA = len(A._shape)
@@ -1403,8 +1403,8 @@ fn matmul_core_vec(A: Tensor[Float64], x: Tensor[Float64]) -> Tensor[Float64]:
     if x._shape[0] != N: return empty_f64()
 
     # ---- fast path: contiguous row-major ----
-    if is_row_major_contiguous(A._shape, A._strides) \
-       and is_row_major_contiguous(x._shape, x._strides):
+    if (is_row_major_contiguous(A._shape, A._strides) and
+        is_row_major_contiguous(x._shape, x._strides)):
         var y = List[Float64](); y.reserve(M)
         var i = 0
         var base = 0
@@ -1471,8 +1471,8 @@ fn matmul_core_mm(A: Tensor[Float64], B: Tensor[Float64]) -> Tensor[Float64]:
     var N = B._shape[1]
 
     # contiguous fast path
-    if is_row_major_contiguous(A._shape, A._strides) \
-       and is_row_major_contiguous(B._shape, B._strides):
+    if (is_row_major_contiguous(A._shape, A._strides) and
+        is_row_major_contiguous(B._shape, B._strides)):
         var out = List[Float64](); out.reserve(M*N)
         var i = 0; var un = 8
         while i < M:
@@ -1526,7 +1526,7 @@ fn matmul_core_mm(A: Tensor[Float64], B: Tensor[Float64]) -> Tensor[Float64]:
         ii = ii + 1
     return Tensor[Float64](out2, [M, N])
 
- 
+
 @always_inline
 fn matmul(xx: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Float64]:
     var r_xx = len(xx._shape)
@@ -1534,21 +1534,164 @@ fn matmul(xx: Tensor[Float64], other: Tensor[Float64]) -> Tensor[Float64]:
     if r_xx == 2 and r_other == 1:
         return matmul_core_vec(xx, other)
     elif r_xx == 2 and r_other == 2:
-        return matmul_core_mm(xx, other) 
+        return matmul_core_mm(xx, other)
     return empty_f64()
 
 
 
+@always_inline
+fn matmul_core_vec(A: Tensor[Float32], x: Tensor[Float32]) -> Tensor[Float32]:
+    var rA = len(A._shape)
+    var rx = len(x._shape)
+    if rA != 2 or rx != 1: return empty_f32()
+    var M = A._shape[0]
+    var N = A._shape[1]
+    if x._shape[0] != N: return empty_f32()
 
- 
-    
+    # ---- fast path: contiguous row-major ----
+    if (is_row_major_contiguous(A._shape, A._strides) and
+        is_row_major_contiguous(x._shape, x._strides)):
+        var y = List[Float32](); y.reserve(M)
+        var i = 0
+        var base = 0
+        var unroll = 8
+        while i < M:
+            var acc:Float32 = 0.0
+            var j = 0
+            var lim = (N // unroll) * unroll
+            while j < lim:
+                acc = acc + A._data[base + (j    )] * x._data[(j    )]
+                acc = acc + A._data[base + (j + 1)] * x._data[(j + 1)]
+                acc = acc + A._data[base + (j + 2)] * x._data[(j + 2)]
+                acc = acc + A._data[base + (j + 3)] * x._data[(j + 3)]
+                acc = acc + A._data[base + (j + 4)] * x._data[(j + 4)]
+                acc = acc + A._data[base + (j + 5)] * x._data[(j + 5)]
+                acc = acc + A._data[base + (j + 6)] * x._data[(j + 6)]
+                acc = acc + A._data[base + (j + 7)] * x._data[(j + 7)]
+                j = j + 8
+            while j < N:
+                acc = acc + A._data[base + j] * x._data[j]
+                j = j + 1
+            y.append(acc)
+            base = base + N
+            i = i + 1
+        return Tensor[Float32](y, [M])
+
+    var sAm = A._strides[0]
+    var sAn = A._strides[1]
+    var sXn = x._strides[0]
+    var out = List[Float32](); out.reserve(M)
+
+    var i2 = 0
+    var un = 8
+    while i2 < M:
+        var acc2:Float32 = 0.0
+        var k = 0
+        var baseA = i2 * sAm
+        var lim = (N // un) * un
+        while k < lim:
+            acc2 = acc2 + A._data[baseA + (k    ) * sAn] * x._data[(k    ) * sXn]
+            acc2 = acc2 + A._data[baseA + (k + 1) * sAn] * x._data[(k + 1) * sXn]
+            acc2 = acc2 + A._data[baseA + (k + 2) * sAn] * x._data[(k + 2) * sXn]
+            acc2 = acc2 + A._data[baseA + (k + 3) * sAn] * x._data[(k + 3) * sXn]
+            acc2 = acc2 + A._data[baseA + (k + 4) * sAn] * x._data[(k + 4) * sXn]
+            acc2 = acc2 + A._data[baseA + (k + 5) * sAn] * x._data[(k + 5) * sXn]
+            acc2 = acc2 + A._data[baseA + (k + 6) * sAn] * x._data[(k + 6) * sXn]
+            acc2 = acc2 + A._data[baseA + (k + 7) * sAn] * x._data[(k + 7) * sXn]
+            k = k + 8
+        while k < N:
+            acc2 = acc2 + A._data[baseA + k * sAn] * x._data[k * sXn]
+            k = k + 1
+        out.append(acc2)
+        i2 = i2 + 1
+
+    return Tensor[Float32](out, [M])
+
+
+@always_inline
+fn matmul_core_mm(A: Tensor[Float32], B: Tensor[Float32]) -> Tensor[Float32]:
+    var rA = len(A._shape); var rB = len(B._shape)
+    if rA != 2 or rB != 2: return empty_f32()
+    var M = A._shape[0]; var K = A._shape[1]
+    if B._shape[0] != K: return empty_f32()
+    var N = B._shape[1]
+
+    # contiguous fast path
+    if (is_row_major_contiguous(A._shape, A._strides) and
+        is_row_major_contiguous(B._shape, B._strides)):
+        var out = List[Float32](); out.reserve(M*N)
+        var i = 0; var un = 8
+        while i < M:
+            var j = 0; var baseA = i * K
+            while j < N:
+                var acc:Float32 = 0.0; var k = 0; var baseB = j
+                var lim = (K // un) * un
+                while k < lim:
+                    acc = acc + A._data[baseA + (k    )] * B._data[(k    ) * N + baseB]
+                    acc = acc + A._data[baseA + (k + 1)] * B._data[(k + 1) * N + baseB]
+                    acc = acc + A._data[baseA + (k + 2)] * B._data[(k + 2) * N + baseB]
+                    acc = acc + A._data[baseA + (k + 3)] * B._data[(k + 3) * N + baseB]
+                    acc = acc + A._data[baseA + (k + 4)] * B._data[(k + 4) * N + baseB]
+                    acc = acc + A._data[baseA + (k + 5)] * B._data[(k + 5) * N + baseB]
+                    acc = acc + A._data[baseA + (k + 6)] * B._data[(k + 6) * N + baseB]
+                    acc = acc + A._data[baseA + (k + 7)] * B._data[(k + 7) * N + baseB]
+                    k = k + 8
+                while k < K:
+                    acc = acc + A._data[baseA + k] * B._data[k * N + baseB]
+                    k = k + 1
+                out.append(acc)
+                j = j + 1
+            i = i + 1
+        return Tensor[Float32](out, [M, N])
+
+    # generic strides
+    var sAm = A._strides[0]; var sAk = A._strides[1]
+    var sBk = B._strides[0]; var sBn = B._strides[1]
+    var out2 = List[Float32](); out2.reserve(M*N)
+    var ii = 0; var un2 = 8
+    while ii < M:
+        var jj = 0; var rowA = ii * sAm
+        while jj < N:
+            var acc2:Float32 = 0.0; var kk = 0; var colB = jj * sBn
+            var lim2 = (K // un2) * un2
+            while kk < lim2:
+                acc2 = acc2 + A._data[rowA + (kk    ) * sAk] * B._data[(kk    ) * sBk + colB]
+                acc2 = acc2 + A._data[rowA + (kk + 1) * sAk] * B._data[(kk + 1) * sBk + colB]
+                acc2 = acc2 + A._data[rowA + (kk + 2) * sAk] * B._data[(kk + 2) * sBk + colB]
+                acc2 = acc2 + A._data[rowA + (kk + 3) * sAk] * B._data[(kk + 3) * sBk + colB]
+                acc2 = acc2 + A._data[rowA + (kk + 4) * sAk] * B._data[(kk + 4) * sBk + colB]
+                acc2 = acc2 + A._data[rowA + (kk + 5) * sAk] * B._data[(kk + 5) * sBk + colB]
+                acc2 = acc2 + A._data[rowA + (kk + 6) * sAk] * B._data[(kk + 6) * sBk + colB]
+                acc2 = acc2 + A._data[rowA + (kk + 7) * sAk] * B._data[(kk + 7) * sBk + colB]
+                kk = kk + 8
+            while kk < K:
+                acc2 = acc2 + A._data[rowA + kk * sAk] * B._data[kk * sBk + colB]
+                kk = kk + 1
+            out2.append(acc2)
+            jj = jj + 1
+        ii = ii + 1
+    return Tensor[Float32](out2, [M, N])
+
+
+@always_inline
+fn matmul(xx: Tensor[Float32], other: Tensor[Float32]) -> Tensor[Float32]:
+    var r_xx = len(xx._shape)
+    var r_other = len(other._shape)
+    if r_xx == 2 and r_other == 1:
+        return matmul_core_vec(xx, other)
+    elif r_xx == 2 and r_other == 2:
+        return matmul_core_mm(xx, other)
+    return empty_f32()
+
+
+
 # ---------------- free function ----------------
 # Contract last dim of A with first dim of B:
 # A: (m x n), B: (n x p)  ->  C: (m x p)
 # Float64 × Float64 → Float64
 # A(..., M, K) ⨂ B(..., K, N)  with axes=1  ->  out(..., M, N)
 @always_inline
-fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Float64]:
+fn tensordot(A: Tensor[Float32], B: Tensor[Float32], axes: Int = 1) -> Tensor[Float32]:
     # ----- validate axes and ranks -----
     if axes != 1:
         return empty_f64()
@@ -1568,10 +1711,10 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
     # ================= fast paths =================
 
     # 1) pure 2D @ 2D contiguous  -> use flat, cache-friendly inner loops
-    if rA == 2 and rB == 2 \
-       and is_row_major_contiguous(A._shape, A._strides) \
-       and is_row_major_contiguous(B._shape, B._strides):
-        var out = List[Float64]()
+    if rA == 2 and rB == 2
+        and (is_row_major_contiguous(A._shape, A._strides) and
+        is_row_major_contiguous(B._shape, B._strides)):
+        var out = List[Float32]()
         out.reserve(M * N)
 
         var i = 0
@@ -1580,7 +1723,7 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
             var j = 0
             var baseA = i * K                  # row i of A
             while j < N:
-                var acc = 0.0
+                var acc:Float32 = 0.0
                 var k = 0
                 var baseB = j                  # column j of B (row-major)
                 var lim = (K // unroll) * unroll
@@ -1601,7 +1744,7 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
                 j = j + 1
             i = i + 1
 
-        return Tensor[Float64](out, [M, N])
+        return Tensor[Float32](out, [M, N])
 
     # 2) batched contiguous with identical batch shape  -> linear scans per batch
     var same_batch = True
@@ -1615,10 +1758,10 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
             same_batch = False
         d = d + 1
 
-    if is_row_major_contiguous(A._shape, A._strides) \
-       and is_row_major_contiguous(B._shape, B._strides) \
-       and same_batch \
-       and ba >= 1:
+    if (is_row_major_contiguous(A._shape, A._strides) and
+        is_row_major_contiguous(B._shape, B._strides))
+        and same_batch \
+        and ba >= 1:
         # batch_elems = product over batch dims
         var batch_elems = 1
         var t = 0
@@ -1626,7 +1769,7 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
             batch_elems = batch_elems * A._shape[t]
             t = t + 1
 
-        var out2 = List[Float64]()
+        var out2 = List[Float32]()
         out2.reserve(batch_elems * M * N)
 
         var bidx = 0
@@ -1640,7 +1783,7 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
                 var j2 = 0
                 var baseA2 = offA + i2 * K
                 while j2 < N:
-                    var acc2 = 0.0
+                    var acc2:Float32 = 0.0
                     var k2 = 0
                     var baseB2 = offB + j2
                     var lim2 = (K // unroll_b) * unroll_b
@@ -1671,7 +1814,7 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
             q = q + 1
         out_shape2.append(M)
         out_shape2.append(N)
-        return Tensor[Float64](out2, out_shape2)
+        return Tensor[Float32](out2, out_shape2)
 
     # ================= generic path (arbitrary strides; up to 5D batches) =================
 
@@ -1769,7 +1912,7 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
                             var j = 0
                             var baseA = offA + i * strideA_M
                             while j < N:
-                                var acc = 0.0
+                                var acc:Float32 = 0.0
                                 var k = 0
                                 var baseB = offB + j * strideB_N
                                 var lim = (K // un) * un
@@ -1796,10 +1939,10 @@ fn tensordot(A: Tensor[Float64], B: Tensor[Float64], axes: Int = 1) -> Tensor[Fl
             b1 = b1 + 1
         b0 = b0 + 1
 
-    return Tensor[Float64](out, out_shape)
+    return Tensor[Float32](out, out_shape)
 
 
- 
+
 
 # ============================================================
 # Compatibility helpers kept (used elsewhere in codebase)
@@ -1856,7 +1999,7 @@ fn keepdims_shape(shape: List[Int], ax: Int) -> List[Int]:
 @always_inline
 fn _dims_compatible(ad: Int, bd: Int) -> Bool:
     # Both must be positive; zero/negatives are invalid here.
-    if ad <= 0 or bd <= 0: 
+    if ad <= 0 or bd <= 0:
         return False
     # Equal or one of them is 1
     return ad == bd or ad == 1 or bd == 1
@@ -1925,7 +2068,7 @@ fn can_broadcast_shapes_strict(a: List[Int], b: List[Int]) -> Bool:
 # Wrapper with compile-time behavior selection
 # Set STRICT=true to enforce strict broadcasting
 # ----------------------------------------------
- 
+
 
 @always_inline
 fn can_broadcast_shapes(a: List[Int], b: List[Int] ,strict: Bool = False) -> Bool:
@@ -1933,7 +2076,7 @@ fn can_broadcast_shapes(a: List[Int], b: List[Int] ,strict: Bool = False) -> Boo
         return can_broadcast_shapes_strict(a, b)
     else:
         return can_broadcast_shapes_numpy(a, b)
- 
+
 #@always_inline
 #fn can_broadcast_shapes(a: List[Int], b: List[Int]) -> Bool:
 #    var ra = len(a)
@@ -1978,4 +2121,4 @@ fn can_broadcast_shapes(a: List[Int], b: List[Int] ,strict: Bool = False) -> Boo
 #    return True
 #
 #
-# 
+#
