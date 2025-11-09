@@ -102,13 +102,13 @@ struct ZeroStage1:
         return partition_1d(length, self.world_size, self.rank)
 
     # -------------------- List helpers (reference implementation) --------------------
-    # These helpers operate on List[Float64]/List[Int] as stand-ins for tensor buffers.
+    # These helpers operate on List[Float32]/List[Int] as stand-ins for tensor buffers.
     # Replace with tensor views/slices when wiring to momijo.tensor.
 
-    fn shard_list(self, xs: List[Float64]) -> List[Float64]:
+    fn shard_list(self, xs: List[Float32]) -> List[Float32]:
         var n = len(xs)
         var sr = self.shard_index(n)
-        var out = List[Float64]()
+        var out = List[Float32]()
         var i = sr.start
         while i < sr.end:
             out.append(xs[i])
@@ -127,7 +127,7 @@ struct ZeroStage1:
 
     # Emulated all-gather: returns a full-length buffer with this rank's shard placed.
     # Real impl would gather shards from all ranks; here we only place local shard.
-    fn allgather_list(self, shard: List[Float64], total_len: Int) -> List[Float64]:
+    fn allgather_list(self, shard: List[Float32], total_len: Int) -> List[Float32]:
         var full = _zeros_f64(total_len)
         var sr = self.shard_index(total_len)
         var j = 0
@@ -153,7 +153,7 @@ struct ZeroStage1:
 
     # Reduce-scatter-like helper for lists (single-process emulation).
     # Real impl: sum across ranks then keep local shard.
-    fn reduce_scatter_list(self, grads_full: List[Float64]) -> List[Float64]:
+    fn reduce_scatter_list(self, grads_full: List[Float32]) -> List[Float32]:
         # Placeholder: no cross-rank sum here; just slice the shard.
         return self.shard_list(grads_full)
 
@@ -199,16 +199,16 @@ struct ZeroStage1:
 #   tensor-slice logic without intermediate lists.
 
 @always_inline
-fn _tensor_to_list_f64(t: Tensor) -> List[Float64]:
+fn _tensor_to_list_f64(t: Tensor) -> List[Float32]:
     # TODO: Replace with real tensor -> list extraction when API is ready.
     # For now, return empty to avoid accidental reliance in single-process tests.
-    var out = List[Float64]()
+    var out = List[Float32]()
     return out
 
 @always_inline
-fn _list_to_tensor_f64(xs: List[Float64]) -> Tensor:
+fn _list_to_tensor_f64(xs: List[Float32]) -> Tensor:
     # TODO: Replace with real list -> tensor creation (1-D) when API is ready.
-    var t = Tensor()  # placeholder zero-alloc; wire to Tensor[Float64] factory later
+    var t = Tensor()  # placeholder zero-alloc; wire to Tensor[Float32] factory later
     return t
 
 @always_inline
@@ -221,19 +221,19 @@ fn _list_to_tensor_i32(xs: List[Int]) -> Tensor:
     var t = Tensor()
     return t
 
-# Shard a 1-D Float64 tensor (adapter).
+# Shard a 1-D Float32 tensor (adapter).
 fn shard_tensor_f64(self: ZeroStage1, t: Tensor) -> Tensor:
     var xs = _tensor_to_list_f64(t)
     var shard_xs = self.shard_list(xs)
     return _list_to_tensor_f64(shard_xs)
 
-# All-gather (emulated) for a 1-D Float64 tensor (adapter).
+# All-gather (emulated) for a 1-D Float32 tensor (adapter).
 fn allgather_tensor_f64(self: ZeroStage1, shard: Tensor, total_len: Int) -> Tensor:
     var xs = _tensor_to_list_f64(shard)
     var full = self.allgather_list(xs, total_len)
     return _list_to_tensor_f64(full)
 
-# Reduce-scatter (emulated) for a 1-D Float64 tensor (adapter).
+# Reduce-scatter (emulated) for a 1-D Float32 tensor (adapter).
 fn reduce_scatter_tensor_f64(self: ZeroStage1, grads_full: Tensor) -> Tensor:
     var xs = _tensor_to_list_f64(grads_full)
     var shard_xs = self.reduce_scatter_list(xs)
@@ -245,8 +245,8 @@ fn reduce_scatter_tensor_f64(self: ZeroStage1, grads_full: Tensor) -> Tensor:
 # -----------------------------------------------------------------------------#
 
 @always_inline
-fn _zeros_f64(n: Int) -> List[Float64]:
-    var out = List[Float64]()
+fn _zeros_f64(n: Int) -> List[Float32]:
+    var out = List[Float32]()
     var i = 0
     while i < n:
         out.append(0.0)
