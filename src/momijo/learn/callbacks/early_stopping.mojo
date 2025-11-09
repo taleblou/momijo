@@ -33,13 +33,13 @@ struct EarlyStopping:
     var monitor: String               # e.g. "val_loss"
     var mode: String                  # "min" or "max"
     var patience: Int
-    var min_delta: Float64
+    var min_delta: Float32
     var restore_best_weights: Bool
     var verbose: Bool
-    var baseline: Optional[Float64]
+    var baseline: Optional[Float32]
 
     # Runtime state
-    var best_score: Float64
+    var best_score: Float32
     var best_epoch: Int
     var wait: Int
     var stopped_epoch: Int
@@ -50,8 +50,8 @@ struct EarlyStopping:
         monitor: String = String("val_loss"),
         mode: String = String("min"),
         patience: Int = 10,
-        min_delta: Float64 = 0.0,
-        baseline: Optional[Float64] = None,
+        min_delta: Float32 = 0.0,
+        baseline: Optional[Float32] = None,
         restore_best_weights: Bool = True,
         verbose: Bool = False
     ):
@@ -94,13 +94,13 @@ struct EarlyStopping:
     fn set_monitor(mut self, monitor: String):
         self.monitor = monitor
 
-    fn set_min_delta(mut self, v: Float64):
+    fn set_min_delta(mut self, v: Float32):
         self.min_delta = v
 
     fn set_patience(mut self, v: Int):
         self.patience = v
 
-    fn set_baseline(mut self, v: Optional[Float64]):
+    fn set_baseline(mut self, v: Optional[Float32]):
         self.baseline = v
         if v is None:
             if self.mode == String("min"):
@@ -135,7 +135,7 @@ struct EarlyStopping:
     # -------------------------------------------------------------------------
     # Internal: check improvement
     # -------------------------------------------------------------------------
-    fn _is_improved(self, current: Float64) -> Bool:
+    fn _is_improved(self, current: Float32) -> Bool:
         if self.mode == String("min"):
             # Require decrease by at least min_delta
             return current < (self.best_score - self.min_delta)
@@ -157,8 +157,8 @@ struct EarlyStopping:
 
     # -------------------------------------------------------------------------
     # Epoch end hooks
-    # ------------------------------------------------------------------------- 
-    fn on_epoch_end(mut self, epoch: Int, current_value: Float64) -> Bool:
+    # -------------------------------------------------------------------------
+    fn on_epoch_end(mut self, epoch: Int, current_value: Float32) -> Bool:
         if self._is_improved(current_value):
             self.best_score = current_value
             self.best_epoch = epoch
@@ -186,8 +186,8 @@ struct EarlyStopping:
             return True
 
         return False
- 
-    fn on_epoch_end_with_model(mut self, epoch: Int, current_value: Float64, model: StatefulModel) -> Bool:
+
+    fn on_epoch_end_with_model(mut self, epoch: Int, current_value: Float32, model: StatefulModel) -> Bool:
         if self._is_improved(current_value):
             self.best_score = current_value
             self.best_epoch = epoch
@@ -224,7 +224,7 @@ struct EarlyStopping:
     fn should_stop(self) -> Bool:
         return self.stopped_epoch >= 0
 
-    fn get_best(self) -> (Float64, Int):
+    fn get_best(self) -> (Float32, Int):
         return (self.best_score, self.best_epoch)
 
     fn summary(self) -> String:
