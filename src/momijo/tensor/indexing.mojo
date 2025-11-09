@@ -34,9 +34,9 @@ from momijo.tensor.creation import scalar_zero_tensor,zeros_with_shape
 
 # Helpers (no wildcard imports)
 from momijo.tensor.helpers import (
-    copy_list_int, 
+    copy_list_int,
     compute_row_major_strides,
-    numel, 
+    numel,
     normalize_axis,
     min_i,
     max_i,
@@ -45,6 +45,39 @@ from momijo.tensor.helpers import (
     is_row_major_contiguous,wrap_index,
 )
 from momijo.tensor.cast import *
+
+from momijo.tensor.gpu.runtime import (
+    gpu_available,
+    device_ptr,
+    device_ptr_mut,
+    memset_f32,
+    atomic_add_f32,
+    # 1D launchers:
+    _launch_1d_where_same_f32,_kernel_where_same_f32,Kernel1D_WhereSameF32
+
+)
+
+fn _numel(shape: List[Int]) -> Int:
+    var p = 1
+    var i = 0
+    while i < len(shape):
+        p = p * shape[i]
+        i = i + 1
+    return p
+
+# row-major contiguous check for arbitrary rank
+fn _is_row_major_contig(shape: List[Int], strides: List[Int]) -> Bool:
+    var r = len(shape)
+    if r != len(strides): return False
+    if r == 0: return True
+    var expected = 1
+    var i = r - 1
+    while i >= 0:
+        if strides[i] != expected:
+            return False
+        expected = expected * shape[i]
+        i = i - 1
+    return True
 
 # -----------------------------------------------------------------------------
 # Shape / Layout
@@ -497,7 +530,7 @@ fn tail[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T], n: Int) -> Ten
 # -----------------------------------------------------------------------------
 
 
- 
+
 # Gather along a given axis, preserving other dimensions.
 # Output shape = pre + index.shape + post
 # Gather along 'axis' preserving other dims.
@@ -798,7 +831,7 @@ fn row[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], i: Int) -> Tens
     var ii = _clamp_row_index(i, r)
 
     var st  = x._strides.copy()
-    var off = x._offset + ii * st[0] 
+    var off = x._offset + ii * st[0]
 
     var buf = List[T]()
     buf.reserve(c)
@@ -1125,13 +1158,13 @@ fn masked_fill[T: ImplicitlyCopyable & Copyable & Movable](
             var jx = d + len(x._shape) - L
             var ix = s
             if jx < 0 or x._shape[jx] == 1:
-                  ix = 0 
+                  ix = 0
             if jx >= 0: offx = offx + ix * st_x[jx]
 
             var jm = d + len(mask._shape) - L
             var im = s
             if jm < 0 or mask._shape[jm] == 1:
-                  im = 0  
+                  im = 0
             if jm >= 0: offm = offm + im * st_m[jm]
 
             d += 1
@@ -1140,6 +1173,7 @@ fn masked_fill[T: ImplicitlyCopyable & Copyable & Movable](
             x._data[offx] = value
 
         idx += 1
+
 
 
 # ==========================
@@ -1151,7 +1185,7 @@ fn where[T: ImplicitlyCopyable & Copyable & Movable](
     from_f64: fn (Float64) -> T              # F64 -> T converter (required)
 ) -> Tensor[T]:
     # 1) Broadcast planning between x and y
- 
+
     var br= broadcast_shapes(x._shape, y._shape)
     var ok_xy     = br.ok
     var xy_shape  = br.shape.copy()
@@ -1162,7 +1196,7 @@ fn where[T: ImplicitlyCopyable & Copyable & Movable](
         return scalar_zero_tensor[T](from_f64)
 
     # 2) Broadcast planning with cond
- 
+
     var br2 = broadcast_shapes(xy_shape, cond._shape)
     var ok_all  = br2.ok
     var out_shape = br2.shape.copy()
@@ -1299,9 +1333,158 @@ fn where[T: ImplicitlyCopyable & Copyable & Movable](
         k += 1
 
     return out.copy()
- 
+# ---------------------------------------------------
+# where_f32: CPU fast-path + general broadcast
+# ---------------------------------------------------
 
-@always_inline 
+# ---------- where() CPU ----------
+fn where_f32_cpu(
+    cond: tensor.Tensor[Int],
+    x: tensor.Tensor[Float32],
+    y: tensor.Tensor[Float32]
+) -> tensor.Tensor[Float32]:
+    var br = broadcast_shapes(x._shape, y._shape)
+    if not br.ok:
+        return tensor.zeros([0])
+    var xy_shape = br.shape.copy()
+
+    var br2 = broadcast_shapes(xy_shape, cond._shape)
+    if not br2.ok:
+        return tensor.zeros([0])
+
+    var out_shape = br2.shape.copy()
+    var n = _numel(out_shape)
+    var out = tensor.zeros(out_shape.copy())
+    if n == 0:
+        return out.copy()
+
+    # fast-path: same shape + contiguous
+    var fast = (x._shape == out_shape and y._shape == out_shape and cond._shape == out_shape)
+    if fast: fast = fast and _is_row_major_contig(x._shape, x._strides)
+    if fast: fast = fast and _is_row_major_contig(y._shape, y._strides)
+    if fast: fast = fast and _is_row_major_contig(cond._shape, cond._strides)
+    if fast: fast = fast and _is_row_major_contig(out._shape, out._strides)
+
+    if fast:
+        var i = 0
+        var un = 8
+        var lim = (n // un) * un
+        while i < lim:
+            if cond._data[i + 0] != 0: out._data[i + 0] = x._data[i + 0] else: out._data[i + 0] = y._data[i + 0]
+            if cond._data[i + 1] != 0: out._data[i + 1] = x._data[i + 1] else: out._data[i + 1] = y._data[i + 1]
+            if cond._data[i + 2] != 0: out._data[i + 2] = x._data[i + 2] else: out._data[i + 2] = y._data[i + 2]
+            if cond._data[i + 3] != 0: out._data[i + 3] = x._data[i + 3] else: out._data[i + 3] = y._data[i + 3]
+            if cond._data[i + 4] != 0: out._data[i + 4] = x._data[i + 4] else: out._data[i + 4] = y._data[i + 4]
+            if cond._data[i + 5] != 0: out._data[i + 5] = x._data[i + 5] else: out._data[i + 5] = y._data[i + 5]
+            if cond._data[i + 6] != 0: out._data[i + 6] = x._data[i + 6] else: out._data[i + 6] = y._data[i + 6]
+            if cond._data[i + 7] != 0: out._data[i + 7] = x._data[i + 7] else: out._data[i + 7] = y._data[i + 7]
+            i = i + un
+        while i < n:
+            if cond._data[i] != 0: out._data[i] = x._data[i] else: out._data[i] = y._data[i]
+            i = i + 1
+        return out.copy()
+
+    # generic strided path (broadcast-aware)
+    var r = len(out_shape)
+    var xr = len(x._shape)
+    var yr = len(y._shape)
+    var cr = len(cond._shape)
+
+    var sx = List[Int](); var sy = List[Int](); var sc = List[Int](); var so = List[Int]()
+    sx.reserve(r); sy.reserve(r); sc.reserve(r); so.reserve(r)
+
+    var i2 = 0
+    while i2 < r:
+        var ox = 0; var oy = 0; var oc = 0
+        var jx = i2 + xr - r
+        var jy = i2 + yr - r
+        var jc = i2 + cr - r
+        if jx >= 0:
+            ox =x._strides[jx]
+            if x._shape[jx] == 1: ox =0
+        if jy >= 0:
+            oy =y._strides[jy]
+            if y._shape[jy] == 1: oy =0
+        if jc >= 0:
+            oc =cond._strides[jc]
+            if cond._shape[jc] == 1: oc =0
+        sx.append(ox); sy.append(oy); sc.append(oc); so.append(out._strides[i2])
+        i2 = i2 + 1
+
+    var offx = 0; var offy = 0; var offc = 0; var offo = 0
+    var idx = List[Int](); idx.reserve(r)
+    var j = 0
+    while j < r: idx.append(0); j = j + 1
+
+    var k = 0
+    while k < n:
+        if cond._data[offc] != 0:
+            out._data[offo] = x._data[offx]
+        else:
+            out._data[offo] = y._data[offy]
+
+        var d = r - 1
+        while d >= 0:
+            idx[d] = idx[d] + 1
+            offx = offx + sx[d]; offy = offy + sy[d]; offc = offc + sc[d]; offo = offo + so[d]
+            if idx[d] < out_shape[d]: break
+            var span = out_shape[d]
+            idx[d] = 0
+            offx = offx - sx[d] * span
+            offy = offy - sy[d] * span
+            offc = offc - sc[d] * span
+            offo = offo - so[d] * span
+            d = d - 1
+        k = k + 1
+
+    return out.copy()
+
+
+# ---------- where() GPU (fallback-safe) ----------
+fn where_f32_gpu(
+    cond: tensor.Tensor[Int],
+    x: tensor.Tensor[Float32],
+    y: tensor.Tensor[Float32]
+) -> tensor.Tensor[Float32]:
+    if not (x._shape == y._shape and y._shape == cond._shape):
+        return where_f32_cpu(cond, x, y)
+
+    if not (_is_row_major_contig(x._shape, x._strides) and
+            _is_row_major_contig(y._shape, y._strides) and
+            _is_row_major_contig(cond._shape, cond._strides)):
+        return where_f32_cpu(cond, x, y)
+
+    var n = _numel(x._shape)
+    var out = tensor.zeros(x._shape.copy())
+    var obuf = out._data.copy()
+
+    var total = n
+    var block =256
+    if n < 256: block =n
+
+    _launch_1d_where_same_f32(
+        total, block, _kernel_where_same_f32,
+        cond._data, x._data, y._data, obuf, n
+    )
+
+    out._data = obuf.copy()
+    return out.copy()
+
+
+# ---------- AUTO & wrapper ----------
+fn where_f32_auto(
+    cond: tensor.Tensor[Int],
+    x: tensor.Tensor[Float32],
+    y: tensor.Tensor[Float32]
+) -> tensor.Tensor[Float32]:
+    if gpu_available():
+        return where_f32_gpu(cond, x, y)
+    return where_f32_cpu(cond, x, y)
+
+
+
+
+@always_inline
 fn where_f64(cond: Tensor[Int], x: Tensor[Float64], y: Tensor[Float64]) -> Tensor[Float64]:
     # Routed to generic where with Float64 converter
     return where[Float64](cond, x, y, f64_to)
@@ -1309,7 +1492,7 @@ fn where_f64(cond: Tensor[Int], x: Tensor[Float64], y: Tensor[Float64]) -> Tenso
 @always_inline
 fn where_f32(cond: Tensor[Int], x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Float32]:
     # Routed to generic where with Float32 converter
-    return where[Float32](cond, x, y, f64_to_float32)
+    return where_f32_auto(cond, x, y)
 
 @always_inline
 fn where_int(cond: Tensor[Int], x: Tensor[Int], y: Tensor[Int]) -> Tensor[Int]:
@@ -1405,7 +1588,7 @@ fn take[T: ImplicitlyCopyable & Copyable & Movable](
     # flat buffer with dummy init copied from x
     var flat = List[T]()
     flat.reserve(n)
-    var init_val = x._data[x._offset]        
+    var init_val = x._data[x._offset]
     var ii = 0
     while ii < n:
         flat.append(init_val)
@@ -1700,7 +1883,7 @@ fn _offset_from_coords(coords: List[Int], strides: List[Int], base: Int) -> Int:
         d += 1
     return off
 
- 
+
 @always_inline
 fn _offset_from_coords(strides: List[Int], off: Int, coords: List[Int]) -> Int:
     var o = off
@@ -2201,7 +2384,7 @@ fn col2im_core[T: Copyable & Movable](cols: Tensor[T], out_shape: List[Int], kH:
 # GEMM (sgemm/dgemm) — blocked + unrolled
 # -----------------------------------------------------------------------------
 
- 
+
 
 @always_inline
 fn is_2d_f32(x: Tensor[Float32]) -> Bool:
@@ -2817,8 +3000,8 @@ fn plane[T: ImplicitlyCopyable & Copyable & Movable](a: Tensor[T], dim: Int, ind
 
 
 
-  
- 
+
+
 
 # ============================================================================
 # Shape inference & flatten for nested lists (1D..5D), rectangular checks
@@ -3121,7 +3304,7 @@ fn fill[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], v: T) -> N
             break
 
 
-  
+
 @always_inline
 fn _coords_from_linear(shape: List[Int], rm: List[Int], lin: Int) -> List[Int]:
     var r = len(shape)
