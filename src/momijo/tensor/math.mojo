@@ -172,6 +172,146 @@ fn selu64(x: Float64) -> Float64:
     else:
         y = alpha_v * (exp64(x) - 1.0)
     return lambda_v * y
+
+
+#############################
+
+@always_inline
+fn abs32(x: Float32) -> Float32:
+    # Returns |x|
+    if x >= Float32(0.0):
+        return x
+    return -x
+
+@always_inline
+fn floor32(x: Float32) -> Float32:
+    # Largest integer <= x
+    var i = Int(x)
+    var fi = Float32(i)
+    if x >= Float32(0.0):
+        return fi
+    if fi == x:
+        return x
+    return Float32(i - 1)
+
+@always_inline
+fn ceil32(x: Float32) -> Float32:
+    # Smallest integer >= x
+    var i = Int(x)
+    var fi = Float32(i)
+    if x <= Float32(0.0):
+        if fi == x:
+            return x
+        return Float32(i)
+    if fi == x:
+        return x
+    return Float32(i + 1)
+
+@always_inline
+fn round32(x: Float32) -> Float32:
+    # Round half-up
+    if x >= Float32(0.0):
+        return floor32(x + Float32(0.5))
+    return ceil32(x - Float32(0.5))
+
+@always_inline
+fn sign32(x: Float32) -> Float32:
+    # Returns -1.0, 0.0, or 1.0
+    if x > Float32(0.0):
+        return Float32(1.0)
+    if x < Float32(0.0):
+        return Float32(-1.0)
+    return Float32(0.0)
+
+@always_inline
+fn log1p32(x: Float32) -> Float32:
+    # Numerically stable log(1+x); series for small |x|
+    var ax = abs32(x)
+    if ax < Float32(1e-6):
+        var x2 = x * x
+        var x3 = x2 * x
+        var x4 = x2 * x2
+        # log1p(x) ≈ x - x^2/2 + x^3/3 - x^4/4
+        return x - Float32(0.5) * x2 + (x3 / Float32(3.0)) - Float32(0.25) * x4
+    var y = Float32(1.0) + x
+    return log32(y)
+
+@always_inline
+fn expm1_32(x: Float32) -> Float32:
+    # Numerically stable exp(x)-1; series for small |x|
+    var ax = abs32(x)
+    if ax < Float32(1e-6):
+        var x2 = x * x
+        var x3 = x2 * x
+        var x4 = x2 * x2
+        # expm1(x) ≈ x + x^2/2 + x^3/6 + x^4/24
+        return x + Float32(0.5) * x2 + (x3 / Float32(6.0)) + (x4 / Float32(24.0))
+    return exp32(x) - Float32(1.0)
+
+@always_inline
+fn safe_div32(a: Float32, b: Float32, eps: Float32 = Float32(1e-7)) -> Float32:
+    # Divide with tiny bias to avoid 0-division; preserves sign of denominator
+    var d = b
+    if d >= Float32(0.0):
+        d = d + eps
+    else:
+        d = d - eps
+    return a / d
+
+@always_inline
+fn safe_sqrt32(x: Float32, eps: Float32 = Float32(1e-7)) -> Float32:
+    # Clamp negatives to 0 and add epsilon before sqrt
+    var v = x
+    if v < Float32(0.0):
+        v = Float32(0.0)
+    return sqrt32(v + eps)
+
+# ====================== Extra Float32 helpers ======================
+
+@always_inline
+fn sigmoid32(x: Float32) -> Float32:
+    # 1 / (1 + exp(-x))
+    return Float32(1.0) / (Float32(1.0) + exp32(-x))
+
+@always_inline
+fn tanh32(x: Float32) -> Float32:
+    # tanh(x) = (e^(2x) - 1) / (e^(2x) + 1)
+    var e2x = exp32(Float32(2.0) * x)
+    return (e2x - Float32(1.0)) / (e2x + Float32(1.0))
+
+@always_inline
+fn silu32(x: Float32) -> Float32:
+    # SiLU(x) = x * sigmoid(x)
+    return x * sigmoid32(x)
+
+@always_inline
+fn gelu32(x: Float32) -> Float32:
+    # GELU approx (tanh-based):
+    # 0.5 * x * (1 + tanh( sqrt(2/pi)*(x + 0.044715*x^3) ))
+    var k = Float32(0.7978845608028654)   # sqrt(2/pi)
+    var c = Float32(0.044715)
+    var x3 = x * x * x
+    var t = k * (x + c * x3)
+    return Float32(0.5) * x * (Float32(1.0) + tanh32(t))
+
+@always_inline
+fn elu32(x: Float32) -> Float32:
+    # ELU with alpha = 1.0
+    if x >= Float32(0.0):
+        return x
+    return exp32(x) - Float32(1.0)
+
+@always_inline
+fn selu32(x: Float32) -> Float32:
+    # SELU with standard constants (Float32)
+    var lambda_v = Float32(1.0507009873554804)
+    var alpha_v  = Float32(1.6732632423543772)
+    var y: Float32
+    if x >= Float32(0.0):
+        y = x
+    else:
+        y = alpha_v * (exp32(x) - Float32(1.0))
+    return lambda_v * y
 # ====================== Softmax (stable, last-dim) ======================
 @always_inline
 fn _softmax_lastdim_f64(x: Tensor[Float64]) -> Tensor[Float64]:
@@ -234,6 +374,68 @@ fn _softmax_lastdim_f64(x: Tensor[Float64]) -> Tensor[Float64]:
 
     return Tensor[Float64](out, shape)
 
+
+@always_inline
+fn _softmax_lastdim_f32(x: Tensor[Float32]) -> Tensor[Float32]:
+    # Assumes row-major contiguous storage and applies softmax along the last axis.
+    var shape = x._shape.copy()
+    var rank  = len(shape)
+    #assert(rank >= 1)
+
+    var last = shape[rank - 1]
+    #assert(last > 0)
+
+    # total elements and number of vectors (outer) of length 'last'
+    var n_total = 1
+    var d = 0
+    while d < rank:
+        n_total = n_total * shape[d]
+        d += 1
+    var outer = n_total // last
+
+    var src = x._data.copy()
+    var out = List[Float32]()
+    out.reserve(n_total)
+
+    # We'll fill out with placeholder then mutate (since List has only append)
+    var i = 0
+    while i < n_total:
+        out.append(0.0)
+        i += 1
+
+    var o = 0
+    while o < outer:
+        var base = o * last
+
+        # 1) find max
+        var m = src[base]
+        var j = 1
+        while j < last:
+            var v = src[base + j]
+            if v > m:
+                m = v
+            j += 1
+
+        # 2) exp(x - m) and sum
+        var sum_exp:Float32 = 0.0
+        j = 0
+        while j < last:
+            var e = exp32(src[base + j] - m)
+            out[base + j] = e
+            sum_exp = sum_exp + e
+            j += 1
+
+        # 3) normalize
+        var inv = 1.0 / sum_exp
+        j = 0
+        while j < last:
+            out[base + j] = out[base + j] * inv
+            j += 1
+
+        o += 1
+
+    return Tensor[Float32](out, shape)
+
 # Optional: 1D fast-path (calls the same impl but keeps intent clear)
 @always_inline
 fn _softmax1d_f64(x: Tensor[Float64]) -> Tensor[Float64]:
@@ -248,14 +450,30 @@ fn softmax(x: Tensor[Float64], axis: Int = -1) -> Tensor[Float64]:
     return _softmax_lastdim_f64(x)
 
 @always_inline
-fn softmax(x: Tensor[Float32], axis: Int = -1) -> Tensor[Float64]:
-    var xf64 = to_float64(x)
-    return softmax(xf64, axis)
+fn softmax(x: Tensor[Float32], axis: Int = -1) -> Tensor[Float32]:
+    return _softmax_lastdim_f32(x)
 
 @always_inline
-fn softmax(x: Tensor[Int], axis: Int = -1) -> Tensor[Float64]:
-    var xf64 = to_float64(x)
-    return softmax(xf64, axis)
+fn softmax(x: Tensor[Int], axis: Int = -1) -> Tensor[Float32]:
+    var xf32 = to_float32(x)
+    return softmax(xf32, axis)
+
+
+# Soft row-wise max via softmax-weighted expectation (smooth approx)
+fn _row_max_approx(x: tensor.Tensor[Float64], k: Float64 = 64.0) -> tensor.Tensor[Float64]:
+    var kx = x * k
+    var w = kx.exp()
+    var Z = _row_sum(w) + 1e-12     # avoid divide-by-zero
+    var p = w / Z
+    return _row_sum(x * p)
+# Stable log_softmax per row
+fn log_softmax(logits: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    var m = _row_max_approx(logits)
+    var z = logits - m
+    var e = z.exp()
+    var s = _row_sum(e) + 1e-12
+    var lse = tensor.log(s) + m
+    return logits - lse
 # ======================= Unary core =======================
 # ===== Float64 math helpers (assumes these exist in your math module) =====
 # If your names differ (e.g., sqrt), replace the calls below accordingly.
@@ -268,6 +486,13 @@ fn tan64 (x: Float64) -> Float64: return tan(x)
 fn pow64 (a: Float64, b: Float64) -> Float64: return a.(b)
 
 
+fn sqrt32(x: Float32) -> Float32: return sqrt(x)
+fn exp32 (x: Float32) -> Float32: return exp(x)
+fn log32 (x: Float32) -> Float32: return log(x)
+fn sin32 (x: Float32) -> Float32: return sin(x)
+fn cos32 (x: Float32) -> Float32: return cos(x)
+fn tan32 (x: Float32) -> Float32: return tan(x)
+fn pow32 (a: Float32, b: Float32) -> Float32: return a.(b)
 
 # ====================== Unary core (via converters) ======================
 # uop_id mapping (extended):
@@ -337,6 +562,70 @@ fn apply_unary_impl[T: ImplicitlyCopyable & Copyable & Movable](
         i += 1
     return Tensor[T](out, x._shape)
 
+@always_inline
+fn unary_eval_impl32[T: ImplicitlyCopyable & Copyable & Movable](
+    x: T,
+    uop_id: Int,
+    to_f32: fn (T) -> Float32,
+    from_f32: fn (Float32) -> T
+) -> T:
+    var xf = to_f32(x)
+
+    if uop_id == 0:  return from_f32(-xf)
+    if uop_id == 1:  return from_f32(xf if xf >= 0.0 else -xf)
+    if uop_id == 2:  return from_f32(sqrt32(xf))
+    if uop_id == 3:  return from_f32(exp32(xf))
+    if uop_id == 4:  return from_f32(log32(xf))
+    if uop_id == 5:  return from_f32(sin32(xf))
+    if uop_id == 6:  return from_f32(cos32(xf))
+    if uop_id == 7:  return from_f32(tan32(xf))
+    if uop_id == 8:
+        var yf = xf
+        if yf < 0.0: yf = 0.0
+        return from_f32(yf)
+    if uop_id == 9:  return from_f32(expm1_32(xf))
+    if uop_id == 10: return from_f32(log1p32(xf))
+    if uop_id == 11: return from_f32(floor32(xf))
+    if uop_id == 12: return from_f32(ceil32(xf))
+    if uop_id == 13: return from_f32(round32(xf))
+    if uop_id == 15: return from_f32(sigmoid32(xf))
+    if uop_id == 16: return from_f32(tanh32(xf))
+    if uop_id == 17: return from_f32(silu32(xf))
+    if uop_id == 18: return from_f32(gelu32(xf))
+    if uop_id == 19: return from_f32(elu32(xf))
+    if uop_id == 20: return from_f32(selu32(xf))
+
+    # default: sign (14)
+    return from_f32(sign32(xf))
+
+
+fn apply_unary_impl32[T: ImplicitlyCopyable & Copyable & Movable](
+    x: Tensor[T],
+    uop_id: Int,
+    to_f32: fn (T) -> Float32,
+    from_f32: fn (Float32) -> T
+) -> Tensor[T]:
+    var n = len(x._data)
+    var out = List[T]()
+    out.reserve(n)
+    var i = 0
+    var lim = (n // 8) * 8
+    while i < lim:
+        out.append(unary_eval_impl32[T](x._data[i    ], uop_id, to_f32, from_f32))
+        out.append(unary_eval_impl32[T](x._data[i + 1], uop_id, to_f32, from_f32))
+        out.append(unary_eval_impl32[T](x._data[i + 2], uop_id, to_f32, from_f32))
+        out.append(unary_eval_impl32[T](x._data[i + 3], uop_id, to_f32, from_f32))
+        out.append(unary_eval_impl32[T](x._data[i + 4], uop_id, to_f32, from_f32))
+        out.append(unary_eval_impl32[T](x._data[i + 5], uop_id, to_f32, from_f32))
+        out.append(unary_eval_impl32[T](x._data[i + 6], uop_id, to_f32, from_f32))
+        out.append(unary_eval_impl32[T](x._data[i + 7], uop_id, to_f32, from_f32))
+        i += 8
+    while i < n:
+        out.append(unary_eval_impl32[T](x._data[i], uop_id, to_f32, from_f32))
+        i += 1
+    return Tensor[T](out, x._shape)
+
+
 # ---- public unary (per-dtype) ----
 # Import the tensor-level converters from your cast module
 @always_inline
@@ -345,10 +634,8 @@ fn apply_unary(x: Tensor[Float64], uop_id: Int) -> Tensor[Float64]:
     return apply_unary_impl[Float64](x, uop_id, to_float64_of, f64_to)
 
 @always_inline
-fn apply_unary(x: Tensor[Float32], uop_id: Int) -> Tensor[Float64]:
-    # Convert input to Float64, then run the Float64 implementation.
-    var xf64 = to_float64(x)
-    return apply_unary_impl[Float64](xf64, uop_id, to_float64_of, f64_to)
+fn apply_unary(x: Tensor[Float32], uop_id: Int) -> Tensor[Float32]:
+    return apply_unary_impl32[Float32](x, uop_id, to_float32_of, f32_to)
 
 @always_inline
 fn apply_unary(x: Tensor[Int8], uop_id: Int) -> Tensor[Float64]:
@@ -402,7 +689,7 @@ fn apply_unary(x: Tensor[UInt64], uop_id: Int) -> Tensor[Float64]:
 fn neg_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 0)
 @always_inline
-fn neg_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn neg_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 0)
 @always_inline
 fn neg_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -414,7 +701,7 @@ fn neg_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn abs_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 1)
 @always_inline
-fn abs_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn abs_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 1)
 @always_inline
 fn abs_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -425,7 +712,7 @@ fn abs_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn sqrt_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 2)
 @always_inline
-fn sqrt_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn sqrt_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 2)
 @always_inline
 fn sqrt_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -437,7 +724,7 @@ fn sqrt_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn exp_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 3)
 @always_inline
-fn exp_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn exp_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 3)
 @always_inline
 fn exp_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -449,7 +736,7 @@ fn exp_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn log_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 4)
 @always_inline
-fn log_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn log_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 4)
 @always_inline
 fn log_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -461,7 +748,7 @@ fn log_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn sin_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 5)
 @always_inline
-fn sin_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn sin_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 5)
 @always_inline
 fn sin_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -472,7 +759,7 @@ fn sin_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn cos_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 6)
 @always_inline
-fn cos_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn cos_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 6)
 @always_inline
 fn cos_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -484,7 +771,7 @@ fn cos_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn tan_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 7)
 @always_inline
-fn tan_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn tan_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 7)
 @always_inline
 fn tan_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -496,7 +783,7 @@ fn tan_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn relu_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 8)
 @always_inline
-fn relu_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn relu_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 8)
 @always_inline
 fn relu_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -507,7 +794,7 @@ fn relu_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn expm1_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 9)
 @always_inline
-fn expm1_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn expm1_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 9)
 @always_inline
 fn expm1_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -519,7 +806,7 @@ fn expm1_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn log1p_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 10)
 @always_inline
-fn log1p_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn log1p_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 10)
 @always_inline
 fn log1p_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -531,7 +818,7 @@ fn log1p_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn floor_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 11)
 @always_inline
-fn floor_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn floor_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 11)
 @always_inline
 fn floor_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -543,7 +830,7 @@ fn floor_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn ceil_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 12)
 @always_inline
-fn ceil_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn ceil_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 12)
 @always_inline
 fn ceil_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -555,7 +842,7 @@ fn ceil_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn round_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 13)
 @always_inline
-fn round_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn round_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 13)
 @always_inline
 fn round_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -566,7 +853,7 @@ fn round_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn sign_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 14)
 @always_inline
-fn sign_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn sign_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 14)
 @always_inline
 fn sign_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -577,7 +864,7 @@ fn sign_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn sigmoid_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 15)
 @always_inline
-fn sigmoid_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn sigmoid_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 15)
 @always_inline
 fn sigmoid_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -588,7 +875,7 @@ fn sigmoid_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn tanh_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 16)
 @always_inline
-fn tanh_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn tanh_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 16)
 @always_inline
 fn tanh_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -599,7 +886,7 @@ fn tanh_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn silu_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 17)
 @always_inline
-fn silu_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn silu_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 17)
 @always_inline
 fn silu_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -610,7 +897,7 @@ fn silu_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn gelu_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 18)
 @always_inline
-fn gelu_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn gelu_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 18)
 @always_inline
 fn gelu_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -621,7 +908,7 @@ fn gelu_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn elu_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 19)
 @always_inline
-fn elu_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn elu_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 19)
 @always_inline
 fn elu_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -632,7 +919,7 @@ fn elu_t(x: Tensor[Int]) -> Tensor[Float64]:
 fn selu_t(x: Tensor[Float64]) -> Tensor[Float64]:
     return apply_unary(x, 20)
 @always_inline
-fn selu_t(x: Tensor[Float32]) -> Tensor[Float64]:
+fn selu_t(x: Tensor[Float32]) -> Tensor[Float32]:
     return apply_unary(x, 20)
 @always_inline
 fn selu_t(x: Tensor[Int]) -> Tensor[Float64]:
@@ -888,6 +1175,7 @@ fn bin_combine_impl[T: ImplicitlyCopyable & Copyable & Movable](
     elif op_id == 12 or op_id == 22 :          # XOR
         rf = ia ^ ib
     elif op_id == 13 or op_id == 23 :          # NAND
+
         rf = 1 - (ia & ib)
     elif op_id == 14 or op_id == 24 :          # NOR
         rf = 1 - (ia | ib)
@@ -1607,8 +1895,8 @@ fn mul_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
     return apply_broadcast2(a, b, 2)
 
 @always_inline
-fn div_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float64]:
-    return apply_broadcast3(a, b, 3)
+fn div_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
+    return apply_broadcast2(a, b, 3)
 
 @always_inline
 fn pow_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
@@ -1623,7 +1911,7 @@ fn minimum_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
     return apply_broadcast2(a, b, 6)
 
 @always_inline
-fn mod_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float64]:
+fn mod_t(a: Tensor[Float32], b: Tensor[Float32]) -> Tensor[Float32]:
     return apply_broadcast3(a, b, 7)
 @always_inline
 fn xnor_t(x: Tensor[Float32], y: Tensor[Float32]) -> Tensor[Float32]:
@@ -5074,8 +5362,8 @@ fn variance(
 
 
 
-# -------- reduce_max for Float64 (unchanged, constructor-style where needed) --------
-fn reduce_max_f64(x: Tensor[Float64]) -> Float64:
+# -------- reduce_max for Float32 (unchanged, constructor-style where needed) --------
+fn reduce_max_f32(x: Tensor[Float32]) -> Float32:
     var n = len(x._data)
     if n == 0:
         return 0.0
@@ -5088,7 +5376,7 @@ fn reduce_max_f64(x: Tensor[Float64]) -> Float64:
         i += 1
     return mv
 
-fn reduce_min_f64(x: Tensor[Float64]) -> Float64:
+fn reduce_min_f32(x: Tensor[Float32]) -> Float32:
     var n = len(x._data)
     if n == 0:
         return 0.0
@@ -5101,56 +5389,67 @@ fn reduce_min_f64(x: Tensor[Float64]) -> Float64:
         i += 1
     return mv
 
-fn max[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[T]:
+fn max(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
     var shp = x._shape.copy()
     var rank = len(shp)
-    var xc = x.astype[Float64]()
 
+    # Reduce over all elements -> scalar tensor [1]
     if axis is None:
-        var mval = reduce_max_f64(xc)
-        var out = Tensor[Float64]([mval], [1]).astype[T]()
+        var mval = reduce_max_f32(x)
+        var out = Tensor[Float32]([mval], [1])
         if keepdims:
+            # shape of ones with same rank
             var kd = List[Int]()
             var i = 0
             while i < rank:
                 kd.append(1)
                 i += 1
             return out.reshape(kd)
-        return out.copy()
+        return out
 
+    # Reduce along a specific axis
     var ax = normalize_axis(axis.value(), rank)
     var reduce_n = shp[ax]
 
+    # elements to the right of axis (stride within a block)
     var inner = 1
     var i_in = ax + 1
     while i_in < rank:
         inner = inner * shp[i_in]
         i_in += 1
 
+    # output shape after dropping the axis
     var out_shape = shape_drop_axis(shp, ax)
     var outer = numel(out_shape)
-    var outv = List[Float64]()
+
+    var outv = List[Float32]()
     outv.reserve(outer)
+
     var base_stride = inner
     var block = reduce_n * inner
 
     var o = 0
     while o < outer:
+        # map flat output index to base position in input
         var base = (o // inner) * block + (o % inner)
-        var mv = xc._data[base]
+
+        var mv = x._data[base]
         var k = 1
         while k < reduce_n:
-            var v = xc._data[base + k * base_stride]
+            var v = x._data[base + k * base_stride]
             if v > mv:
                 mv = v
             k += 1
         outv.append(mv)
         o += 1
 
-    var tout = Tensor[Float64](outv, out_shape).astype[T]()
+    var tout = Tensor[Float32](outv, out_shape)
     if keepdims:
         return tout.reshape(keepdims_shape(shp, ax))
     return tout
+
+
+
 
 @always_inline
 fn variance(
@@ -5158,13 +5457,13 @@ fn variance(
     axis: Optional[Int] = None,
     unbiased: Bool = True,
     keepdims: Bool = False
-) -> Tensor[Float64]:
+) -> Tensor[Float32]:
     var shp = x._shape.copy()
     var rank = len(shp)
 
     # ---------- WHOLE TENSOR ----------
     if axis is None:
-        var out_list = List[Float64]()
+        var out_list = List[Float32]()
         out_list.reserve(1)
 
         # Logical element count
@@ -5187,13 +5486,13 @@ fn variance(
                 var m2 = 0.0
                 var i = 0
                 while i < n_total:
-                    var v = Float64(x._data[i])
+                    var v = Float32(x._data[i])
                     var delta = v - mean_
-                    mean_ = mean_ + (delta / Float64(i + 1))
+                    mean_ = mean_ + (delta / Float32(i + 1))
                     var t = v - mean_
                     m2 = m2 + (delta * t)
                     i = i + 1
-                var denom = if unbiased and n_total > 1: Float64(n_total - 1) else: Float64(n_total)
+                var denom = if unbiased and n_total > 1: Float32(n_total - 1) else: Float32(n_total)
                 out_list.append(if denom > 0.0: m2 / denom else: 0.0)
             else:
                 # Welford (generic strided)
@@ -5214,7 +5513,7 @@ fn variance(
                     while k < rank:
                         off = off + idx[k] * x._strides[k]
                         k = k + 1
-                    var v2 = Float64(x._data[off])
+                    var v2 = Float32(x._data[off])
                     var delta2 = v2 - mean2
                     mean2 = mean2 + (delta2 / Float64(count + 1))
                     var t2 = v2 - mean2
@@ -5229,7 +5528,7 @@ fn variance(
                         if r == 0: done = True; break
                         r = r - 1
 
-                var denom2 = if unbiased and count > 1: Float64(count - 1) else: Float64(count)
+                var denom2 = if unbiased and count > 1: Float32(count - 1) else: Float32(count)
                 out_list.append(if denom2 > 0.0: m22 / denom2 else: 0.0)
 
         var out_shape = List[Int]()
@@ -5242,7 +5541,7 @@ fn variance(
             out_shape.append(1)
 
         var st = compute_row_major_strides(out_shape)
-        return Tensor[Float64](out_list, out_shape, st, 0)
+        return Tensor[Float32](out_list, out_shape, st, 0)
 
     # ---------- AXIS REDUCTION ----------
     var ax = normalize_axis(axis.value(), rank)
@@ -5377,15 +5676,14 @@ fn variance(
         return toutg
 
 
-
-fn min[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[T]:
+fn min(x: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
     var shp = x._shape.copy()
     var rank = len(shp)
-    var xc = x.astype[Float64]()
 
+    # کاهش روی همهٔ عناصر → اسکالر [1]
     if axis is None:
-        var mval = reduce_min_f64(xc)
-        var out = Tensor[Float64]([mval], [1]).astype[T]()
+        var mval = reduce_min_f64(x)
+        var out = Tensor[Float32]([mval], [1])
         if keepdims:
             var kd = List[Int]()
             var i = 0
@@ -5393,64 +5691,78 @@ fn min[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[
                 kd.append(1)
                 i += 1
             return out.reshape(kd)
-        return out.copy()
+        return out
 
+    # کاهش روی یک محور مشخص
     var ax = normalize_axis(axis.value(), rank)
     var reduce_n = shp[ax]
 
+    # تعداد عناصر سمت راست محور (گام درون بلاک)
     var inner = 1
     var i_in = ax + 1
     while i_in < rank:
         inner = inner * shp[i_in]
         i_in += 1
 
+    # شکل خروجی بعد از حذف محور
     var out_shape = shape_drop_axis(shp, ax)
     var outer = numel(out_shape)
+
     var outv = List[Float64]()
     outv.reserve(outer)
+
     var base_stride = inner
     var block = reduce_n * inner
 
     var o = 0
     while o < outer:
+        # نگاشت ایندکس تخت خروجی به موقعیت پایه در ورودی
         var base = (o // inner) * block + (o % inner)
-        var mv = xc._data[base]
+
+        var mv = x._data[base]
         var k = 1
         while k < reduce_n:
-            var v = xc._data[base + k * base_stride]
+            var v = x._data[base + k * base_stride]
             if v < mv:
                 mv = v
             k += 1
         outv.append(mv)
         o += 1
 
-    var tout = Tensor[Float64](outv, out_shape).astype[T]()
+    var tout = Tensor[Float64](outv, out_shape)
     if keepdims:
         return tout.reshape(keepdims_shape(shp, ax))
     return tout
 
-fn argmax[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None) -> Tensor[Int]:
+
+fn argmax(x: Tensor[Float32], axis: Optional[Int] = None) -> Tensor[Int]:
     var shp = x._shape.copy()
     var rank = len(shp)
-    var xc = x.astype[Float64]()
 
+    # حالت بدون محور: اندیسِ بیشینه روی کل آرایه‌ی تخت‌شده
     if axis is None:
-        var n = len(xc._data)
+        var n = len(x._data)
+        if n == 0:
+            # قرارداد: اگر تهی بود، 0 برمی‌گردانیم با شکل [1]
+            return scalar_int(0)                # اسکالر rank-0
+
         var best = 0
-        var bestv = xc._data[0] if n > 0 else 0.0
+        var bestv = x._data[0]
         var i = 1
         while i < n:
-            var v = xc._data[i]
+            var v = x._data[i]
             if v > bestv:
                 bestv = v
                 best = i
             i += 1
-        return Tensor[Int]([best], [1])
+        return scalar_int(best)
 
+    # حالت با محور مشخص
     var ax = normalize_axis(axis.value(), rank)
     var out_shape = shape_drop_axis(shp, ax)
     var reduce_n = shp[ax]
 
+    # تعداد عناصر سمت راست محور
     var inner = 1
     var i_in = ax + 1
     while i_in < rank:
@@ -5460,47 +5772,58 @@ fn argmax[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Option
     var outer = numel(out_shape)
     var out_idx = List[Int]()
     out_idx.reserve(outer)
+
     var base_stride = inner
     var block = reduce_n * inner
 
     var o = 0
     while o < outer:
         var base = (o // inner) * block + (o % inner)
+
         var besti = 0
-        var bestv2 = xc._data[base]
+        var bestv2 = x._data[base]
         var k = 1
         while k < reduce_n:
-            var v = xc._data[base + k * base_stride]
+            var v = x._data[base + k * base_stride]
             if v > bestv2:
                 bestv2 = v
                 besti = k
             k += 1
+
         out_idx.append(besti)
         o += 1
-    return Tensor[Int](out_idx, out_shape)
 
-fn argmin[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Optional[Int] = None) -> Tensor[Int]:
+    return Tensor[Int](shape=out_shape, flat=out_idx)
+
+
+fn argmin(x: Tensor[Float32], axis: Optional[Int] = None) -> Tensor[Int]:
     var shp = x._shape.copy()
     var rank = len(shp)
-    var xc = x.astype[Float64]()
 
+    # حالت بدون محور: کمینه روی کل آرایه‌ی تخت‌شده
     if axis is None:
-        var n = len(xc._data)
+        var n = len(x._data)
+        if n == 0:
+            # قرارداد: اگر تهی بود، 0 برمی‌گردانیم با شکل [1]
+            return scalar_int(0)
+
         var best = 0
-        var bestv = xc._data[0] if n > 0 else 0.0
+        var bestv = x._data[0]
         var i = 1
         while i < n:
-            var v = xc._data[i]
+            var v = x._data[i]
             if v < bestv:
                 bestv = v
                 best = i
             i += 1
-        return Tensor[Int]([best], [1])
+        return scalar_int(best)
 
+    # حالت با محور مشخص
     var ax = normalize_axis(axis.value(), rank)
     var out_shape = shape_drop_axis(shp, ax)
     var reduce_n = shp[ax]
 
+    # تعداد عناصر سمت راست محور
     var inner = 1
     var i_in = ax + 1
     while i_in < rank:
@@ -5510,24 +5833,29 @@ fn argmin[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], axis: Option
     var outer = numel(out_shape)
     var out_idx = List[Int]()
     out_idx.reserve(outer)
+
     var base_stride = inner
     var block = reduce_n * inner
 
     var o = 0
     while o < outer:
         var base = (o // inner) * block + (o % inner)
+
         var besti = 0
-        var bestv2 = xc._data[base]
+        var bestv2 = x._data[base]
         var k = 1
         while k < reduce_n:
-            var v = xc._data[base + k * base_stride]
+            var v = x._data[base + k * base_stride]
             if v < bestv2:
                 bestv2 = v
                 besti = k
             k += 1
+
         out_idx.append(besti)
         o += 1
-    return Tensor[Int](out_idx, out_shape)
+
+    return Tensor[Int](shape=out_shape, flat=out_idx)
+
 
 @always_inline
 fn _keepdims_shape_all(shp: List[Int]) -> List[Int]:
