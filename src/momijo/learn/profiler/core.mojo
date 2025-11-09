@@ -12,10 +12,10 @@ from collections.list import List
 struct ProfRow(Copyable, Movable):
     var key: String
     var calls: Int
-    var est_ops: Float64
+    var est_ops: Float32
     var shapes: String
 
-    fn __init__(out self, key: String, calls: Int, est_ops: Float64, shapes: String):
+    fn __init__(out self, key: String, calls: Int, est_ops: Float32, shapes: String):
         self.key = key
         self.calls = calls
         self.est_ops = est_ops
@@ -38,9 +38,9 @@ struct Profiler(Copyable, Movable):
     fn __copyinit__(out self, other: Self):
         # shallow row copy (values)
         self.rows = other.rows.copy()
-        self.record_shapes = other.record_shapes 
+        self.record_shapes = other.record_shapes
 
-    fn record(mut self, key: String, est_ops: Float64, shapes: String):
+    fn record(mut self, key: String, est_ops: Float32, shapes: String):
         var i = 0
         while i < len(self.rows):
             if self.rows[i].key == key:
@@ -69,7 +69,7 @@ struct Profiler(Copyable, Movable):
             while a < n:
                 var max_i = a
                 var b = a + 1
-                while b < n:    
+                while b < n:
                     if rs[b].est_ops > rs[max_i].est_ops:
                         max_i = b
                     b = b + 1
