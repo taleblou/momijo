@@ -8,7 +8,7 @@
 #   Adagrad optimizer (backend-agnostic).
 #   - Stateless scalar kernel: adagrad_update_scalar(...)
 #   - List helpers: step_on_lists(...)
-#   - Optional Tensor helpers (Float64/Float32) via facade:
+#   - Optional Tensor helpers (Float32/Float32) via facade:
 #       * adagrad_update_tensor_f64(...)
 #       * adagrad_update_tensor_f32(...)
 #       * step_on_tensor_list(...), step_on_tensor_list_f32(...): keep per-parameter accumulators
@@ -25,13 +25,13 @@ from momijo.tensor import tensor   # Tensor facade (no wildcard)
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn _abs64(x: Float64) -> Float64:
+fn _abs64(x: Float32) -> Float32:
     if x >= 0.0:
         return x
     return -x
 
 # Newton-Raphson sqrt for non-negative x. Returns 0 for x<=0.
-fn _sqrt64(x: Float64, eps: Float64 = 1e-12) -> Float64:
+fn _sqrt64(x: Float32, eps: Float32 = 1e-12) -> Float32:
     if x <= 0.0:
         return 0.0
     var g = x
@@ -57,13 +57,13 @@ fn _sqrt64(x: Float64, eps: Float64 = 1e-12) -> Float64:
 #   param'= param - step
 
 fn adagrad_update_scalar(
-    param: Float64,
-    grad: Float64,
-    acc: Float64,
-    lr: Float64,
-    eps: Float64,
-    weight_decay: Float64
-) -> (Float64, Float64):
+    param: Float32,
+    grad: Float32,
+    acc: Float32,
+    lr: Float32,
+    eps: Float32,
+    weight_decay: Float32
+) -> (Float32, Float32):
     var g = grad
     if weight_decay != 0.0:
         g = g + weight_decay * param
@@ -81,31 +81,31 @@ fn adagrad_update_scalar(
 # -----------------------------------------------------------------------------
 
 struct Adagrad:
-    var lr: Float64
-    var eps: Float64
-    var weight_decay: Float64
-    var initial_accumulator_value: Float64
+    var lr: Float32
+    var eps: Float32
+    var weight_decay: Float32
+    var initial_accumulator_value: Float32
 
     # Accumulators for List-based API (one scalar per param index)
-    var _accumulators: List[Float64]
+    var _accumulators: List[Float32]
 
     # Accumulators for Tensor-based API (one tensor per parameter tensor)
-    var _acc_tensors_f64: List[tensor.Tensor[Float64]]
+    var _acc_tensors_f64: List[tensor.Tensor[Float32]]
     var _acc_tensors_f32: List[tensor.Tensor[Float32]]
 
     fn __init__(
         out self,
-        lr: Float64 = 0.01,
-        eps: Float64 = 1e-10,
-        weight_decay: Float64 = 0.0,
-        initial_accumulator_value: Float64 = 0.0
+        lr: Float32 = 0.01,
+        eps: Float32 = 1e-10,
+        weight_decay: Float32 = 0.0,
+        initial_accumulator_value: Float32 = 0.0
     ):
         self.lr = lr
         self.eps = eps
         self.weight_decay = weight_decay
         self.initial_accumulator_value = initial_accumulator_value
-        self._accumulators = List[Float64]()
-        self._acc_tensors_f64 = List[tensor.Tensor[Float64]]()
+        self._accumulators = List[Float32]()
+        self._acc_tensors_f64 = List[tensor.Tensor[Float32]]()
         self._acc_tensors_f32 = List[tensor.Tensor[Float32]]()
 
     # -------------------------------------------------------------------------
@@ -132,7 +132,7 @@ struct Adagrad:
                 i = i + 1
 
     # params[i] <- params[i] - lr * g[i] / (sqrt(acc[i])+eps)
-    fn step_on_lists(mut self, mut params: List[Float64], grads: List[Float64]) -> List[Float64]:
+    fn step_on_lists(mut self, mut params: List[Float32], grads: List[Float32]) -> List[Float32]:
         var n = len(params)
         assert(n == len(grads))
         self._ensure_acc_capacity(n)
@@ -153,22 +153,22 @@ struct Adagrad:
         return params
 
     fn reset_state(mut self):
-        self._accumulators = List[Float64]()
-        self._acc_tensors_f64 = List[tensor.Tensor[Float64]]()
+        self._accumulators = List[Float32]()
+        self._acc_tensors_f64 = List[tensor.Tensor[Float32]]()
         self._acc_tensors_f32 = List[tensor.Tensor[Float32]]()
 
     # -------------------------------------------------------------------------
-    # Tensor helpers (Float64 / Float32)
+    # Tensor helpers (Float32 / Float32)
     # Pure-return kernels + stateful convenience wrapper for lists of tensors.
     # -------------------------------------------------------------------------
 
-    # Elementwise Adagrad for Float64 tensors
+    # Elementwise Adagrad for Float32 tensors
     fn adagrad_update_tensor_f64(
         self,
-        param: tensor.Tensor[Float64],
-        grad: tensor.Tensor[Float64],
-        acc: tensor.Tensor[Float64]
-    ) -> (tensor.Tensor[Float64], tensor.Tensor[Float64]):
+        param: tensor.Tensor[Float32],
+        grad: tensor.Tensor[Float32],
+        acc: tensor.Tensor[Float32]
+    ) -> (tensor.Tensor[Float32], tensor.Tensor[Float32]):
         var shp = param.shape()
         assert(shp == grad.shape())
         assert(shp == acc.shape())
@@ -184,8 +184,8 @@ struct Adagrad:
         var g = grad._data
         var a = acc._data
 
-        var out_p = tensor.Tensor[Float64](shp, 0.0)
-        var out_a = tensor.Tensor[Float64](shp, 0.0)
+        var out_p = tensor.Tensor[Float32](shp, 0.0)
+        var out_a = tensor.Tensor[Float32](shp, 0.0)
         var op = out_p._data
         var oa = out_a._data
 
@@ -242,11 +242,11 @@ struct Adagrad:
             if self.weight_decay != 0.0:
                 gg = gg + wd_f * p[k]
             # promote to f64 for sqrt stability, then back to f32
-            var acc_new_f64 = Float64(a[k]) + Float64(gg) * Float64(gg)
+            var acc_new_f64 = Float32(a[k]) + Float32(gg) * Float32(gg)
             var denom_f64 = _sqrt64(acc_new_f64) + self.eps
             if denom_f64 <= 0.0:
                 denom_f64 = self.eps
-            var step_f64 = Float64(lr_f) * Float64(gg) / denom_f64
+            var step_f64 = Float32(lr_f) * Float32(gg) / denom_f64
             op[k] = p[k] - Float32(step_f64)
             oa[k] = Float32(acc_new_f64)
             k = k + 1
@@ -254,13 +254,13 @@ struct Adagrad:
         return (out_p, out_a)
 
     # Stateful convenience: update a list of parameter tensors with grads.
-    # - Supports Float64 OR Float32 lists (homogeneous dtypes per call).
+    # - Supports Float32 OR Float32 lists (homogeneous dtypes per call).
     # - Maintains an internal accumulator tensor per parameter (same shape).
     fn step_on_tensor_list(
         mut self,
-        mut params_f64: List[tensor.Tensor[Float64]],
-        grads_f64: List[tensor.Tensor[Float64]]
-    ) -> List[tensor.Tensor[Float64]]:
+        mut params_f64: List[tensor.Tensor[Float32]],
+        grads_f64: List[tensor.Tensor[Float32]]
+    ) -> List[tensor.Tensor[Float32]]:
         var n = len(params_f64)
         assert(n == len(grads_f64))
 
@@ -270,7 +270,7 @@ struct Adagrad:
             var i = cur
             while i < n:
                 var shp = params_f64[i - cur].shape() if i >= cur else params_f64[i].shape()
-                var acc0 = tensor.Tensor[Float64](shp, self.initial_accumulator_value)
+                var acc0 = tensor.Tensor[Float32](shp, self.initial_accumulator_value)
                 self._acc_tensors_f64.append(acc0)
                 i = i + 1
 
