@@ -15,8 +15,8 @@ struct ConvTranspose2d:
     var stride_w: Int
     var pad_h: Int
     var pad_w: Int
-    var weight: tensor.Tensor[Float64]  # [in, out, kh, kw] (note reversed order vs Conv2d)
-    var bias: tensor.Tensor[Float64]    # [out]
+    var weight: tensor.Tensor[Float32]  # [in, out, kh, kw] (note reversed order vs Conv2d)
+    var bias: tensor.Tensor[Float32]    # [out]
 
     fn __init__(out self, in_channels: Int, out_channels: Int, kernel_size: Tuple[Int, Int], stride: Tuple[Int, Int] = (1,1), padding: Tuple[Int, Int] = (0,0)):
         self.in_channels = in_channels
@@ -25,7 +25,7 @@ struct ConvTranspose2d:
         self.stride_h = stride[0]; self.stride_w = stride[1]
         self.pad_h = padding[0]; self.pad_w = padding[1]
         var w = tensor.randn([in_channels, out_channels, self.kernel_h, self.kernel_w])
-        var scale = (2.0 / Float64(out_channels * self.kernel_h * self.kernel_w)) ** 0.5
+        var scale = Float32((2.0 / Float32(out_channels * self.kernel_h * self.kernel_w)) ** 0.5)
         self.weight = w * scale
         self.bias = tensor.zeros([out_channels])
 
@@ -42,7 +42,7 @@ struct ConvTranspose2d:
         var OW = (W - 1) * self.stride_w - 2*self.pad_w + self.kernel_w
         return (OH, OW)
 
-    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
         var s = self.out_shape(H, W)
         var OH = s[0]; var OW = s[1]
@@ -56,7 +56,7 @@ struct ConvTranspose2d:
                     var ox = 0
                     while ox < OW:
                         # find contributions from x at positions that map to (oy,ox)
-                        var sum = 0.0
+                        var sum :Float32= 0.0
                         var ky = 0
                         while ky < self.kernel_h:
                             var kx = 0
@@ -72,7 +72,7 @@ struct ConvTranspose2d:
                                         while oc < self.out_channels:
                                             var xi = n*C*H*W + ic*H*W + iy*W + ix
                                             var wi = ic*self.out_channels*self.kernel_h*self.kernel_w + oc*self.kernel_h*self.kernel_w + ky*self.kernel_w + kx
-                                            sum = sum + x._data[xi] * self.weight._data[wi]
+                                            sum = sum + Float32(x._data[xi] * self.weight._data[wi])
                                             oc += 1
                                 kx += 1
                             ky += 1
@@ -88,7 +88,7 @@ struct ConvTranspose2d:
             n += 1
         return y
 
-    fn backward(self, x: tensor.Tensor[Float64], grad_y: tensor.Tensor[Float64]) -> (tensor.Tensor[Float64], tensor.Tensor[Float64], tensor.Tensor[Float64]):
+    fn backward(self, x: tensor.Tensor[Float32], grad_y: tensor.Tensor[Float32]) -> (tensor.Tensor[Float32], tensor.Tensor[Float32], tensor.Tensor[Float32]):
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
         var OH = grad_y.shape()[2]; var OW = grad_y.shape()[3]
         var dW = tensor.zeros_like(self.weight)
