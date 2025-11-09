@@ -27,7 +27,7 @@ from momijo.learn.utils.checkpoint import load_state_dict
 # Tensor (central import per project standard)
 from momijo.tensor.tensor import Tensor
 from momijo.tensor.dtypes import Float32
-from momijo.tensor.dtypes import Float64
+from momijo.tensor.dtypes import Float32
 
 # -----------------------------------------------------------------------------
 # Compile configuration (names only; Trainer resolves actual objects)
@@ -66,7 +66,7 @@ struct Model:
         self.compiled = False
         self.cfg = CompileConfig()
         self.training = True
- 
+
     fn __init__(out self, net: Module, name: String = String("Model")):
         self.name = name
         self.net = net
@@ -103,10 +103,10 @@ struct Model:
 
     # Train/eval mode flags on the facade (and potentially on the wrapped Module).
     fn train(mut self):
-        self.training = True 
+        self.training = True
 
     fn eval(mut self):
-        self.training = False 
+        self.training = False
 
     # --------------------------- I/O & state --------------------------
 
@@ -171,7 +171,7 @@ struct Model:
         # Delegate to the wrapped module; assumes compatible signature.
         return self.net.forward(x)
 
-    fn forward(self, x: Tensor[Float64]) -> Tensor[Float64]:
+    fn forward(self, x: Tensor[Float32]) -> Tensor[Float32]:
         return self.net.forward(x)
 
 
@@ -180,12 +180,12 @@ struct Model:
         return self.net.forward(x)
 
     fn forward(self, x: tensor.GradTensor) -> tensor.GradTensor:
-        return self.net.forward(x) 
+        return self.net.forward(x)
 
     fn predict(self, inputs: Tensor[Float32]) -> Tensor[Float32]:
         return self.forward(inputs)
 
-    fn predict(self, inputs: Tensor[Float64]) -> Tensor[Float64]:
+    fn predict(self, inputs: Tensor[Float32]) -> Tensor[Float32]:
         return self.forward(inputs)
 
     # ------------------------- stringification -----------------------
@@ -195,7 +195,3 @@ struct Model:
         s = s + String("name=") + self.name + String(", compiled=")
         s = s + (String("True") if self.compiled else String("False")) + String(")")
         return s
-
-
-
- 
