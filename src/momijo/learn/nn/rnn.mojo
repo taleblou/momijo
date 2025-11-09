@@ -46,7 +46,7 @@ struct GRU:
         self.Whn = Linear(hidden_size, hidden_size)
 
     # x: [B,T,C_in], h0 optional None -> zeros
-    fn forward(self, x: tensor.Tensor[Float64]) -> (tensor.Tensor[Float64], tensor.Tensor[Float64]):
+    fn forward(self, x: tensor.Tensor[Float32]) -> (tensor.Tensor[Float32], tensor.Tensor[Float32]):
         var shp = x.shape()
         var B = shp[0]; var T = shp[1]; var C = shp[2]
         if C != self.in_size:
