@@ -18,7 +18,7 @@
 #   - Types: ReduceOp
 #   - Core fns (single-process safe): init_process_group, destroy_process_group,
 #     get_world_size, get_rank, allreduce(x), allreduce_sum(...), broadcast(...), barrier()
-#   - Overloads provided for Int, Float64, and List[...] variants.
+#   - Overloads provided for Int, Float32, and List[...] variants.
 #   - No global mutable state; current implementation assumes single rank (0/1).
 
 from collections.list import List
@@ -103,8 +103,8 @@ fn _sum_int(xs: List[Int]) -> Int:
         i = i + 1
     return s
 
-fn _sum_f64(xs: List[Float64]) -> Float64:
-    var s: Float64 = 0.0
+fn _sum_f64(xs: List[Float32]) -> Float32:
+    var s: Float32 = 0.0
     var i: Int = 0
     while i < len(xs)):
         s = s + xs[i]
@@ -134,13 +134,13 @@ fn _ewise_int(a: List[Int], b: List[Int], op: ReduceOp) -> List[Int]:
         i = i + 1
     return out
 
-fn _ewise_f64(a: List[Float64], b: List[Float64], op: ReduceOp) -> List[Float64]:
+fn _ewise_f64(a: List[Float32], b: List[Float32], op: ReduceOp) -> List[Float32]:
     assert(len(a) == len(b), "List sizes must match for elementwise reduction.")
-    var out = List[Float64]()
+    var out = List[Float32]()
     out.reserve(len(a))
     var i: Int = 0
     while i < Int(len(a)):
-        var v: Float64 = 0.0
+        var v: Float32 = 0.0
         if op.code == ReduceOp.sum().code:
             v = a[i] + b[i]
         elif op.code == ReduceOp.prod().code:
@@ -169,7 +169,7 @@ fn allreduce_sum(x: Int) -> Int:
     # Single-process: identity
     return x
 
-fn allreduce_sum_f64(x: Float64) -> Float64:
+fn allreduce_sum_f64(x: Float32) -> Float32:
     return x
 
 # Lists (elementwise identity)
@@ -182,8 +182,8 @@ fn allreduce_sum(xs: List[Int]) -> List[Int]:
         i = i + 1
     return out
 
-fn allreduce_sum_f64(xs: List[Float64]) -> List[Float64]:
-    var out = List[Float64]()
+fn allreduce_sum_f64(xs: List[Float32]) -> List[Float32]:
+    var out = List[Float32]()
     out.reserve(len(xs))
     var i: Int = 0
     while i < Int(len(xs)):
@@ -201,13 +201,13 @@ fn barrier():
     return
 
 # Optional extended API: reduce with explicit op (for future wiring)
-# Overloads for Int/List[Int]/Float64/List[Float64]; all identity in single-process.
+# Overloads for Int/List[Int]/Float32/List[Float32]; all identity in single-process.
 
 fn reduce(x: Int, op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> Int:
     assert(dst == 0, "Only rank 0 exists in single-process reduce.")
     return x
 
-fn reduce_f64(x: Float64, op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> Float64:
+fn reduce_f64(x: Float32, op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> Float32:
     assert(dst == 0, "Only rank 0 exists in single-process reduce.")
     return x
 
@@ -221,9 +221,9 @@ fn reduce_list_int(xs: List[Int], op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -
         i = i + 1
     return out
 
-fn reduce_list_f64(xs: List[Float64], op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> List[Float64]:
+fn reduce_list_f64(xs: List[Float32], op: ReduceOp = ReduceOp.sum(), dst: Int = 0) -> List[Float32]:
     assert(dst == 0, "Only rank 0 exists in single-process reduce.")
-    var out = List[Float64]()
+    var out = List[Float32]()
     out.reserve(len(xs))
     var i: Int = 0
     while i < len(xs):
