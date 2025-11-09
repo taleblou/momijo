@@ -18,7 +18,7 @@
 # Notes:
 #   - Structs: ColMap, Acc
 #   - Key functions: make_comp_key, make_bitmap, __init__, add_schema, append_row, materialize_two, next_f64, next_i64, next_bool, next_str, join_inner, join_left, join_right, join_anti, join_full, _build_map, _keys_of, _row_to_strings
- 
+
 
 from momijo.core.traits import one
 from momijo.core.version import major
@@ -39,7 +39,7 @@ from momijo.utils.result import f, g
 
 from collections.list import List
 
- 
+
 from momijo.dataframe.api import col_str, df_make,_find_col_idx
 from momijo.dataframe.column import Column
 from momijo.dataframe.frame import DataFrame
@@ -645,14 +645,14 @@ fn inner_join(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> DataF
     return df_make(col_names, cols)
 
 # ------------------------ Utilities ------------------------
- 
+
 
 # Build a collision-free row key by length-prefixing each cell
 fn _row_key(df: DataFrame, r: Int) -> String:
     var key = String("")
     var c: Int = 0
     while c < df.ncols():
-        let v = df.cols[c][r]
+        var v = df.cols[c][r]
         key = key + String(len(v)) + String("#") + v
         c += 1
     return key
@@ -662,7 +662,7 @@ fn _row_key_from_list(row: List[String]) -> String:
     var key = String("")
     var i: Int = 0
     while i < len(row):
-        let v = row[i]
+        var v = row[i]
         key = key + String(len(v)) + String("#") + v
         i += 1
     return key
@@ -746,7 +746,7 @@ fn left_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> D
 
     var ra: Int = 0
     while ra < a.nrows():
-        let ka = a.cols[ia][ra]
+        var ka = a.cols[ia][ra]
         var matched: Bool = False
 
         var rb: Int = 0
@@ -803,7 +803,7 @@ fn outer_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> 
 
         var r: Int = 0
         while r < b.nrows():
-            let kb = b.cols[ib][r]
+            var kb = b.cols[ib][r]
 
             # scan A for this key
             var found: Bool = False
@@ -847,7 +847,7 @@ fn outer_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> 
     fn append_df_unique(df: DataFrame):
         var r: Int = 0
         while r < df.nrows():
-            let key_str = _row_key(df, r)
+            var key_str = _row_key(df, r)
             var exists: Bool = False
             var i: Int = 0
             while i < len(seen):
@@ -955,7 +955,7 @@ fn make_comp_key(df: DataFrame, cols: List[String], row: Int) -> String:
     var i: Int = 0
     while i < len(cols):
         var c = df.get_column(cols[i])      # Column
-        let v = get_string(c, row)
+        var v = get_string(c, row)
         s_out = s_out + String(len(v)) + String("#") + v
         i += 1
     return s_out
@@ -1120,14 +1120,14 @@ fn outer_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> 
     var seen = List[String]()
     r = 0
     while r < left_only.nrows():
-        let key_str = _row_key(left_only, r)
+        var key_str = _row_key(left_only, r)
         seen.append(key_str)
         r += 1
 
     # append unique rows from right-only
     r = 0
     while r < right_only.nrows():
-        let key_str2 = _row_key(right_only, r)
+        var key_str2 = _row_key(right_only, r)
         var dup: Bool = False
         var i: Int = 0
         while i < len(seen):
@@ -1142,7 +1142,7 @@ fn outer_join_full(a: DataFrame, b: DataFrame, key_a: String, key_b: String) -> 
 
     return df_make(col_names, cols)
 
- 
+
 
 
 fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> DataFrame:
@@ -1270,7 +1270,7 @@ fn merge(left: DataFrame, right: DataFrame, on: List[String], how: String) -> Da
 
 
 
- 
+
 struct AsOf:
     var backward: Int
     var forward: Int
