@@ -164,17 +164,17 @@ struct Summarizer:
 
         self.add_counts(name, in_shape, out_shape, pc, bc, tc)
 
-    # Convenience: Float64 parameter tensors with explicit buffers list.
+    # Convenience: Float32 parameter tensors with explicit buffers list.
     fn add_params_f64(
         mut self,
         name: String,
         in_shape: List[Int],
         out_shape: List[Int],
-        params: List[tensor.Tensor[Float64]],
-        buffers: List[tensor.Tensor[Float64]],
+        params: List[tensor.Tensor[Float32]],
+        buffers: List[tensor.Tensor[Float32]],
         trainable: Bool
     ) -> None:
-        self.add_params_generic[Float64](name, in_shape, out_shape, params, buffers, trainable)
+        self.add_params_generic[Float32](name, in_shape, out_shape, params, buffers, trainable)
 
     # Convenience: UInt8 parameter/buffer tensors (e.g., quantized or byte buffers).
     fn add_params_u8(
@@ -244,8 +244,8 @@ fn model_summary(model) -> String:
 
 # ----------------------------- Min/Max Observer -------------------------------
 struct MinMaxObserver(Copyable, Movable):
-    var min_val: Float64
-    var max_val: Float64
+    var min_val: Float32
+    var max_val: Float32
     var initialized: Bool
 
     fn __init__(out self):
@@ -253,7 +253,7 @@ struct MinMaxObserver(Copyable, Movable):
         self.max_val = 0.0
         self.initialized = False
 
-    fn observe(mut self, x: tensor.Tensor[Float64]):
+    fn observe(mut self, x: tensor.Tensor[Float32]):
         var n = x._n
         if n <= 0: return
         var i = 0
@@ -268,7 +268,7 @@ struct MinMaxObserver(Copyable, Movable):
             if v > self.max_val: self.max_val = v
             i = i + 1
 
-    fn scale_symmetric(self, qmax: Float64 = 127.0) -> Float64:
+    fn scale_symmetric(self, qmax: Float32 = 127.0) -> Float32:
         var a = self.min_val
         var b = self.max_val
         var m = a
