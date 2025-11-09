@@ -126,7 +126,7 @@ struct DataParallel:
             var stop = start + take
             # Safe-guard against degenerate intervals
             if stop <= start:
-                # produce empty-slice semantics: let slice handle it
+                # produce empty-slice semantics: var slice handle it
                 out.append(batch.slice(0, start, start, 1))
             else:
                 out.append(batch.slice(0, start, stop, 1))
@@ -205,8 +205,8 @@ struct DistributedDataParallel:
     fn allreduce_tensor_keep(self, t: Tensor, average: Bool = False) -> Tensor:
         var r = allreduce(t)
         if average and self._world_size > 1:
-            # dtype-aware division is handled by Tensor overloads to Float64
-            r = r / Float64(self._world_size)
+            # dtype-aware division is handled by Tensor overloads to Float32
+            r = r / Float32(self._world_size)
         return r
 
     # ------------------------------
@@ -222,7 +222,7 @@ struct DistributedDataParallel:
         found_inf: Bool = False,
         average: Bool = True
     ):
-        var reduced = self.allreduce_gradients(grad_blob) 
+        var reduced = self.allreduce_gradients(grad_blob)
         #   var reduced_t = self.allreduce_tensor_keep(grad_tensor, average=True)
         if not found_inf:
             optimizer.step()
