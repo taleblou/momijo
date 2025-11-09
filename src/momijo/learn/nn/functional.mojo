@@ -6,7 +6,7 @@
 #
 # Description:
 #   Functional (stateless) neural ops inspired by torch.nn.functional.
-#   - List-based reference ops over 4D NCHW (Float64) for clarity/correctness demos.
+#   - List-based reference ops over 4D NCHW (Float32) for clarity/correctness demos.
 #   - Tensor-based ops using momijo.tensor facade:
 #       * im2col / col2im (+ indices variant)
 #       * conv1d / conv2d (naive + im2col) / depthwise / pointwise / separable
@@ -50,21 +50,21 @@ struct Conv2dConfig:
         self.dil_w = dil_w
 
 # -----------------------------------------------------------------------------
-# Helpers for List-based NCHW (Float64)
+# Helpers for List-based NCHW (Float32)
 # -----------------------------------------------------------------------------
-# Type spelled explicitly: List[List[List[List[Float64]]]]
+# Type spelled explicitly: List[List[List[List[Float32]]]]
 
-fn _zeros_4d(n: Int, c: Int, h: Int, w: Int) -> List[List[List[List[Float64]]]]:
-    var out = List[List[List[List[Float64]]]]()
+fn _zeros_4d(n: Int, c: Int, h: Int, w: Int) -> List[List[List[List[Float32]]]]:
+    var out = List[List[List[List[Float32]]]]()
     var ni = 0
     while ni < n:
-        var cs = List[List[List[Float64]]]()
+        var cs = List[List[List[Float32]]]()
         var ci = 0
         while ci < c:
-            var hs = List[List[Float64]]()
+            var hs = List[List[Float32]]()
             var yi = 0
             while yi < h:
-                var ws = List[Float64]()
+                var ws = List[Float32]()
                 var xi = 0
                 while xi < w:
                     ws.append(0.0)
@@ -78,10 +78,10 @@ fn _zeros_4d(n: Int, c: Int, h: Int, w: Int) -> List[List[List[List[Float64]]]]:
     return out
 
 fn _pad2d_nchw(
-    x: List[List[List[List[Float64]]]],
+    x: List[List[List[List[Float32]]]],
     pad_h: Int,
     pad_w: Int
-) -> List[List[List[List[Float64]]]]:
+) -> List[List[List[List[Float32]]]]:
     if pad_h == 0 and pad_w == 0:
         return x
 
@@ -115,13 +115,13 @@ fn _pad2d_nchw(
 # x: [N,C_in,H_in,W_in], weight: [C_out,C_in,KH,KW], bias: [C_out] or empty
 
 fn conv2d(
-    x: List[List[List[List[Float64]]]],
-    weight: List[List[List[List[Float64]]]],
-    bias: List[Float64] = List[Float64](),
+    x: List[List[List[List[Float32]]]],
+    weight: List[List[List[List[Float32]]]],
+    bias: List[Float32] = List[Float32](),
     stride: Int = 1,
     padding: Int = 0,
     dilation: Int = 1
-) -> List[List[List[List[Float64]]]]:
+) -> List[List[List[List[Float32]]]]:
     var cfg = Conv2dConfig(stride, stride, padding, padding, dilation, dilation)
 
     var N = len(x)
@@ -183,12 +183,12 @@ fn conv2d(
 # -----------------------------------------------------------------------------
 
 fn max_pool2d(
-    x: List[List[List[List[Float64]]]],
+    x: List[List[List[List[Float32]]]],
     kernel_size: Int,
     stride: Int = 0,
     padding: Int = 0,
     ceil_mode: Bool = False
-) -> List[List[List[List[Float64]]]]:
+) -> List[List[List[List[Float32]]]]:
     assert kernel_size > 0
     var s = stride
     if s <= 0:
@@ -222,7 +222,7 @@ fn max_pool2d(
             while oy < H_out:
                 var ox = 0
                 while ox < W_out:
-                    var maxv = -1.7976931348623157e308  # Float64 min-ish
+                    var maxv = -1.7976931348623157e308  # Float32 min-ish
                     var ky = 0
                     while ky < kernel_size:
                         var kx = 0
@@ -655,23 +655,23 @@ fn separable_conv2d[T: Copyable & Movable](x: tensor.Tensor[T], depthwise: tenso
 
 
 
-fn _clip(x: Float64, lo: Float64, hi: Float64) -> Float64:
+fn _clip(x: Float32, lo: Float32, hi: Float32) -> Float32:
     var y = x
     if y < lo: y = lo
     if y > hi: y = hi
     return y
 
 # hard-sigmoid: clip(0.2*x + 0.5, 0, 1)
-fn _hardsigmoid(x: Float64) -> Float64:
+fn _hardsigmoid(x: Float32) -> Float32:
     return _clip(0.2 * x + 0.5, 0.0, 1.0)
 
 # hard-tanh: clip(x, -1, 1)
-fn _hardtanh(x: Float64) -> Float64:
+fn _hardtanh(x: Float32) -> Float32:
     return _clip(x, -1.0, 1.0)
 
 # Row-wise "ReLU-normalized" softmax (no exp): max(0,s_i)/sum_j max(0,s_j)
 # If all <=0, fall back to uniform.
-fn _rowwise_relu_normalize(mut row: List[Float64]):
+fn _rowwise_relu_normalize(mut row: List[Float32]):
     var n = len(row)
     var sum_pos = 0.0
     var i = 0
@@ -682,7 +682,7 @@ fn _rowwise_relu_normalize(mut row: List[Float64]):
             row[i] = 0.0
         i = i + 1
     if sum_pos <= 1e-12:
-        var v = 1.0 / Float64(n)
+        var v = 1.0 / Float32(n)
         i = 0
         while i < n:
             row[i] = v
@@ -694,7 +694,7 @@ fn _rowwise_relu_normalize(mut row: List[Float64]):
         i = i + 1
 
 # Matrix multiply: [N,D] @ [D,H] -> [N,H] (row-major)
-fn _mm(a: tensor.Tensor[Float64], b: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+fn _mm(a: tensor.Tensor[Float32], b: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
     var ashp = a.shape(); var bshp = b.shape()
     var N = ashp[0]; var D = ashp[1]; var DH = bshp[0]; var H = bshp[1]
     if D != DH:
@@ -716,7 +716,7 @@ fn _mm(a: tensor.Tensor[Float64], b: tensor.Tensor[Float64]) -> tensor.Tensor[Fl
     return out
 
 # Add bias [H] to rows of [N,H]
-fn _add_bias_rows(mut y: tensor.Tensor[Float64], b: tensor.Tensor[Float64]):
+fn _add_bias_rows(mut y: tensor.Tensor[Float32], b: tensor.Tensor[Float32]):
     var sh = y.shape(); var N = sh[0]; var H = sh[1]
     var yd = y._data; var bd = b._data
     var n = 0
@@ -728,14 +728,14 @@ fn _add_bias_rows(mut y: tensor.Tensor[Float64], b: tensor.Tensor[Float64]):
         n = n + 1
 
 # Elementwise activation in-place
-fn _apply_hardsigmoid_inplace(mut y: tensor.Tensor[Float64]):
+fn _apply_hardsigmoid_inplace(mut y: tensor.Tensor[Float32]):
     var n = y.numel()
     var i = 0
     while i < n:
         y._data[i] = _hardsigmoid(y._data[i])
         i = i + 1
 
-fn _apply_hardtanh_inplace(mut y: tensor.Tensor[Float64]):
+fn _apply_hardtanh_inplace(mut y: tensor.Tensor[Float32]):
     var n = y.numel()
     var i = 0
     while i < n:
@@ -745,18 +745,18 @@ fn _apply_hardtanh_inplace(mut y: tensor.Tensor[Float64]):
 
 @always_inline
 fn linear_mse_grads(
-    x: tensor.Tensor[Float64],
-    y_hat: tensor.Tensor[Float64],
-    y: tensor.Tensor[Float64],
-    mut dW: tensor.Tensor[Float64],
-    mut dB: tensor.Tensor[Float64]
+    x: tensor.Tensor[Float32],
+    y_hat: tensor.Tensor[Float32],
+    y: tensor.Tensor[Float32],
+    mut dW: tensor.Tensor[Float32],
+    mut dB: tensor.Tensor[Float32]
 ):
     var N    = x.shape()[0]
     var InF  = x.shape()[1]
     var OutF = y_hat.shape()[1]
 
     # Scale matches losses.mse() mean reduction over ALL elements
-    var scale = 2.0 / Float64(N * OutF)
+    var scale = 2.0 / Float32(N * OutF)
 
     # zero grads
     var j = 0
