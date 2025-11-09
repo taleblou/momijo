@@ -8,10 +8,10 @@
 #   Simple FLOPs/ops estimators for common layers/activations.
 
 @always_inline
-fn est_ops_linear(n: Int, fin: Int, fout: Int) -> Float64:
+fn est_ops_linear(n: Int, fin: Int, fout: Int) -> Float32:
     # Approximate MAC count for y = x @ W^T + b  ~ 2*n*fin*fout
-    return Float64(2 * n * fin * fout)
+    return Float32(2 * n * fin * fout)
 
 @always_inline
-fn est_ops_relu(n: Int, d: Int) -> Float64:
-    return Float64(n * d)
+fn est_ops_relu(n: Int, d: Int) -> Float32:
+    return Float32(n * d)
