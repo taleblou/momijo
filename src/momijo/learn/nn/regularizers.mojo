@@ -18,10 +18,10 @@ from collections.list import List
 from momijo.tensor import tensor
 
 # -----------------------------------------------------------------------------
-# Internal helpers (List[Float64]) — backend-free
+# Internal helpers (List[Float32]) — backend-free
 # -----------------------------------------------------------------------------
 
-fn _sum_abs(xs: List[Float64]) -> Float64:
+fn _sum_abs(xs: List[Float32]) -> Float32:
     var s = 0.0
     var n = len(xs)
     var i = 0
@@ -32,7 +32,7 @@ fn _sum_abs(xs: List[Float64]) -> Float64:
         i = i + 1
     return s
 
-fn _sum_sq(xs: List[Float64]) -> Float64:
+fn _sum_sq(xs: List[Float32]) -> Float32:
     var s = 0.0
     var n = len(xs)
     var i = 0
@@ -42,7 +42,7 @@ fn _sum_sq(xs: List[Float64]) -> Float64:
         i = i + 1
     return s
 
-fn _sum_abs_nested(blocks: List[List[Float64]]) -> Float64:
+fn _sum_abs_nested(blocks: List[List[Float32]]) -> Float32:
     var s = 0.0
     var m = Int(len(blocks))
     var i = 0
@@ -51,7 +51,7 @@ fn _sum_abs_nested(blocks: List[List[Float64]]) -> Float64:
         i = i + 1
     return s
 
-fn _sum_sq_nested(blocks: List[List[Float64]]) -> Float64:
+fn _sum_sq_nested(blocks: List[List[Float32]]) -> Float32:
     var s = 0.0
     var m = Int(len(blocks))
     var i = 0
@@ -61,17 +61,17 @@ fn _sum_sq_nested(blocks: List[List[Float64]]) -> Float64:
     return s
 
 # -----------------------------------------------------------------------------
-# Public API (List[Float64])
+# Public API (List[Float32])
 # -----------------------------------------------------------------------------
 
 # L1: λ * Σ |w|
-fn l1_penalty(params: List[Float64], weight: Float64) -> Float64:
+fn l1_penalty(params: List[Float32], weight: Float32) -> Float32:
     if weight == 0.0 or len(params) == 0:
         return 0.0
     return weight * _sum_abs(params)
 
 # L2: 0.5 * λ * Σ w^2  (set use_half_factor=false for λ * Σ w^2)
-fn l2_penalty(params: List[Float64], weight: Float64, use_half_factor: Bool = True) -> Float64:
+fn l2_penalty(params: List[Float32], weight: Float32, use_half_factor: Bool = True) -> Float32:
     if weight == 0.0 or len(params) == 0:
         return 0.0
     var base = weight * _sum_sq(params)
@@ -80,7 +80,7 @@ fn l2_penalty(params: List[Float64], weight: Float64, use_half_factor: Bool = Tr
     return base
 
 # ElasticNet: λ1 * Σ |w| + 0.5 * λ2 * Σ w^2  (half-factor optional)
-fn elastic_net_penalty(params: List[Float64], l1: Float64, l2: Float64, use_half_factor: Bool = True) -> Float64:
+fn elastic_net_penalty(params: List[Float32], l1: Float32, l2: Float32, use_half_factor: Bool = True) -> Float32:
     var s = 0.0
     if l1 != 0.0:
         s = s + l1_penalty(params, l1)
@@ -89,36 +89,36 @@ fn elastic_net_penalty(params: List[Float64], l1: Float64, l2: Float64, use_half
     return s
 
 # -----------------------------------------------------------------------------
-# Vectorized Tensor helpers (Float32/Float64) — uses elementwise ops & reductions
-# NOTE: We provide dedicated overloads for Float32 and Float64 to avoid
+# Vectorized Tensor helpers (Float32/Float32) — uses elementwise ops & reductions
+# NOTE: We provide dedicated overloads for Float32 and Float32 to avoid
 #       dtype-casting ambiguity and to keep accumulation numerically stable.
-#       Final returned scalar is Float64 (policy: accumulate in Float64).
+#       Final returned scalar is Float32 (policy: accumulate in Float32).
 # -----------------------------------------------------------------------------
 
 # L1 sums
 
-fn _l1_sum_f32(w: tensor.Tensor[Float32]) -> Float64:
-    # Vectorized: sum(abs(w)) in Float32, widen to Float64 for the return
+fn _l1_sum_f32(w: tensor.Tensor[Float32]) -> Float32:
+    # Vectorized: sum(abs(w)) in Float32, widen to Float32 for the return
     var s32 = tensor.sum(tensor.abs(w))
-    return Float64(s32)
+    return Float32(s32)
 
-fn _l1_sum_f64(w: tensor.Tensor[Float64]) -> Float64:
+fn _l1_sum_f64(w: tensor.Tensor[Float32]) -> Float32:
     var s64 = tensor.sum(tensor.abs(w))
     return s64
 
 # L2 sums (Σ w^2)
 
-fn _l2_sum_f32(w: tensor.Tensor[Float32]) -> Float64:
+fn _l2_sum_f32(w: tensor.Tensor[Float32]) -> Float32:
     var s32 = tensor.sum(tensor.square(w))
-    return Float64(s32)
+    return Float32(s32)
 
-fn _l2_sum_f64(w: tensor.Tensor[Float64]) -> Float64:
+fn _l2_sum_f64(w: tensor.Tensor[Float32]) -> Float32:
     var s64 = tensor.sum(tensor.square(w))
     return s64
 
 # Lists of tensors
 
-fn _l1_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
+fn _l1_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float32:
     var s = 0.0
     var n = Int(len(blocks))
     var i = 0
@@ -127,7 +127,7 @@ fn _l1_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
         i = i + 1
     return s
 
-fn _l1_sum_f64_list(blocks: List[tensor.Tensor[Float64]]) -> Float64:
+fn _l1_sum_f64_list(blocks: List[tensor.Tensor[Float32]]) -> Float32:
     var s = 0.0
     var n = Int(len(blocks))
     var i = 0
@@ -136,7 +136,7 @@ fn _l1_sum_f64_list(blocks: List[tensor.Tensor[Float64]]) -> Float64:
         i = i + 1
     return s
 
-fn _l2_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
+fn _l2_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float32:
     var s = 0.0
     var n = Int(len(blocks))
     var i = 0
@@ -145,7 +145,7 @@ fn _l2_sum_f32_list(blocks: List[tensor.Tensor[Float32]]) -> Float64:
         i = i + 1
     return s
 
-fn _l2_sum_f64_list(blocks: List[tensor.Tensor[Float64]]) -> Float64:
+fn _l2_sum_f64_list(blocks: List[tensor.Tensor[Float32]]) -> Float32:
     var s = 0.0
     var n = Int(len(blocks))
     var i = 0
@@ -159,18 +159,18 @@ fn _l2_sum_f64_list(blocks: List[tensor.Tensor[Float64]]) -> Float64:
 # -----------------------------------------------------------------------------
 
 # L1: λ * Σ |w|
-fn l1_penalty_tensor_f32(w: tensor.Tensor[Float32], weight: Float64) -> Float64:
+fn l1_penalty_tensor_f32(w: tensor.Tensor[Float32], weight: Float32) -> Float32:
     if weight == 0.0:
         return 0.0
     return weight * _l1_sum_f32(w)
 
-fn l1_penalty_tensor_f64(w: tensor.Tensor[Float64], weight: Float64) -> Float64:
+fn l1_penalty_tensor_f64(w: tensor.Tensor[Float32], weight: Float32) -> Float32:
     if weight == 0.0:
         return 0.0
     return weight * _l1_sum_f64(w)
 
 # L2: 0.5 * λ * Σ w^2  (set use_half_factor=false for λ * Σ w^2)
-fn l2_penalty_tensor_f32(w: tensor.Tensor[Float32], weight: Float64, use_half_factor: Bool = True) -> Float64:
+fn l2_penalty_tensor_f32(w: tensor.Tensor[Float32], weight: Float32, use_half_factor: Bool = True) -> Float32:
     if weight == 0.0:
         return 0.0
     var base = weight * _l2_sum_f32(w)
@@ -178,7 +178,7 @@ fn l2_penalty_tensor_f32(w: tensor.Tensor[Float32], weight: Float64, use_half_fa
         return 0.5 * base
     return base
 
-fn l2_penalty_tensor_f64(w: tensor.Tensor[Float64], weight: Float64, use_half_factor: Bool = True) -> Float64:
+fn l2_penalty_tensor_f64(w: tensor.Tensor[Float32], weight: Float32, use_half_factor: Bool = True) -> Float32:
     if weight == 0.0:
         return 0.0
     var base = weight * _l2_sum_f64(w)
@@ -187,7 +187,7 @@ fn l2_penalty_tensor_f64(w: tensor.Tensor[Float64], weight: Float64, use_half_fa
     return base
 
 # ElasticNet: λ1 * Σ |w| + 0.5 * λ2 * Σ w^2
-fn elastic_net_penalty_tensor_f32(w: tensor.Tensor[Float32], l1: Float64, l2: Float64, use_half_factor: Bool = True) -> Float64:
+fn elastic_net_penalty_tensor_f32(w: tensor.Tensor[Float32], l1: Float32, l2: Float32, use_half_factor: Bool = True) -> Float32:
     var s = 0.0
     if l1 != 0.0:
         s = s + l1_penalty_tensor_f32(w, l1)
@@ -195,7 +195,7 @@ fn elastic_net_penalty_tensor_f32(w: tensor.Tensor[Float32], l1: Float64, l2: Fl
         s = s + l2_penalty_tensor_f32(w, l2, use_half_factor)
     return s
 
-fn elastic_net_penalty_tensor_f64(w: tensor.Tensor[Float64], l1: Float64, l2: Float64, use_half_factor: Bool = True) -> Float64:
+fn elastic_net_penalty_tensor_f64(w: tensor.Tensor[Float32], l1: Float32, l2: Float32, use_half_factor: Bool = True) -> Float32:
     var s = 0.0
     if l1 != 0.0:
         s = s + l1_penalty_tensor_f64(w, l1)
@@ -208,18 +208,18 @@ fn elastic_net_penalty_tensor_f64(w: tensor.Tensor[Float64], l1: Float64, l2: Fl
 # -----------------------------------------------------------------------------
 
 # L1: λ * Σ |w|
-fn l1_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float64) -> Float64:
+fn l1_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float32) -> Float32:
     if weight == 0.0 or len(blocks) == 0:
         return 0.0
     return weight * _l1_sum_f32_list(blocks)
 
-fn l1_penalty_tensors_f64(blocks: List[tensor.Tensor[Float64]], weight: Float64) -> Float64:
+fn l1_penalty_tensors_f64(blocks: List[tensor.Tensor[Float32]], weight: Float32) -> Float32:
     if weight == 0.0 or len(blocks) == 0:
         return 0.0
     return weight * _l1_sum_f64_list(blocks)
 
 # L2: 0.5 * λ * Σ w^2  (set use_half_factor=false for λ * Σ w^2)
-fn l2_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float64, use_half_factor: Bool = True) -> Float64:
+fn l2_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float32, use_half_factor: Bool = True) -> Float32:
     if weight == 0.0 or len(blocks) == 0:
         return 0.0
     var base = weight * _l2_sum_f32_list(blocks)
@@ -227,7 +227,7 @@ fn l2_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], weight: Float64,
         return 0.5 * base
     return base
 
-fn l2_penalty_tensors_f64(blocks: List[tensor.Tensor[Float64]], weight: Float64, use_half_factor: Bool = True) -> Float64:
+fn l2_penalty_tensors_f64(blocks: List[tensor.Tensor[Float32]], weight: Float32, use_half_factor: Bool = True) -> Float32:
     if weight == 0.0 or len(blocks) == 0:
         return 0.0
     var base = weight * _l2_sum_f64_list(blocks)
@@ -236,7 +236,7 @@ fn l2_penalty_tensors_f64(blocks: List[tensor.Tensor[Float64]], weight: Float64,
     return base
 
 # ElasticNet: λ1 * Σ |w| + 0.5 * λ2 * Σ w^2
-fn elastic_net_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], l1: Float64, l2: Float64, use_half_factor: Bool = True) -> Float64:
+fn elastic_net_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], l1: Float32, l2: Float32, use_half_factor: Bool = True) -> Float32:
     var s = 0.0
     if l1 != 0.0:
         s = s + l1_penalty_tensors_f32(blocks, l1)
@@ -244,7 +244,7 @@ fn elastic_net_penalty_tensors_f32(blocks: List[tensor.Tensor[Float32]], l1: Flo
         s = s + l2_penalty_tensors_f32(blocks, l2, use_half_factor)
     return s
 
-fn elastic_net_penalty_tensors_f64(blocks: List[tensor.Tensor[Float64]], l1: Float64, l2: Float64, use_half_factor: Bool = True) -> Float64:
+fn elastic_net_penalty_tensors_f64(blocks: List[tensor.Tensor[Float32]], l1: Float32, l2: Float32, use_half_factor: Bool = True) -> Float32:
     var s = 0.0
     if l1 != 0.0:
         s = s + l1_penalty_tensors_f64(blocks, l1)
