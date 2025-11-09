@@ -32,7 +32,7 @@ alias SliceSpec = (Int, Int, Int)
 
 # ---------------------------------------------------------------------------
 # IndexSel (index | slice | fancy)
-# --------------------------------------------------------------------------- 
+# ---------------------------------------------------------------------------
 # Value-type selector (no shared refs/aliases)
 struct IndexSel(ImplicitlyCopyable, Copyable, Movable):
     var tag:   Int8        # 0=index, 1=slice, 2=fancy
@@ -42,7 +42,7 @@ struct IndexSel(ImplicitlyCopyable, Copyable, Movable):
     var step:  Int         # for tag=1
     var idxs:  List[Int]   # for tag=2
 
-     
+
     fn __init__(out self, t: Int8, ii: Int, a: Int, b: Int, c: Int, js: List[Int]):
         self.tag   = t
         self.i     = ii
@@ -475,7 +475,7 @@ fn maybe_copy[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Tenso
 
 
 
- 
+
 # ============================== Flattened conversions ========================
 
 # Converter-based flattened extractors. Provide f: (T) -> {Float64,Int,Bool}.
@@ -562,7 +562,7 @@ fn bool_of_int(x: Int) -> Bool:
 
 # ============================== Low-level blocks =============================
 
-@always_inline 
+@always_inline
 fn append_block_unrolled16[T: ImplicitlyCopyable & Copyable & Movable](
     mut dst: List[T], src: List[T], src_lo: Int, src_hi: Int
 ) -> None:
@@ -648,7 +648,7 @@ fn clone_header_share_data[T: ImplicitlyCopyable & Copyable & Movable](
         if is_row_major:
             # constructor signature is (shape, flat)
             # this shares the same List buffer with x (assuming ctor doesn't copy)
-            return Tensor[T](clean_shape, x._data) 
+            return Tensor[T](clean_shape, x._data)
 
     # generic path: materialize a contiguous row-major copy following given strides
     var out_n = 1
@@ -842,7 +842,7 @@ fn is_contiguous(shape: List[Int], strides: List[Int], row_major: Bool = True) -
     if row_major:
         return is_row_major_contiguous(shape, strides)
     else:
-        # Only row-major supported in this helper set; add col-major 
+        # Only row-major supported in this helper set; add col-major
         return False
 
 fn is_contiguous_tensor[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Bool:
@@ -853,7 +853,7 @@ fn is_contiguous_tensor[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]
 # Helpers
 # ------------------------------------------------------------
 @always_inline
-fn _copy_shape(src: Tensor[any]) -> List[Int]:
+fn _copy_shape[T: ImplicitlyCopyable & Copyable & Movable](src: Tensor[T]) -> List[Int]:
     var shp = List[Int]()
     var d = len(src._shape)
     var i = 0
@@ -863,7 +863,7 @@ fn _copy_shape(src: Tensor[any]) -> List[Int]:
     return shp.copy()
 
 @always_inline
-fn _is_row_major_contiguous(x: Tensor[any]) -> Bool:
+fn _is_row_major_contiguous[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> Bool:
     # Contiguous if offset==0 and strides match row-major
     if x._offset != 0:
         return False
@@ -1124,9 +1124,9 @@ fn compute_row_major_strides(shape: List[Int]) -> List[Int]:
     while k >= 0:
         st[k] = st[k + 1] * shape[k + 1]
         k -= 1
-    return st.copy() 
+    return st.copy()
 
-               
+
 
 # helpers
 fn copy_flat_list[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T]) -> List[T]:
@@ -1136,7 +1136,7 @@ fn copy_flat_list[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T]) -> L
     while i < len(t._data):
         out.append(t._data[i])
         i = i + 1
-    return out.copy() 
+    return out.copy()
 
 fn insertion_sort[T: ImplicitlyCopyable & Copyable & Movable](xs: mut List[T]) -> None:
     var n = len(xs)
@@ -1161,7 +1161,7 @@ fn unique_from_sorted[T: ImplicitlyCopyable & Copyable & Movable](xs: List[T]) -
         if xs[i] != out[len(out) - 1]:
             out.append(xs[i])
         i = i + 1
-    return out.copy() 
+    return out.copy()
 
 fn sorted_unique[T: ImplicitlyCopyable & Copyable & Movable](t: Tensor[T]) -> List[T]:
     var xs = copy_flat_list(t)
@@ -1315,7 +1315,7 @@ fn insertion_sort_inplace(mut xs: List[Int]) -> None:
 
 
 
-# ---------------- public free functions (Int only) ------------- 
+# ---------------- public free functions (Int only) -------------
 # Ascending sort for Tensor[Int]
 # - Fast 1D path (stride-aware)
 # - General N-D path via flatten with strides/offset
@@ -1395,7 +1395,7 @@ fn _insertion_sort_inplace_f64(mut a: List[Float64]) -> None:
     var i = 1
     while i < n:
         var key = a[i]
-        var j = i - 1 
+        var j = i - 1
         while j >= 0 and a[j] > key:
             a[j + 1] = a[j]
             j = j - 1
@@ -1948,8 +1948,8 @@ fn _eq_f64(a: Float64, b: Float64) -> Bool:
 fn _eq_f32(a: Float32, b: Float32) -> Bool:
     return (a == b) or (_isnan32(a) and _isnan32(b))
 
- 
- 
+
+
 
 # ================= Float64 =================
 
@@ -2166,7 +2166,7 @@ fn bincount_int(x: Tensor[Int]) -> Tensor[Int]:
     var strd = compute_row_major_strides(shp)
     return Tensor[Int](h, shp, strd, 0)
 
- 
+
 
 # Histogram with explicit bin edges for Int tensors.
 # bins = [e0, e1, ..., eN], semi-open intervals: [e_k, e_{k+1})
@@ -2327,7 +2327,7 @@ fn tensor_len[T](x: Tensor[T]) -> Int:
     return numel(x._shape)
 
 # counts.sum() for Int tensors -> Int
- 
+
 fn tensor_sum_float(x: Tensor[Int]) -> Int:
     var n = len(x._data)
     var i = 0
@@ -2342,7 +2342,7 @@ fn tensor_sum_float(x: Tensor[Int]) -> Int:
     while i < n:
         s = s + x._data[i]
         i = i + 1
-    return s 
+    return s
 
 fn tensor_sum_float(x: Tensor[Float64]) -> Float64:
     var n = len(x._data)
@@ -2375,7 +2375,7 @@ fn tensor_sum_int(x: Tensor[Int]) -> Int:
         s = s + x._data[i]
         i += 1
     return s
-                
+
 struct UniqueResult[T: ImplicitlyCopyable & Copyable & Movable]:
     var values: Tensor[T]
     var counts: Tensor[Int]
@@ -2410,7 +2410,7 @@ fn axis_len_from_slice(start: Int, stop: Int, step: Int) -> Int:
         else:
             var diff = start - stop
             var m = -s
-            out = (diff + m - 1) // m 
+            out = (diff + m - 1) // m
     return out
 
 
@@ -2425,7 +2425,7 @@ fn copy_ints(xs: List[Int]) -> List[Int]:
         out.append(xs[i])
         i += 1
     return out.copy()
- 
+
 
 
 @always_inline
@@ -2453,16 +2453,16 @@ fn _list_str(xs: List[Int]) -> String:
 # ---------------------------------------------------------------------------
 @always_inline
 fn make_index_sel(i: Int) -> IndexSel:
-    var s = IndexSel.index(i) 
+    var s = IndexSel.index(i)
     return s.copy()
 
 @always_inline
-fn make_slice_sel(t: Tuple[Int, Int, Int]) -> IndexSel: 
-    var s = IndexSel.slice(t[0], t[1], t[2]) 
+fn make_slice_sel(t: Tuple[Int, Int, Int]) -> IndexSel:
+    var s = IndexSel.slice(t[0], t[1], t[2])
     return s.copy()
 @always_inline
 fn make_slice_sel(start: Int, stop: Int, step: Int) -> IndexSel:
-    var s = IndexSel.slice(start, stop, step) 
+    var s = IndexSel.slice(start, stop, step)
     return s.copy()
 
 @always_inline
@@ -2478,36 +2478,36 @@ fn full_axis_slice(dim: Int) -> SliceSpec:
     return SliceSpec(0, dim, 1)
 
 # Type checks
-@always_inline 
-fn is_index(s: IndexSel) -> Bool: 
+@always_inline
+fn is_index(s: IndexSel) -> Bool:
     return s.tag == 0
-@always_inline 
-fn is_slice(s: IndexSel) -> Bool: 
+@always_inline
+fn is_slice(s: IndexSel) -> Bool:
     return s.tag == 1
-@always_inline 
-fn is_fancy(s: IndexSel) -> Bool: 
+@always_inline
+fn is_fancy(s: IndexSel) -> Bool:
     return s.tag == 2
 
 # Accessors
-@always_inline 
-fn get_index(s: IndexSel) -> Int: 
+@always_inline
+fn get_index(s: IndexSel) -> Int:
     return s.i
-@always_inline 
-fn get_slice(s: IndexSel) -> Tuple[Int, Int, Int]: 
+@always_inline
+fn get_slice(s: IndexSel) -> Tuple[Int, Int, Int]:
     return (s.start, s.stop, s.step)
-@always_inline 
-fn get_fancy_list(s: IndexSel) -> List[Int]: 
+@always_inline
+fn get_fancy_list(s: IndexSel) -> List[Int]:
     return s.idxs.copy()
- 
+
 @always_inline
 fn mk_strides(shape: List[Int]) -> List[Int]:
     return compute_row_major_strides(shape)
 
-  
-  
 
 
- 
+
+
+
 
 
 
@@ -2606,7 +2606,7 @@ fn apply_cmp_Int64(a: Tensor[Int64], b: Tensor[Int64], code: Int) -> Tensor[Int]
     var st = compute_row_major_strides(out_shape)
     return Tensor[Int](out, out_shape, st, 0)
 
-@always_inline 
+@always_inline
 fn scalar_int64(s: Int64) -> Tensor[Int64]:
     var shp = List[Int](); shp.append(1)
     var st  = compute_row_major_strides(shp)
@@ -2655,7 +2655,7 @@ fn _apply_bin_bool(a: Tensor[Bool], b: Tensor[Bool], code: Int) -> Tensor[Bool]:
     var st = compute_row_major_strides(out_shape)
     return Tensor[Bool](out, out_shape, st, 0)
 
-@always_inline 
+@always_inline
 fn _scalar_bool(s: Bool) -> Tensor[Bool]:
     var shp = List[Int](); shp.append(1)
     var st  = compute_row_major_strides(shp)
@@ -2757,7 +2757,7 @@ fn apply_cmp_UInt8(a: Tensor[UInt8], b: Tensor[UInt8], code: Int) -> Tensor[Int]
     var st = compute_row_major_strides(out_shape)
     return Tensor[Int](out, out_shape, st, 0)
 
-@always_inline 
+@always_inline
 fn scalar_UInt8(s: UInt8) -> Tensor[UInt8]:
     var shp = List[Int](); shp.append(1)
     var st  = compute_row_major_strides(shp)
@@ -2859,7 +2859,7 @@ fn apply_cmp_Int32(a: Tensor[Int32], b: Tensor[Int32], code: Int) -> Tensor[Int]
     var st = compute_row_major_strides(out_shape)
     return Tensor[Int](out, out_shape, st, 0)
 
-@always_inline 
+@always_inline
 fn scalar_int32(s: Int32) -> Tensor[Int32]:
     var shp = List[Int](); shp.append(1)
     var st  = compute_row_major_strides(shp)
@@ -3200,7 +3200,7 @@ fn apply_cmp_f32(a: Tensor[Float32], b: Tensor[Float32], code: Int) -> Tensor[Fl
     return Tensor[Float32](out, out_shape, stg, 0)
 
 
- 
+
 @always_inline
 fn _rank(sh: List[Int]) -> Int:
     return len(sh)
@@ -3403,10 +3403,10 @@ fn apply_cmp_f64(a: Tensor[Float64], b: Tensor[Float64], code: Int) -> Tensor[Fl
     return Tensor[Float64](out, out_shape, st, 0)
 
 
- 
+
 
 # ---------------- small helpers ----------------
- 
+
 @staticmethod
 @always_inline
 fn _exp_scalar_(x: Float64) -> Float64:
@@ -3444,7 +3444,7 @@ fn _exp_scalar_f64(x: Float64) -> Float64:
     y = 1.0                   + x * y
     return y
 
- 
+
 # Core: generic loops; element formatting is passed in as `fmt`
 @always_inline
 fn tensor_to_string_core[U: ImplicitlyCopyable & Copyable & Movable](
@@ -3561,24 +3561,24 @@ fn tensor_to_string_core[U: ImplicitlyCopyable & Copyable & Movable](
     return s
 
 # -------- element formatters for concrete primitive dtypes --------
- 
- 
- 
+
+
+
  # -------- Helpers (internal) --------
 @always_inline
 fn full_axis(dim: Int) -> IndexSel:
     # ":" over the full axis: start=0, stop=dim, step=1
     return make_slice_sel((0, dim, 1))
- 
- 
+
+
 
  # ---------- Selector types & factories (keep once) ----------
 # ---------- IndexSel tuple utilities ----------
 # Assume: type IndexSel = Tuple[Bool, Int, (Int, Int, Int)]
 
- 
 
- 
+
+
 
 @always_inline
 fn sel_is_index(sel: IndexSel) -> Bool:
@@ -3596,7 +3596,7 @@ fn sel_slice(sel: IndexSel) -> (Int, Int, Int):
     return sl  # (start, stop, step)
 
 # ---------- small helpers ----------
- 
+
 
 @always_inline
 fn wrap_index(i: Int, dim: Int) -> Int:
@@ -3622,7 +3622,7 @@ fn range_len(start: Int, stop: Int, step_in: Int) -> Int:
         var m = -step
         return (start - stop + m - 1) // m
 
-  
+
 # Trim spaces (simple, ASCII)
 fn trim_ascii(s: String) -> String:
     var n = len(s)
@@ -3729,7 +3729,7 @@ struct XorShift64:
         var s = seed
         if s == UInt64(0):
             s = UInt64(0x9E3779B97F4A7C15)   # non-zero default
-        self.state = s 
+        self.state = s
 
     @always_inline
     fn next_u64(mut self) -> UInt64:
@@ -3757,8 +3757,8 @@ struct XorShift64:
 @always_inline
 fn uniform(low: Float64, high: Float64, shape: List[Int], seed: Optional[Int] = None) -> Tensor[Float64]:
     var out = empty(shape)  # Float64 by default
-    var s = UInt64(seed.value()) 
-    if seed is None: s =UInt64(0xD1B54A32D192ED03)  
+    var s = UInt64(seed.value())
+    if seed is None: s =UInt64(0xD1B54A32D192ED03)
     var rng = XorShift64(s)
 
     var n = len(out._data)
