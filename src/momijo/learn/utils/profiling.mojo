@@ -28,19 +28,19 @@ from momijo.tensor import tensor
 # -----------------------------------------------------------------------------
 
 @staticmethod
-fn ns_to_s(ns: UInt64) -> Float64:
-    return Float64(ns) / 1_000_000_000.0
+fn ns_to_s(ns: UInt64) -> Float32:
+    return Float32(ns) / 1_000_000_000.0
 
 @staticmethod
-fn ns_to_ms(ns: UInt64) -> Float64:
-    return Float64(ns) / 1_000_000.0
+fn ns_to_ms(ns: UInt64) -> Float32:
+    return Float32(ns) / 1_000_000.0
 
 @staticmethod
-fn s_to_ns(seconds: Float64) -> UInt64:
+fn s_to_ns(seconds: Float32) -> UInt64:
     var s = seconds
     if s < 0.0:
         s = 0.0
-    # Clamp to UInt64 range is implicit in typical workloads; add guards  
+    # Clamp to UInt64 range is implicit in typical workloads; add guards
     return UInt64(s * 1_000_000_000.0)
 
 # -----------------------------------------------------------------------------
@@ -70,7 +70,7 @@ struct Timer:
             self.running = True
             self.start_ns = t_ns
 
-    fn stop(mut self, t_ns: UInt64) -> Float64:
+    fn stop(mut self, t_ns: UInt64) -> Float32:
         if not self.running:
             return 0.0
         var seg_ns = t_ns - self.start_ns
@@ -78,25 +78,25 @@ struct Timer:
         self.running = False
         return ns_to_s(seg_ns)
 
-    fn lap(self, t_ns: UInt64) -> Float64:
+    fn lap(self, t_ns: UInt64) -> Float32:
         if not self.running:
             return 0.0
         var seg_ns = t_ns - self.start_ns
         return ns_to_s(seg_ns)
 
-    fn elapsed(self, t_ns: UInt64) -> Float64:
+    fn elapsed(self, t_ns: UInt64) -> Float32:
         if self.running:
             var live_ns = t_ns - self.start_ns
             return ns_to_s(self.accum_ns + live_ns)
         return ns_to_s(self.accum_ns)
 
-    fn elapsed_ms(self, t_ns: UInt64) -> Float64:
+    fn elapsed_ms(self, t_ns: UInt64) -> Float32:
         if self.running:
             var live_ns = t_ns - self.start_ns
             return ns_to_ms(self.accum_ns + live_ns)
         return ns_to_ms(self.accum_ns)
 
-    fn measure(mut self, t_start_ns: UInt64, t_end_ns: UInt64) -> Float64:
+    fn measure(mut self, t_start_ns: UInt64, t_end_ns: UInt64) -> Float32:
         self.running = False
         self.accum_ns = UInt64(0)
         self.start_ns = t_start_ns
@@ -119,7 +119,7 @@ struct ScopedTimer:
                 self.timer_ref.value.start(t_ns)
                 self.started = True
 
-    fn stop(mut self, t_ns: UInt64) -> Float64:
+    fn stop(mut self, t_ns: UInt64) -> Float32:
         if self.timer_ref is None:
             return 0.0
         if self.started and self.timer_ref.value.running:
@@ -159,25 +159,25 @@ struct LapStats:
                 self.max_ns = lap_ns
         self.count = self.count + 1
 
-    fn mean_ns(self) -> Float64:
+    fn mean_ns(self) -> Float32:
         if self.count <= 0:
             return 0.0
-        return Float64(self.total_ns) / Float64(self.count)
+        return Float32(self.total_ns) / Float32(self.count)
 
-    fn mean_ms(self) -> Float64:
+    fn mean_ms(self) -> Float32:
         # Compute in Float to avoid truncation.
         return self.mean_ns() / 1_000_000.0
 
-    fn mean_s(self) -> Float64:
+    fn mean_s(self) -> Float32:
         return self.mean_ns() / 1_000_000_000.0
 
-    fn total_s(self) -> Float64:
+    fn total_s(self) -> Float32:
         return ns_to_s(self.total_ns)
 
-    fn min_s(self) -> Float64:
+    fn min_s(self) -> Float32:
         return ns_to_s(self.min_ns)
 
-    fn max_s(self) -> Float64:
+    fn max_s(self) -> Float32:
         return ns_to_s(self.max_ns)
 
     fn reset(mut self):
@@ -231,7 +231,7 @@ struct LabelProfiler:
         cur.add_lap(lap_ns)
         self.stats[idx] = cur
 
-    fn add_lap_s(mut self, label: String, lap_s: Float64):
+    fn add_lap_s(mut self, label: String, lap_s: Float32):
         var lap_ns = s_to_ns(lap_s)
         self.add_lap_ns(label, lap_ns)
 
@@ -335,15 +335,15 @@ struct SMA:
         self.buf[self.index] = value_ns
         self.index = (self.index + 1) % self.capacity
 
-    fn mean_s(self) -> Float64:
+    fn mean_s(self) -> Float32:
         if self.count <= 0:
             return 0.0
-        return (Float64(self.sum_ns) / Float64(self.count)) / 1_000_000_000.0
+        return (Float32(self.sum_ns) / Float32(self.count)) / 1_000_000_000.0
 
-    fn mean_ms(self) -> Float64:
+    fn mean_ms(self) -> Float32:
         if self.count <= 0:
             return 0.0
-        return (Float64(self.sum_ns) / Float64(self.count)) / 1_000_000.0
+        return (Float32(self.sum_ns) / Float32(self.count)) / 1_000_000.0
 
 # -----------------------------------------------------------------------------
 # TrainingLoopProfiler: end-to-end helper for train loops
