@@ -32,10 +32,10 @@ struct ModelCheckpoint:
     var mode_max: Bool
     var has_monitor: Bool
 
-    var last_metric_value: Float64
+    var last_metric_value: Float32
     var has_metric_value: Bool
 
-    var best_metric_value: Float64
+    var best_metric_value: Float32
     var has_best: Bool
 
     # Optional bookkeeping (paths of last written files)
@@ -82,7 +82,7 @@ struct ModelCheckpoint:
         self.best_path_written = String("")
 
     # Update the current metric value prior to save(...).
-    fn update_metric(mut self, value: Float64):
+    fn update_metric(mut self, value: Float32):
         self.last_metric_value = value
         self.has_metric_value = True
 
@@ -129,7 +129,7 @@ struct ModelCheckpoint:
 # -----------------------------------------------------------------------------
 
 @always_inline
-fn _is_better(mode_max: Bool, current: Float64, best: Float64) -> Bool:
+fn _is_better(mode_max: Bool, current: Float32, best: Float32) -> Bool:
     # Returns True if current is better than best under the selected mode.
     if mode_max:
         return current > best
