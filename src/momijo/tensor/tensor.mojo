@@ -23,7 +23,7 @@
 # MIT License
 # SPDX-License-Identifier: MIT
 # Project:      Momijo
-# Module:       momijo.tensor.tensor
+# Module:       momijo.Tensor
 # File:         src/momijo/tensor/tensor.mojo
 #
 # Description:
@@ -50,7 +50,7 @@ from momijo.tensor.math import *
 from momijo.tensor.cast import *
 from momijo.tensor.creation import scalar_f64,scalar_f32,scalar_int
 from momijo.tensor.indexing import *
-from momijo.tensor.transform import flatten,view ,permute,unbind,split_sizes,cat,chunk
+from momijo.tensor.transform import flatten,view ,permute,unbind,split_sizes,cat,chunk,transpose2d
 
 from momijo.tensor.creation import empty_tensor_with
 
@@ -3161,28 +3161,24 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return _matmul_free(self, x)
 
     # Tensor[Int] @ Tensor[Int] -> Tensor[Float64]  (upcast then call Float64 impl)
-    fn matmul(self: Tensor[Int], x: Tensor[Int]) -> Tensor[Float64]:
-        var Af = astype_f64_from_int(self)
-        var xf = astype_f64_from_int(x)
+    fn matmul(self: Tensor[Int], x: Tensor[Int]) -> Tensor[Float32]:
+        var Af = astype_f32_from_int(self)
+        var xf = astype_f32_from_int(x)
         return _matmul_free(Af, xf)
-    fn matmul(self: Tensor[Float32], x: Tensor[Float32]) -> Tensor[Float64]:
-        var Af = astype_f64_from_f32(self)
-        var xf = astype_f64_from_f32(x)
-        return _matmul_free(Af, xf)
+    fn matmul(self: Tensor[Float32], x: Tensor[Float32]) -> Tensor[Float32]:
+        return _matmul_free(self, x)
 
 
     fn matmul_vec(self: Tensor[Float64], x: Tensor[Float64]) -> Tensor[Float64]:
         return matmul_core_vec(self, x)
 
     # Tensor[Int] @ Tensor[Int] -> Tensor[Float64]  (upcast then call Float64 impl)
-    fn matmul_vec(self: Tensor[Int], x: Tensor[Int]) -> Tensor[Float64]:
-        var Af = astype_f64_from_int(self)
-        var xf = astype_f64_from_int(x)
+    fn matmul_vec(self: Tensor[Int], x: Tensor[Int]) -> Tensor[Float32]:
+        var Af = astype_f32_from_int(self)
+        var xf = astype_f32_from_int(x)
         return matmul_core_vec(Af, xf)
-    fn matmul_vec(self: Tensor[Float32], x: Tensor[Float32]) -> Tensor[Float64]:
-        var Af = astype_f64_from_f32(self)
-        var xf = astype_f64_from_f32(x)
-        return matmul_core_vec(Af, xf)
+    fn matmul_vec(self: Tensor[Float32], x: Tensor[Float32]) -> Tensor[Float32]:
+        return matmul_core_vec(self, xf)
 
     # Float64 x Float64
     fn tensordot(self: Tensor[Float64], B: Tensor[Float64], axis: Int = 1) -> Tensor[Float64]:
@@ -3217,9 +3213,9 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     fn std(self: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return std(self, axis, keepdims)
-    fn std(self: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    fn std(self: Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
         return std(self, axis, keepdims)
-    fn std(self: Tensor[Int], axis: Optional[Int], keepdims: Bool = False) -> Tensor[Float64]:
+    fn std(self: Tensor[Int], axis: Optional[Int], keepdims: Bool = False) -> Tensor[Float32]:
         var f = astype_f64_from_int(self)
         return std(f, axis, keepdims)
     @always_inline
@@ -3243,23 +3239,23 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn nanmin(self:Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
         return nansum(self, axis, keepdims)
 
-    fn nanmean(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    fn nanmean(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
         return nanmean(self, axis, keepdims)
 
-    fn nansum(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    fn nansum(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
         return nansum(self, axis, keepdims)
 
-    fn nanmin(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    fn nanmin(self:Tensor[Float32], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float32]:
         return nansum(self, axis, keepdims)
 
 
-    fn nanmean(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    fn nanmean(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Int]:
         return nanmean(self, axis, keepdims)
 
-    fn nansum(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    fn nansum(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Int]:
         return nansum(self, axis, keepdims)
 
-    fn nanmin(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
+    fn nanmin(self:Tensor[Int], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Int]:
         return nansum(self, axis, keepdims)
 
 
@@ -3281,39 +3277,33 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     # ---------- Float32 overloads (upcast to f64) ----------
 
-    fn mean(self: Tensor[Float32]) -> Tensor[Float64]:
-        var A = astype_f64_from_f32(self)
+    fn mean(self: Tensor[Float32]) -> Tensor[Float32]:
         var none = Optional[Int]()
-        return _mean_free(A, none, False)
+        return _mean_free(self, none, False)
 
-    fn mean(self: Tensor[Float32], axis: Int) -> Tensor[Float64]:
+    fn mean(self: Tensor[Float32], axis: Int) -> Tensor[Float32]:
+        var ax = Optional[Int](axis)
+        return _mean_free(self, ax, False)
+
+    fn mean(self: Tensor[Float32], axis: List[Int]) -> Tensor[Float32]:
         var A = astype_f64_from_f32(self)
         var ax = Optional[Int](axis)
-        return _mean_free(A, ax, False)
-
-    fn mean(self: Tensor[Float32], axis: List[Int]) -> Tensor[Float64]:
-        var A = astype_f64_from_f32(self)
-        return mean_axes_f64(A, axis, False)
+        return mean_axes_f64(self, axis, False)
 
 
     # ---------- Int overloads (upcast to f64) ----------
 
-    fn mean(self: Tensor[Int]) -> Tensor[Float64]:
-        var A = astype_f64_from_int(self)
+    fn mean(self: Tensor[Int]) -> Tensor[Int]:
         var none = Optional[Int]()
-        return _mean_free(A, none, False)
+        return _mean_free(self, none, False)
 
-    fn mean(self: Tensor[Int], axis: Int) -> Tensor[Float64]:
-        var A = astype_f64_from_int(self)
+    fn mean(self: Tensor[Int], axis: Int) -> Tensor[Int]:
         var ax = Optional[Int](axis)
-        return _mean_free(A, ax, False)
+        return _mean_free(self, ax, False)
 
     # allows diff.mean(axis=[0,2,3])
-    fn mean(self: Tensor[Int], axis: List[Int]) -> Tensor[Float64]:
-        var A = astype_f64_from_int(self)
-        return mean_axes_f64(A, axis, False)
-
-
+    fn mean(self: Tensor[Int], axis: List[Int]) -> Tensor[Int]:
+        return mean_axes_f64(self, axis, False)
 
 
 
@@ -3323,6 +3313,10 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         f: fn (T) -> U
     ) -> Tensor[U]:
         return astype_with[T, U](self, f)
+
+    # @always_inline
+    # fn astype[U: ImplicitlyCopyable & Copyable & Movable](self) -> Tensor[U]:
+    #     return astype_with[T, U](self, _default_cast[T, U])
 
 
     # ------------------------------ __str__ -----------------------------------
@@ -3412,6 +3406,16 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
             flat.append(Float64(self._data[i]))
             i = i + 1
         return Tensor[Float64](shp, flat)
+    # cast helper
+    fn astype_float32(self: Tensor[Int]) -> Tensor[Float32]:
+        var shp = self._shape.copy()
+        var flat = List[Float32]()
+        flat.reserve(len(self._data))
+        var i = 0
+        while i < len(self._data):
+            flat.append(Float32(self._data[i]))
+            i = i + 1
+        return Tensor[Float32](shp, flat)
 
     # existing same-type overloads must already exist:
     # fn set_union(self: Tensor[Int], other: Tensor[Int]) -> Tensor[Int]: ...
@@ -3717,7 +3721,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return exp_t(self)
 
     @always_inline
-    fn exp(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn exp(self: Tensor[Float32]) -> Tensor[Float32]:
         return exp_t(self)
 
 
@@ -3734,7 +3738,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return log_t(self)
 
     @always_inline
-    fn log(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn log(self: Tensor[Float32]) -> Tensor[Float32]:
         return log_t(self)
 
 
@@ -3751,7 +3755,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return sqrt_t(self)
 
     @always_inline
-    fn sqrt(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn sqrt(self: Tensor[Float32]) -> Tensor[Float32]:
         return sqrt_t(self)
 
 
@@ -3768,7 +3772,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return abs_t(self)
 
     @always_inline
-    fn abs(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn abs(self: Tensor[Float32]) -> Tensor[Float32]:
         return abs_t(self)
 
 
@@ -3787,7 +3791,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return sin_t(self)
 
     @always_inline
-    fn sin(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn sin(self: Tensor[Float32]) -> Tensor[Float32]:
         return sin_t(self)
 
 
@@ -3805,7 +3809,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return cos_t(self)
 
     @always_inline
-    fn cos(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn cos(self: Tensor[Float32]) -> Tensor[Float32]:
         return cos_t(self)
 
 
@@ -3823,7 +3827,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return tan_t(self)
 
     @always_inline
-    fn tan(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn tan(self: Tensor[Float32]) -> Tensor[Float32]:
         return tan_t(self)
 
 
@@ -3841,7 +3845,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return relu_t(self)
 
     @always_inline
-    fn relu(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn relu(self: Tensor[Float32]) -> Tensor[Float32]:
         return relu_t(self)
 
 
@@ -3859,7 +3863,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return expm1_t(self)
 
     @always_inline
-    fn expm1(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn expm1(self: Tensor[Float32]) -> Tensor[Float32]:
         return expm1_t(self)
 
 
@@ -3877,7 +3881,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return log1p_t(self)
 
     @always_inline
-    fn log1p(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn log1p(self: Tensor[Float32]) -> Tensor[Float32]:
         return log1p_t(self)
 
 
@@ -3894,7 +3898,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return floor_t(self)
 
     @always_inline
-    fn floor(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn floor(self: Tensor[Float32]) -> Tensor[Float32]:
         return floor_t(self)
 
 
@@ -3911,7 +3915,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return ceil_t(self)
 
     @always_inline
-    fn ceil(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn ceil(self: Tensor[Float32]) -> Tensor[Float32]:
         return ceil_t(self)
 
 
@@ -3928,7 +3932,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return round_t(self)
 
     @always_inline
-    fn round(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn round(self: Tensor[Float32]) -> Tensor[Float32]:
         return round_t(self)
 
 
@@ -3945,7 +3949,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return sign_t(self)
 
     @always_inline
-    fn sign(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn sign(self: Tensor[Float32]) -> Tensor[Float32]:
         return sign_t(self)
 
 
@@ -3962,7 +3966,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return sigmoid_t(self)
 
     @always_inline
-    fn sigmoid(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn sigmoid(self: Tensor[Float32]) -> Tensor[Float32]:
         return sigmoid_t(self)
 
 
@@ -3979,7 +3983,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return tanh_t(self)
 
     @always_inline
-    fn tanh(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn tanh(self: Tensor[Float32]) -> Tensor[Float32]:
         return tanh_t(self)
 
 
@@ -3996,7 +4000,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return silu_t(self)
 
     @always_inline
-    fn silu(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn silu(self: Tensor[Float32]) -> Tensor[Float32]:
         return silu_t(self)
 
 
@@ -4013,7 +4017,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return gelu_t(self)
 
     @always_inline
-    fn gelu(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn gelu(self: Tensor[Float32]) -> Tensor[Float32]:
         return gelu_t(self)
 
 
@@ -4030,7 +4034,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return elu_t(self)
 
     @always_inline
-    fn elu(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn elu(self: Tensor[Float32]) -> Tensor[Float32]:
         return elu_t(self)
 
     # =========================
@@ -4038,7 +4042,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     # =========================
 
     @always_inline
-    fn selu(self: Tensor[Int]) -> Tensor[Float64]:
+    fn selu(self: Tensor[Int]) -> Tensor[Float32]:
         return selu_t(self)
 
     @always_inline
@@ -4046,7 +4050,7 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return selu_t(self)
 
     @always_inline
-    fn selu(self: Tensor[Float32]) -> Tensor[Float64]:
+    fn selu(self: Tensor[Float32]) -> Tensor[Float32]:
         return selu_t(self)
 
 
@@ -4265,14 +4269,36 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
     fn max(self: Tensor[Int]) -> Int: return max_t(self)
 
 
-    fn __bool__(self) -> Bool:
+    fn __bool__(self: Tensor[Int]) -> Bool:
         var n = len(self._data)
         if n == 0: return False
         var i = 0
         while i < n:
-            if self._data[i] != 0.0: return True
+            if self._data[i] != 0:      # <-- Int zero
+                return True
             i = i + 1
         return False
+
+    fn __bool__(self: Tensor[Float64]) -> Bool:
+        var n = len(self._data)
+        if n == 0: return False
+        var i = 0
+        while i < n:
+            if self._data[i] != 0.0:    # <-- Float64 zero
+                return True
+            i = i + 1
+        return False
+
+    fn __bool__(self: Tensor[Float32]) -> Bool:
+        var n = len(self._data)
+        if n == 0: return False
+        var i = 0
+        while i < n:
+            if self._data[i] != 0.0: # <-- Float32 zero
+                return True
+            i = i + 1
+        return False
+
 
 
 
@@ -4352,19 +4378,19 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
 
     # / (result: Float64 always)
     fn __truediv__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return div_t(to_float64(self), rhs)              # a(f32→f64) / b(f64)
-    fn __truediv__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float64]: return div_t(to_float64(self), to_float64(rhs))  # a(f32→f64) / b(f32→f64)
-    fn __truediv__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float64]: return div_t(to_float64(self), to_float64(rhs))  # a(f32→f64) / b(int→f64)
+    fn __truediv__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: return div_t(self, rhs)  # a(f32→f64) / b(f32→f64)
+    fn __truediv__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float32]: return div_t(self, to_float32(rhs))  # a(f32→f64) / b(int→f64)
     fn __truediv__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return div_t(to_float64(self), scalar_f64(rhs))   # a(f32→f64) / s(f64)
-    fn __truediv__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar_f32(rhs))) # a(f32→f64) / s(f32→f64)
-    fn __truediv__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float64]: return div_t(to_float64(self), to_float64(scalar_int(rhs))) # a(f32→f64) / s(int→f64)
+    fn __truediv__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return div_t(self, scalar_f32(rhs)) # a(f32→f64) / s(f32→f64)
+    fn __truediv__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float32]: return div_t(self, to_float32(scalar_int(rhs))) # a(f32→f64) / s(int→f64)
 
     # % (result: Float64 always)
     fn __mod__(self: Tensor[Float32], rhs: Tensor[Float64]) -> Tensor[Float64]: return mod_t(to_float64(self), rhs)                  # a(f32→f64) % b(f64)
-    fn __mod__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(rhs))      # a(f32→f64) % b(f32→f64)
-    fn __mod__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(rhs))      # a(f32→f64) % b(int→f64)
-    fn __mod__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return mod_t(to_float64(self), scalar_f64(rhs))       # a(f32→f64) % s(f64)
-    fn __mod__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar_f32(rhs))) # a(f32→f64) % s(f32→f64)
-    fn __mod__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float64]: return mod_t(to_float64(self), to_float64(scalar_int(rhs))) # a(f32→f64) % s(int→f64)
+    fn __mod__(self: Tensor[Float32], rhs: Tensor[Float32]) -> Tensor[Float32]: return mod_t(self, rhs)      # a(f32→f64) % b(f32→f64)
+    fn __mod__(self: Tensor[Float32], rhs: Tensor[Int])     -> Tensor[Float32]: return mod_t(self, to_float32(rhs))      # a(f32→f64) % b(int→f64)
+    fn __mod__(self: Tensor[Float32], rhs: Float64)         -> Tensor[Float64]: return mod_t(self, scalar_f32(rhs))       # a(f32→f64) % s(f64)
+    fn __mod__(self: Tensor[Float32], rhs: Float32)         -> Tensor[Float32]: return mod_t(self,scalar_f32(rhs)) # a(f32→f64) % s(f32→f64)
+    fn __mod__(self: Tensor[Float32], rhs: Int)             -> Tensor[Float32]: return mod_t(self, to_float32(scalar_int(rhs))) # a(f32→f64) % s(int→f64)
     # =========================
     # Int overloads — all rhs combos (Tensor/Scalar: Int, Float32, Float64)
     # +,-,*: promote to widest (Float64 if present, else Float32 if present, else Int)
@@ -5521,6 +5547,13 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return Tensor[Int](flat._data, shp, strides, 0)
 
 
+    fn argmax(self:Tensor[Float32], axis: Optional[Int] = None) -> Tensor[Int]:
+        return  argmax(self, axis)
+
+    fn argmin(self:Tensor[Float64], axis: Optional[Int] = None) -> Tensor[Int]:
+        return  argmin(self, axis)
+
+
 
         # ---------------- High-performance appends on Tensor._data ---------------- #
     @always_inline
@@ -6353,32 +6386,16 @@ struct Tensor[T: ImplicitlyCopyable & Copyable & Movable](Copyable, Movable):
         return off
 
    # ---------- transpose 2D ----------
-    fn transpose2d(x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
-        var shp = x.shape()
-        var rank = len(shp)
-        if rank != 2:
-            var same = tensor.zeros(shp)   # same shape, zeros
-            # copy data
-            var n = len(x._data)
-            var t = 0
-            while t < n:
-                same._data[t] = x._data[t]
-                t = t + 1
-            return same.copy()
+    fn transpose2d(self: Tensor[Float32]) -> Tensor[Float32]:
+        return transpose2d(self)
 
-        var h = shp[0]
-        var w = shp[1]
-        var out = tensor.zeros([w, h])
 
-        var i = 0
-        while i < h:
-            var j = 0
-            while j < w:
-                # out[j, i] = x[i, j]
-                out._data[j * h + i] = x._data[i * w + j]
-                j = j + 1
-            i = i + 1
-        return out.copy()
+
+
+
+
+
+
 
 
 
@@ -6540,3 +6557,13 @@ fn _offset_from_linear(
         o = o + s * strides[d]
         d += 1
     return o
+
+
+
+
+# @always_inline
+# fn _default_cast[
+#     T: ImplicitlyCopyable & Copyable & Movable,
+#     U: ImplicitlyCopyable & Copyable & Movable
+# ](x: T) -> U:
+#     return U(x)
