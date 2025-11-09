@@ -38,12 +38,12 @@ struct Module(Copyable, Movable):
 
     # -------- Learnable params
     var param_names: List[String]
-    var param_values: List[tensor.Tensor[Float64]]
+    var param_values: List[tensor.Tensor[Float32]]
     var param_requires_grad: List[Bool]
 
     # -------- Non-learnable buffers
     var buffer_names: List[String]
-    var buffer_values: List[tensor.Tensor[Float64]]
+    var buffer_values: List[tensor.Tensor[Float32]]
 
     # --------------------------------
     # Constructors
@@ -78,11 +78,11 @@ struct Module(Copyable, Movable):
         self.children = List[Module]()
 
         self.param_names = List[String]()
-        self.param_values = List[tensor.Tensor[Float64]]()
+        self.param_values = List[tensor.Tensor[Float32]]()
         self.param_requires_grad = List[Bool]()
 
         self.buffer_names = List[String]()
-        self.buffer_values = List[tensor.Tensor[Float64]]()
+        self.buffer_values = List[tensor.Tensor[Float32]]()
 
     fn __copyinit__(out self, other: Self):
         # tag + variants
@@ -154,7 +154,7 @@ struct Module(Copyable, Movable):
     # --------------------------------
     # Forward (dispatch by tag)
     # --------------------------------
-    fn forward(mut self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(mut self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         if self.tag == 0: return self.linear.forward(x)
         if self.tag == 1: return self.relu.forward(x)
         if self.tag == 2: return self.lrelu.forward(x)
@@ -213,7 +213,7 @@ struct Module(Copyable, Movable):
     fn modules(self) -> List[Module]:
         return self.children
 
-    fn register_parameter(mut self, name: String, value: tensor.Tensor[Float64], requires_grad: Bool = True):
+    fn register_parameter(mut self, name: String, value: tensor.Tensor[Float32], requires_grad: Bool = True):
         var i = 0
         while i < len(self.param_names):
             if self.param_names[i] == name:
@@ -225,7 +225,7 @@ struct Module(Copyable, Movable):
         self.param_values.append(value)
         self.param_requires_grad.append(requires_grad)
 
-    fn register_buffer(mut self, name: String, value: tensor.Tensor[Float64]):
+    fn register_buffer(mut self, name: String, value: tensor.Tensor[Float32]):
         var i = 0
         while i < len(self.buffer_names):
             if self.buffer_names[i] == name:
@@ -235,10 +235,10 @@ struct Module(Copyable, Movable):
         self.buffer_names.append(name)
         self.buffer_values.append(value)
 
-    fn add_parameter(mut self, name: String, value: tensor.Tensor[Float64], requires_grad: Bool = True):
+    fn add_parameter(mut self, name: String, value: tensor.Tensor[Float32], requires_grad: Bool = True):
         self.register_parameter(name, value, requires_grad)
 
-    fn add_buffer(mut self, name: String, value: tensor.Tensor[Float64]):
+    fn add_buffer(mut self, name: String, value: tensor.Tensor[Float32]):
         self.register_buffer(name, value)
 
     # --------------------------------
@@ -270,10 +270,10 @@ struct Module(Copyable, Movable):
     # --------------------------------
     # Accessors
     # --------------------------------
-    fn parameters(self) -> List[tensor.Tensor[Float64]]:
+    fn parameters(self) -> List[tensor.Tensor[Float32]]:
         return self.param_values
 
-    fn buffers(self) -> List[tensor.Tensor[Float64]]:
+    fn buffers(self) -> List[tensor.Tensor[Float32]]:
         return self.buffer_values
 
     # --------------------------------
@@ -438,10 +438,10 @@ fn _json_escape(s: String) -> String:
 # -----------------------------
 # Small tensor summary (metadata-only)
 # -----------------------------
-fn _tensor_summary(t: tensor.Tensor[Float64]) -> String:
+fn _tensor_summary(t: tensor.Tensor[Float32]) -> String:
     # NOTE: print only scalars/String; do not dump raw buffers here.
     var s = String("tensor(")
-    s += String("dtype=Float64")
+    s += String("dtype=Float32")
     s += String(", shape=[")
     var nd = t.ndim()
     var d = 0
@@ -471,7 +471,7 @@ struct Seq512(Copyable, Movable):
         self.a  = other.a.copy()
         self.l2 = other.l2.copy()
 
-    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var h = self.l1.forward(x)
         h = self.a.forward(h)
         return self.l2.forward(h)
