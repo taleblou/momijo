@@ -25,16 +25,16 @@ from momijo.tensor.tensor import Tensor   # ← central tensor import (per proje
 struct EvalResult:
     var samples: Int
     var batches: Int
-    var loss_avg: Float64
+    var loss_avg: Float32
     var metric_names: List[String]
-    var metric_avgs: List[Float64]
+    var metric_avgs: List[Float32]
 
     fn __init__(out self):
         self.samples = 0
         self.batches = 0
         self.loss_avg = 0.0
         self.metric_names = List[String]()
-        self.metric_avgs = List[Float64]()
+        self.metric_avgs = List[Float32]()
 
     fn __str__(self) -> String:
         var s = String("EvalResult(")
@@ -59,19 +59,19 @@ struct EvalResult:
 # ----------------------------------------
 struct _RunningStats:
     var count: Int
-    var sum_loss: Float64
-    var metric_sums: List[Float64]
+    var sum_loss: Float32
+    var metric_sums: List[Float32]
 
     fn __init__(out self, n_metrics: Int):
         self.count = 0
         self.sum_loss = 0.0
-        self.metric_sums = List[Float64]()
+        self.metric_sums = List[Float32]()
         var i = 0
         while i < n_metrics:
             self.metric_sums.append(0.0)
             i = i + 1
 
-    fn update(mut self, loss_val: Float64, metric_vals: List[Float64]):
+    fn update(mut self, loss_val: Float32, metric_vals: List[Float32]):
         self.count = self.count + 1
         self.sum_loss = self.sum_loss + loss_val
         var i = 0
@@ -79,13 +79,13 @@ struct _RunningStats:
             self.metric_sums[i] = self.metric_sums[i] + metric_vals[i]
             i = i + 1
 
-    fn loss_avg(self) -> Float64:
+    fn loss_avg(self) -> Float32:
         if self.count == 0:
             return 0.0
-        return self.sum_loss / Float64(self.count)
+        return self.sum_loss / Float32(self.count)
 
-    fn metrics_avg(self) -> List[Float64]:
-        var avgs = List[Float64]()
+    fn metrics_avg(self) -> List[Float32]:
+        var avgs = List[Float32]()
         if self.count == 0:
             var i = 0
             while i < len(self.metric_sums):
@@ -94,7 +94,7 @@ struct _RunningStats:
             return avgs
         var i2 = 0
         while i2 < len(self.metric_sums):
-            avgs.append(self.metric_sums[i2] / Float64(self.count))
+            avgs.append(self.metric_sums[i2] / Float32(self.count))
             i2 = i2 + 1
         return avgs
 
@@ -123,8 +123,8 @@ struct Evaluator:
     # Main evaluation loop.
     #   model         : object with either eval_step(batch)->(pred, loss_scalar) OR forward(x)->pred
     #   data_loader   : object with __len__() and __getitem__(idx)->batch
-    #   loss_fn       : optional (pred, target)->Float64 if model has no eval_step
-    #   metric_fns    : list of metric(pred, target)->Float64
+    #   loss_fn       : optional (pred, target)->Float32 if model has no eval_step
+    #   metric_fns    : list of metric(pred, target)->Float32
     fn evaluate(
         self,
         model,
@@ -148,7 +148,7 @@ struct Evaluator:
                 use_eval_step = True
 
             var loss_val = 0.0
-            var metric_vals = List[Float64]()
+            var metric_vals = List[Float32]()
 
             if use_eval_step:
                 # Expect: eval_step returns (pred, loss_scalar)
@@ -231,7 +231,7 @@ fn _try_get_target(batch) raises -> Optional[any]:
     return Optional.any(y)
 
 # Try to call a metric(pred, target_opt) safely; if it fails, return 0.0
-fn _safe_metric(metric_fn, pred, target_opt: Optional[any]) -> Float64:
+fn _safe_metric(metric_fn, pred, target_opt: Optional[any]) -> Float32:
     var val = 0.0
     # metrics typically need target; if None, pass a dummy Optional to avoid raise
     try:
