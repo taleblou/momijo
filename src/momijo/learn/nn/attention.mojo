@@ -22,7 +22,7 @@ from momijo.learn.nn.functional import _rowwise_relu_normalize
 
 
 @always_inline
-fn sqrt64(x: Float64) -> Float64:
+fn sqrt64(x: Float32) -> Float32:
     var v = x
     if v <= 0.0:
         return 0.0
@@ -34,8 +34,8 @@ fn sqrt64(x: Float64) -> Float64:
         g = 0.5 * (g + v / g)
         i += 1
     return g
-    
- 
+
+
 # ----------------------------- Multi-Head Attention ---------------------------
 struct MultiHeadAttention:
     var d_model: Int
@@ -57,7 +57,7 @@ struct MultiHeadAttention:
         self.Wo = Linear(d_model, d_model)
 
     # x: [T,B,C], y: [S,B,C]  -> attend y with queries from x (generic; encoder self-attn when x=y)
-    fn forward(self, x: tensor.Tensor[Float64], y: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, x: tensor.Tensor[Float32], y: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var Tx = x.shape()[0]; var B = x.shape()[1]; var C = x.shape()[2]
         var Ty = y.shape()[0]
         var d_h = self.d_head
@@ -126,7 +126,7 @@ struct MultiHeadAttention:
                 var tq = 0
                 while tq < Tx:
                     # build row scores for time tq
-                    var row = List[Float64]()
+                    var row = List[Float32]()
                     var tk = 0
                     while tk < Ty:
                         var s = 0.0
@@ -192,4 +192,3 @@ struct MultiHeadAttention:
                 bi2 = bi2 + 1
             ti = ti + 1
         return z.copy()
-
