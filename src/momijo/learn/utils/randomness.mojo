@@ -12,7 +12,7 @@
 #   - SeedBundle helper to derive multiple consistent seeds from one base seed
 #   - seed_all(seed) kept as a backend-agnostic compatibility shim (no globals)
 #
-# Design notes: 
+# Design notes:
 #     around. This makes determinism and testing straightforward.
 #   - All floating output uses open interval (0,1) where appropriate to avoid
 #     log(0) issues downstream (e.g. Box–Muller).
@@ -54,10 +54,10 @@ fn _to_u64(seed: Int) -> UInt64:
     return UInt64(seed)
 
 @always_inline
-fn _u64_to_open01(u: UInt64) -> Float64:
+fn _u64_to_open01(u: UInt64) -> Float32:
     # Map 53 high bits to (0,1). Avoid exact 0 by adding 0.5 ulp.
     var v = u >> 11                              # keep top 53 bits
-    var y = Float64(v) * (1.0 / 9007199254740992.0)  # 1/2^53
+    var y = Float32(v) * (1.0 / 9007199254740992.0)  # 1/2^53
     if y <= 0.0:
         return 5e-324  # Double min subnormal as tiny positive
     if y >= 1.0:
@@ -65,7 +65,7 @@ fn _u64_to_open01(u: UInt64) -> Float64:
     return y
 
 @always_inline
-fn _abs_f64(x: Float64) -> Float64:
+fn _abs_f64(x: Float32) -> Float32:
     var v = x
     if v < 0.0:
         v = -v
@@ -143,7 +143,7 @@ struct Xoshiro256ss:
 struct RNG:
     var core: Xoshiro256ss
     var _has_gauss: Bool
-    var _gauss: Float64
+    var _gauss: Float32
 
     fn __init__(out self, seed: UInt64):
         self.core = Xoshiro256ss.from_seed(seed)
@@ -157,7 +157,7 @@ struct RNG:
     fn next_u64(mut self) -> UInt64:
         return self.core.next_u64()
 
-    fn next_f64_open01(mut self) -> Float64:
+    fn next_f64_open01(mut self) -> Float32:
         return _u64_to_open01(self.next_u64())
 
     # Uniform integers in [low, high) with rejection to avoid modulo bias
@@ -167,10 +167,10 @@ struct RNG:
             return low
 
         var span_u = UInt64(high - low)
-        # max_u = 2^64-1  
+        # max_u = 2^64-1
         var max_u = UInt64(0) - UInt64(1)
         # threshold = max_u - ((max_u + 1) % span_u)
- 
+
         var threshold = max_u - ((max_u + UInt64(1)) % span_u)
 
         while True:
@@ -178,8 +178,8 @@ struct RNG:
             if x <= threshold:
                 return low + Int(x % span_u)
 
-    # Uniform Float64 in [low, high)
-    fn uniform(mut self, low: Float64 = 0.0, high: Float64 = 1.0) -> Float64:
+    # Uniform Float32 in [low, high)
+    fn uniform(mut self, low: Float32 = 0.0, high: Float32 = 1.0) -> Float32:
 
         if high <= low:
             return low
@@ -187,7 +187,7 @@ struct RNG:
         return low + (high - low) * r
 
     # Standard normal via Box–Muller (with 1-sample cache)
-    fn normal(mut self, mean: Float64 = 0.0, std: Float64 = 1.0) -> Float64:
+    fn normal(mut self, mean: Float32 = 0.0, std: Float32 = 1.0) -> Float32:
 
         if std < 0.0:
             std = -std
@@ -219,7 +219,7 @@ struct RNG:
 
 
     # Bernoulli(p)
-    fn bernoulli(mut self, p: Float64) -> Int:
+    fn bernoulli(mut self, p: Float32) -> Int:
         var pp = p
         if pp < 0.0: pp = 0.0
         if pp > 1.0: pp = 1.0
@@ -248,10 +248,10 @@ struct RNG:
         self.shuffle(idx)
         return idx
 
-   # Choice without replacement from [0..n-1], returns k unique indices. 
+   # Choice without replacement from [0..n-1], returns k unique indices.
     fn choice_k(mut self, n: Int, k: Int) -> List[Int]:
         var out = List[Int]()
-        if n <= 0:        
+        if n <= 0:
             return out
         var kk = k
         if kk < 0: kk = 0
@@ -265,8 +265,8 @@ struct RNG:
             i = i + 1
         return out
 
-    # Weighted choice (with replacement) over weights w[0..m-1] 
-    fn weighted_choice(mut self, weights: List[Float64]) -> Int:
+    # Weighted choice (with replacement) over weights w[0..m-1]
+    fn weighted_choice(mut self, weights: List[Float32]) -> Int:
         var m = len(weights)
         if m <= 0:
             return 0
@@ -292,7 +292,7 @@ struct RNG:
                 if r <= acc:
                     return i
             i = i + 1
- 
+
         return m - 1
 
 # -----------------------------------------------------------------------------
@@ -300,7 +300,7 @@ struct RNG:
 # -----------------------------------------------------------------------------
 
 # Natural log approximation: range reduction + atanh-series (like elsewhere)
-fn _log_approx(x: Float64) -> Float64:
+fn _log_approx(x: Float32) -> Float32:
     if x <= 0.0:
         return -1.7976931348623157e308
     var ln2 = 0.6931471805599453
@@ -319,13 +319,13 @@ fn _log_approx(x: Float64) -> Float64:
     var i = 1
     while i <= 6:
         term = term * t2
-        var denom = Float64(2 * i + 1)
+        var denom = Float32(2 * i + 1)
         sum = sum + (term / denom)
         i = i + 1
-    return 2.0 * sum + Float64(k) * ln2
+    return 2.0 * sum + Float32(k) * ln2
 
 # Sqrt via 6 steps of Newton–Raphson
-fn _sqrt_approx(x: Float64) -> Float64:
+fn _sqrt_approx(x: Float32) -> Float32:
     if x <= 0.0:
         return 0.0
     var g = x
@@ -337,7 +337,7 @@ fn _sqrt_approx(x: Float64) -> Float64:
 
 # Very small cos/sin helper: use a minimized cordic-like Taylor for |x|<=π
 # and wrap to [-π, π] first. For Box–Muller we only need either cos or sin.
-fn _wrap_pi(x: Float64) -> Float64:
+fn _wrap_pi(x: Float32) -> Float32:
     var pi = 3.141592653589793
     var two_pi = 6.283185307179586
     var v = x
@@ -348,7 +348,7 @@ fn _wrap_pi(x: Float64) -> Float64:
         v = v + two_pi
     return v
 
-fn _cos_sin_combo(x: Float64, want_cos: Bool) -> Float64:
+fn _cos_sin_combo(x: Float32, want_cos: Bool) -> Float32:
     var v = _wrap_pi(x)
     # 7th-order Taylor is enough here
     var v2 = v * v
@@ -413,7 +413,7 @@ fn derived_rngs(seed: Int) -> (RNG, RNG, RNG, RNG, RNG):
 # Compatibility shim: seed_all
 # -----------------------------------------------------------------------------
 # This function intentionally does NOT set any global state (Momijo policy).
-# It exists to mirror common ML libraries. Use it to produce a deterministic 
+# It exists to mirror common ML libraries. Use it to produce a deterministic
 
 fn seed_all(seed: Int):
     var _ = seed
@@ -430,15 +430,15 @@ fn randint(seed: Int, low: Int, high: Int) -> Int:
     var r = rng_from_seed(seed)
     return r.randint(low, high)
 
-fn uniform(seed: Int, low: Float64 = 0.0, high: Float64 = 1.0) -> Float64:
+fn uniform(seed: Int, low: Float32 = 0.0, high: Float32 = 1.0) -> Float32:
     var r = rng_from_seed(seed)
     return r.uniform(low, high)
 
-fn normal(seed: Int, mean: Float64 = 0.0, std: Float64 = 1.0) -> Float64:
+fn normal(seed: Int, mean: Float32 = 0.0, std: Float32 = 1.0) -> Float32:
     var r = rng_from_seed(seed)
     return r.normal(mean, std)
 
-fn bernoulli(seed: Int, p: Float64) -> Int:
+fn bernoulli(seed: Int, p: Float32) -> Int:
     var r = rng_from_seed(seed)
     return r.bernoulli(p)
 
