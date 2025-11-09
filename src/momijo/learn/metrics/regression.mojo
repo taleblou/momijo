@@ -5,7 +5,7 @@
 #
 # Description:  Regression metrics for Momijo Learn. Provides common metrics
 #               such as MSE, RMSE, MAE, MAPE, R2 score, and explained variance.
-#               Implemented backend-agnostic on List[Float64] for portability;
+#               Implemented backend-agnostic on List[Float32] for portability;
 #               later can be overloaded for Tensor types in momijo.tensor.
 #
 # Author(s):    Morteza Taleblou & Mitra Daneshmand
@@ -27,13 +27,13 @@ from collections.list import List
 # Internal numeric helpers
 # -----------------------------
 
-fn _abs64(x: Float64) -> Float64:
+fn _abs64(x: Float32) -> Float32:
     if x < 0.0:
         return 0.0 - x
     return x
 
 # Newton-Raphson sqrt with a few iterations; stable for non-negative inputs.
-fn _sqrt64(x: Float64) -> Float64:
+fn _sqrt64(x: Float32) -> Float32:
     if x <= 0.0:
         return 0.0
     var g = x
@@ -44,7 +44,7 @@ fn _sqrt64(x: Float64) -> Float64:
         i = i + 1
     return g
 
-fn _safe_div(num: Float64, den: Float64, eps: Float64 = 1e-12) -> Float64:
+fn _safe_div(num: Float32, den: Float32, eps: Float32 = 1e-12) -> Float32:
     var d = den
     if d < 0.0:
         d = 0.0 - d
@@ -56,7 +56,7 @@ fn _safe_div(num: Float64, den: Float64, eps: Float64 = 1e-12) -> Float64:
         return num / (eps if den >= 0.0 else 0.0 - eps)
     return num / den
 
-fn _mean(xs: List[Float64]) -> Float64:
+fn _mean(xs: List[Float32]) -> Float32:
     var n = len(xs)
     if n == 0:
         return 0.0
@@ -65,10 +65,10 @@ fn _mean(xs: List[Float64]) -> Float64:
     while i < n:
         s = s + xs[i]
         i = i + 1
-    return s / Float64(n)
+    return s / Float32(n)
 
 # Unbiased = False (population variance) since metrics usually use population form here.
-fn _variance(xs: List[Float64], mean_val: Float64) -> Float64:
+fn _variance(xs: List[Float32], mean_val: Float32) -> Float32:
     var n = len(xs)
     if n == 0:
         return 0.0
@@ -78,14 +78,14 @@ fn _variance(xs: List[Float64], mean_val: Float64) -> Float64:
         var d = xs[i] - mean_val
         s2 = s2 + d * d
         i = i + 1
-    return s2 / Float64(n)
+    return s2 / Float32(n)
 
 # -----------------------------
 # Public regression metrics
 # -----------------------------
 
 # Mean Squared Error
-fn mse(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
+fn mse(y_pred: List[Float32], y_true: List[Float32]) -> Float32:
     var n_pred = len(y_pred)
     var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
@@ -101,14 +101,14 @@ fn mse(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
         var e = y_pred[i] - y_true[i]
         s = s + e * e
         i = i + 1
-    return s / Float64(n)
+    return s / Float32(n)
 
 # Root Mean Squared Error
-fn rmse(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
+fn rmse(y_pred: List[Float32], y_true: List[Float32]) -> Float32:
     return _sqrt64(mse(y_pred, y_true))
 
 # Mean Absolute Error
-fn mae(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
+fn mae(y_pred: List[Float32], y_true: List[Float32]) -> Float32:
     var n_pred = len(y_pred)
     var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
@@ -122,11 +122,11 @@ fn mae(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
     while i < n:
         s = s + _abs64(y_pred[i] - y_true[i])
         i = i + 1
-    return s / Float64(n)
+    return s / Float32(n)
 
 # Mean Absolute Percentage Error (in percent if scale=100.0).
 # Zeros in y_true are handled with eps to avoid division by zero.
-fn mape(y_pred: List[Float64], y_true: List[Float64], scale: Float64 = 100.0, eps: Float64 = 1e-8) -> Float64:
+fn mape(y_pred: List[Float32], y_true: List[Float32], scale: Float32 = 100.0, eps: Float32 = 1e-8) -> Float32:
     var n_pred = len(y_pred)
     var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
@@ -144,12 +144,12 @@ fn mape(y_pred: List[Float64], y_true: List[Float64], scale: Float64 = 100.0, ep
             denom = eps
         s = s + _abs64((y_pred[i] - y_true[i]) / denom)
         i = i + 1
-    return (s / Float64(n)) * scale
+    return (s / Float32(n)) * scale
 
 # Coefficient of Determination (R^2).
 # R^2 = 1 - SS_res / SS_tot
 # If SS_tot == 0: return 1.0 if SS_res==0 else 0.0 (degenerate target variance).
-fn r2_score(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
+fn r2_score(y_pred: List[Float32], y_true: List[Float32]) -> Float32:
     var n_pred = len(y_pred)
     var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
@@ -164,7 +164,7 @@ fn r2_score(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
     while i < n:
         sum_true = sum_true + y_true[i]
         i = i + 1
-    var mean_true = sum_true / Float64(n)
+    var mean_true = sum_true / Float32(n)
 
     var ss_res = 0.0
     var ss_tot = 0.0
@@ -186,7 +186,7 @@ fn r2_score(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
 # Explained Variance Score:
 # 1 - Var(y - y_pred) / Var(y)
 # If Var(y) == 0: return 1.0 if Var(error)==0 else 0.0
-fn explained_variance(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
+fn explained_variance(y_pred: List[Float32], y_true: List[Float32]) -> Float32:
     var n_pred = len(y_pred)
     var n_true = len(y_true)
     if n_pred == 0 or n_true == 0:
@@ -196,8 +196,8 @@ fn explained_variance(y_pred: List[Float64], y_true: List[Float64]) -> Float64:
         n = n_true
 
     # Collect trimmed views into temporary lists to reuse helpers
-    var t_true = List[Float64]()
-    var t_err  = List[Float64]()
+    var t_true = List[Float32]()
+    var t_err  = List[Float32]()
 
     var i = 0
     while i < n:
