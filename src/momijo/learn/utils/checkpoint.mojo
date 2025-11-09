@@ -14,9 +14,9 @@ from collections.list import List
 # ------------------------------------------------------------------------------
 # Build a flat tensor blob of parameters in traversal order, with a compact JSON
 # header describing per-layer param sizes. Supports Linear and Conv2d.
-# Returns: (header_json, flat_blob[Float64])
+# Returns: (header_json, flat_blob[Float32])
 # ------------------------------------------------------------------------------
-fn make_checkpoint(net: Sequential) -> (String, tensor.Tensor[Float64]):
+fn make_checkpoint(net: Sequential) -> (String, tensor.Tensor[Float32]):
     var total = 0
     var i = 0
     var n = net.len()
@@ -104,7 +104,7 @@ fn make_checkpoint(net: Sequential) -> (String, tensor.Tensor[Float64]):
 # Ignores header structure (relies on the same ordering and sizes).
 # Returns: True on success.
 # ------------------------------------------------------------------------------
-fn apply_checkpoint(mut net: Sequential, header: String, blob: tensor.Tensor[Float64]) -> Bool:
+fn apply_checkpoint(mut net: Sequential, header: String, blob: tensor.Tensor[Float32]) -> Bool:
     _ = header
     var i = 0
     var k = 0
@@ -331,7 +331,7 @@ fn load_state_dict(mut model: NNSequential, dir_: String, stem: String) -> Bool:
 fn load_state_dict(mut model: Sequential, dir_: String, stem: String) -> Bool:
     var base = _join_dir_stem(dir_, stem)
     return load_state_dict( model, base)
-    
+
 # Reads `<path>.json` and returns model_class if present; else "".
 fn read_model_class_from_header(path: String) -> String:
     var header = _header_path(path)
@@ -385,4 +385,3 @@ fn _join_dir_stem(dir_: String, stem: String) -> String:
         if last != String("/")[0]:
             base = base + String("/")
     return base + stem
-  
