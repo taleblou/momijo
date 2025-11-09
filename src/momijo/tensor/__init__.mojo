@@ -21,6 +21,7 @@
 # ----------------------------- Core types -------------------------------------
 from momijo.tensor.tensor import Tensor
 
+from momijo.tensor.gpu import runtime
 # ----------------------------- DType utilities --------------------------------
 from momijo.tensor.dtype import DType
 from momijo.tensor.dtype import DTypeTag
@@ -35,7 +36,7 @@ from momijo.tensor.dtype import itemsize_for_code
 # If your codebase currently provides only *_f64 variants, expose ergonomic names:
 from momijo.tensor.creation import linspace_int,linspace_f64,linspace_f32
 from momijo.tensor.creation import arange_int,arange_f64,arange_f32
-from momijo.tensor.creation import zeros,zeros_int,zeros_f64 ,zeros_f32 ,zeros_u8,zeros_i8,zeros_i32
+from momijo.tensor.creation import zeros,zeros_int,zeros_f64 ,zeros_f32 ,zeros_u8,zeros_i8,zeros_i32,zeros_int
 from momijo.tensor.creation import ones,ones_int,ones_f64,ones_f32,ones_like
 from momijo.tensor.creation import full,empty,empty_f32,empty_f64
 from momijo.tensor.creation import eye_int,eye_f64,eye_f32
@@ -49,7 +50,7 @@ from momijo.tensor.creation import from_3d_list_float64,from_3d_list_float32,fro
 
 from momijo.tensor.creation import randn,rand,randn_int,randn_f64,randn_f32
 from momijo.tensor.creation import zeros_like,normal,full_like
-from momijo.tensor.creation import arange_f64 as arange
+from momijo.tensor.creation import arange_f32 as arange
 
 # ----------------------------- Axis operations --------------------------------
 from momijo.tensor.axis import moveaxis
