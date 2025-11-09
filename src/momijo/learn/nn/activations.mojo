@@ -22,7 +22,7 @@ from momijo.tensor import tensor  # <- facade import per project policy
 # --------------------------------------------
 
 @always_inline
-fn _clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
+fn _clamp(x: Float32, lo: Float32, hi: Float32) -> Float32:
     var v = x
     if v < lo:
         v = lo
@@ -31,7 +31,7 @@ fn _clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
     return v
 
 # exp approximation on a bounded range using (1 + x/n)^n with n=64 and range clamp
-fn _exp_approx(x: Float64) -> Float64:
+fn _exp_approx(x: Float32) -> Float32:
     var xv = _clamp(x, -20.0, 20.0)
     var n = 64.0
     var base = 1.0 + (xv / n)
@@ -45,7 +45,7 @@ fn _exp_approx(x: Float64) -> Float64:
     return y
 
 # tanh via exp approximation
-fn _tanh_approx(x: Float64) -> Float64:
+fn _tanh_approx(x: Float32) -> Float32:
     var xv = _clamp(x, -10.0, 10.0)
     var e2x = _exp_approx(2.0 * xv)
     return (e2x - 1.0) / (e2x + 1.0)
@@ -53,7 +53,7 @@ fn _tanh_approx(x: Float64) -> Float64:
 # log approximation with simple range reduction and atanh-series
 # ln(x) = ln(m * 2^k) = ln(m) + k * ln2, reduce m to ~[0.75, 1.5], then
 # ln(m) ≈ 2 * [t + t^3/3 + t^5/5 + ...], t = (m-1)/(m+1)
-fn _log_approx(x: Float64) -> Float64:
+fn _log_approx(x: Float32) -> Float32:
     if x <= 0.0:
         # represent -inf; keep in a large negative bound
         return -1.7976931348623157e308
@@ -77,17 +77,17 @@ fn _log_approx(x: Float64) -> Float64:
     # use 6 odd terms -> accurate enough for activations
     while i <= 6:
         term = term * t2
-        var denom = Float64(2 * i + 1)
+        var denom = Float32(2 * i + 1)
         sum = sum + (term / denom)
         i = i + 1
-    return 2.0 * sum + Float64(k) * ln2
+    return 2.0 * sum + Float32(k) * ln2
 
 # --------------------------------------------
 # List utility
 # --------------------------------------------
 
-fn _map(xs: List[Float64], f) -> List[Float64]:
-    var out = List[Float64]()
+fn _map(xs: List[Float32], f) -> List[Float32]:
+    var out = List[Float32]()
     out.reserve(len(xs))
     var i = 0
     var n = len(xs)
@@ -101,28 +101,28 @@ fn _map(xs: List[Float64], f) -> List[Float64]:
 # --------------------------------------------
 
 # ReLU family
-fn relu(x: Float64) -> Float64:
+fn relu(x: Float32) -> Float32:
     var v = x
     if v < 0.0:
         v = 0.0
     return v
 
-fn relu(xs: List[Float64]) -> List[Float64]:
+fn relu(xs: List[Float32]) -> List[Float32]:
     return _map(xs, relu)
 
-fn leaky_relu(x: Float64, negative_slope: Float64 = 0.01) -> Float64:
+fn leaky_relu(x: Float32, negative_slope: Float32 = 0.01) -> Float32:
     if x >= 0.0:
         return x
     return negative_slope * x
 
-fn leaky_relu(xs: List[Float64], negative_slope: Float64 = 0.01) -> List[Float64]:
-    var f = fn (v: Float64) -> Float64:
+fn leaky_relu(xs: List[Float32], negative_slope: Float32 = 0.01) -> List[Float32]:
+    var f = fn (v: Float32) -> Float32:
         if v >= 0.0:
             return v
         return negative_slope * v
     return _map(xs, f)
 
-fn relu6(x: Float64) -> Float64:
+fn relu6(x: Float32) -> Float32:
     var v = x
     if v < 0.0:
         v = 0.0
@@ -130,66 +130,66 @@ fn relu6(x: Float64) -> Float64:
         v = 6.0
     return v
 
-fn relu6(xs: List[Float64]) -> List[Float64]:
+fn relu6(xs: List[Float32]) -> List[Float32]:
     return _map(xs, relu6)
 
 # Sigmoid / Tanh / SiLU (Swish)
-fn sigmoid(x: Float64) -> Float64:
+fn sigmoid(x: Float32) -> Float32:
     # stable: sigmoid(x) = 1/(1+exp(-x)) with approximated exp
     var e = _exp_approx(-x)
     return 1.0 / (1.0 + e)
 
-fn sigmoid(xs: List[Float64]) -> List[Float64]:
+fn sigmoid(xs: List[Float32]) -> List[Float32]:
     return _map(xs, sigmoid)
 
-fn tanh(x: Float64) -> Float64:
+fn tanh(x: Float32) -> Float32:
     return _tanh_approx(x)
 
-fn tanh(xs: List[Float64]) -> List[Float64]:
+fn tanh(xs: List[Float32]) -> List[Float32]:
     return _map(xs, tanh)
 
-fn silu(x: Float64) -> Float64:
+fn silu(x: Float32) -> Float32:
     return x * sigmoid(x)
 
-fn silu(xs: List[Float64]) -> List[Float64]:
+fn silu(xs: List[Float32]) -> List[Float32]:
     return _map(xs, silu)
 
 # GELU (tanh approximation)
-fn gelu(x: Float64) -> Float64:
+fn gelu(x: Float32) -> Float32:
     var s = 0.7978845608028654    # sqrt(2/pi)
     var x3 = x * x * x
     var inner = s * (x + 0.044715 * x3)
     var t = _tanh_approx(inner)
     return 0.5 * x * (1.0 + t)
 
-fn gelu(xs: List[Float64]) -> List[Float64]:
+fn gelu(xs: List[Float32]) -> List[Float32]:
     return _map(xs, gelu)
 
 # ELU / SELU
-fn elu(x: Float64, alpha: Float64 = 1.0) -> Float64:
+fn elu(x: Float32, alpha: Float32 = 1.0) -> Float32:
     if x >= 0.0:
         return x
     return alpha * (_exp_approx(x) - 1.0)
 
-fn elu(xs: List[Float64], alpha: Float64 = 1.0) -> List[Float64]:
-    var f = fn (v: Float64) -> Float64:
+fn elu(xs: List[Float32], alpha: Float32 = 1.0) -> List[Float32]:
+    var f = fn (v: Float32) -> Float32:
         if v >= 0.0:
             return v
         return alpha * (_exp_approx(v) - 1.0)
     return _map(xs, f)
 
-fn selu(x: Float64) -> Float64:
+fn selu(x: Float32) -> Float32:
     var lmbd = 1.0507009873554805
     var alpha = 1.6732632423543772
     if x >= 0.0:
         return lmbd * x
     return lmbd * (alpha * (_exp_approx(x) - 1.0))
 
-fn selu(xs: List[Float64]) -> List[Float64]:
+fn selu(xs: List[Float32]) -> List[Float32]:
     return _map(xs, selu)
 
 # Hard variants
-fn hard_sigmoid(x: Float64) -> Float64:
+fn hard_sigmoid(x: Float32) -> Float32:
     var y = (x / 6.0) + 0.5
     if y < 0.0:
         y = 0.0
@@ -197,17 +197,17 @@ fn hard_sigmoid(x: Float64) -> Float64:
         y = 1.0
     return y
 
-fn hard_sigmoid(xs: List[Float64]) -> List[Float64]:
+fn hard_sigmoid(xs: List[Float32]) -> List[Float32]:
     return _map(xs, hard_sigmoid)
 
-fn hard_swish(x: Float64) -> Float64:
+fn hard_swish(x: Float32) -> Float32:
     return x * hard_sigmoid(x)
 
-fn hard_swish(xs: List[Float64]) -> List[Float64]:
+fn hard_swish(xs: List[Float32]) -> List[Float32]:
     return _map(xs, hard_swish)
 
 # Softplus / Softsign / Shrinks
-fn softplus(x: Float64) -> Float64:
+fn softplus(x: Float32) -> Float32:
     # max(0,x) + log1p(exp(-|x|))  (approximate log1p via ln)
     var a = x
     var ab = a
@@ -220,19 +220,19 @@ fn softplus(x: Float64) -> Float64:
     var log1p_e = _log_approx(1.0 + e)
     return max0a + log1p_e
 
-fn softplus(xs: List[Float64]) -> List[Float64]:
+fn softplus(xs: List[Float32]) -> List[Float32]:
     return _map(xs, softplus)
 
-fn softsign(x: Float64) -> Float64:
+fn softsign(x: Float32) -> Float32:
     var ab = x
     if ab < 0.0:
         ab = -ab
     return x / (1.0 + ab)
 
-fn softsign(xs: List[Float64]) -> List[Float64]:
+fn softsign(xs: List[Float32]) -> List[Float32]:
     return _map(xs, softsign)
 
-fn softshrink(x: Float64, lambd: Float64 = 0.5) -> Float64:
+fn softshrink(x: Float32, lambd: Float32 = 0.5) -> Float32:
     var ab = x
     if ab < 0.0:
         ab = -ab
@@ -244,8 +244,8 @@ fn softshrink(x: Float64, lambd: Float64 = 0.5) -> Float64:
         s = -1.0
     return s * m
 
-fn softshrink(xs: List[Float64], lambd: Float64 = 0.5) -> List[Float64]:
-    var f = fn (v: Float64) -> Float64:
+fn softshrink(xs: List[Float32], lambd: Float32 = 0.5) -> List[Float32]:
+    var f = fn (v: Float32) -> Float32:
         var ab = v
         if ab < 0.0:
             ab = -ab
@@ -258,7 +258,7 @@ fn softshrink(xs: List[Float64], lambd: Float64 = 0.5) -> List[Float64]:
         return s * m
     return _map(xs, f)
 
-fn hardshrink(x: Float64, lambd: Float64 = 0.5) -> Float64:
+fn hardshrink(x: Float32, lambd: Float32 = 0.5) -> Float32:
     var ab = x
     if ab < 0.0:
         ab = -ab
@@ -266,8 +266,8 @@ fn hardshrink(x: Float64, lambd: Float64 = 0.5) -> Float64:
         return x
     return 0.0
 
-fn hardshrink(xs: List[Float64], lambd: Float64 = 0.5) -> List[Float64]:
-    var f = fn (v: Float64) -> Float64:
+fn hardshrink(xs: List[Float32], lambd: Float32 = 0.5) -> List[Float32]:
+    var f = fn (v: Float32) -> Float32:
         var ab = v
         if ab < 0.0:
             ab = -ab
@@ -280,10 +280,10 @@ fn hardshrink(xs: List[Float64], lambd: Float64 = 0.5) -> List[Float64]:
 # Softmax (List)
 # --------------------------------------------
 
-fn _softmax_1d(xs: List[Float64]) -> List[Float64]:
+fn _softmax_1d(xs: List[Float32]) -> List[Float32]:
     var n = len(xs)
     if n == 0:
-        return List[Float64]()
+        return List[Float32]()
     var m = xs[0]
     var i = 1
     while i < n:
@@ -291,7 +291,7 @@ fn _softmax_1d(xs: List[Float64]) -> List[Float64]:
         if v > m:
             m = v
         i = i + 1
-    var exps = List[Float64]()
+    var exps = List[Float32]()
     exps.reserve(n)
     var sum_e = 0.0
     i = 0
@@ -300,7 +300,7 @@ fn _softmax_1d(xs: List[Float64]) -> List[Float64]:
         exps.append(e)
         sum_e = sum_e + e
         i = i + 1
-    var out = List[Float64]()
+    var out = List[Float32]()
     out.reserve(n)
     i = 0
     while i < n:
@@ -308,16 +308,16 @@ fn _softmax_1d(xs: List[Float64]) -> List[Float64]:
         i = i + 1
     return out
 
-fn softmax(xs: List[Float64]) -> List[Float64]:
+fn softmax(xs: List[Float32]) -> List[Float32]:
     return _softmax_1d(xs)
 
-# 2D softmax with dimension control (List[List[Float64]])
-fn softmax(x2d: List[List[Float64]], dim: Int = -1) -> List[List[Float64]]:
+# 2D softmax with dimension control (List[List[Float32]])
+fn softmax(x2d: List[List[Float32]], dim: Int = -1) -> List[List[Float32]]:
     var rows = len(x2d)
     if rows == 0:
-        return List[List[Float64]]()
+        return List[List[Float32]]()
     if dim == -1 or dim == 1:
-        var out = List[List[Float64]]()
+        var out = List[List[Float32]]()
         out.reserve(rows)
         var r = 0
         while r < rows:
@@ -332,11 +332,11 @@ fn softmax(x2d: List[List[Float64]], dim: Int = -1) -> List[List[Float64]]:
             if l > cols:
                 cols = l
             r2 = r2 + 1
-        var out2 = List[List[Float64]]()
+        var out2 = List[List[Float32]]()
         out2.reserve(rows)
         r2 = 0
         while r2 < rows:
-            var row = List[Float64]()
+            var row = List[Float32]()
             var c2 = 0
             var rl = len(x2d[r2])
             while c2 < rl:
@@ -346,7 +346,7 @@ fn softmax(x2d: List[List[Float64]], dim: Int = -1) -> List[List[Float64]]:
             r2 = r2 + 1
         var c = 0
         while c < cols:
-            var col_vals = List[Float64]()
+            var col_vals = List[Float32]()
             var row_ids = List[Int]()
             row_ids.reserve(rows)
             var rr = 0
@@ -412,7 +412,7 @@ fn _row_major_strides(shape: List[Int]) -> List[Int]:
 fn _zeros_like_shape[T: ImplicitlyCopyable & Copyable & Movable](shape: List[Int]) -> tensor.Tensor[T]:
     return tensor.Tensor[T](shape, T(0))
 
-fn _apply_eltwise1[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], f: fn (Float64) -> Float64) -> tensor.Tensor[T]:
+fn _apply_eltwise1[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], f: fn (Float32) -> Float32) -> tensor.Tensor[T]:
     var shp = x.shape()
     var n = _numel(shp)
     var out = tensor.Tensor[T](shp, T(0))
@@ -421,17 +421,17 @@ fn _apply_eltwise1[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[
     var i = 0
     var lim = (n // 8) * 8
     while i < lim:
-        yo[i    ] = T(f(Float64(xo[i    ])))
-        yo[i + 1] = T(f(Float64(xo[i + 1])))
-        yo[i + 2] = T(f(Float64(xo[i + 2])))
-        yo[i + 3] = T(f(Float64(xo[i + 3])))
-        yo[i + 4] = T(f(Float64(xo[i + 4])))
-        yo[i + 5] = T(f(Float64(xo[i + 5])))
-        yo[i + 6] = T(f(Float64(xo[i + 6])))
-        yo[i + 7] = T(f(Float64(xo[i + 7])))
+        yo[i    ] = T(f(Float32(xo[i    ])))
+        yo[i + 1] = T(f(Float32(xo[i + 1])))
+        yo[i + 2] = T(f(Float32(xo[i + 2])))
+        yo[i + 3] = T(f(Float32(xo[i + 3])))
+        yo[i + 4] = T(f(Float32(xo[i + 4])))
+        yo[i + 5] = T(f(Float32(xo[i + 5])))
+        yo[i + 6] = T(f(Float32(xo[i + 6])))
+        yo[i + 7] = T(f(Float32(xo[i + 7])))
         i = i + 8
     while i < n:
-        yo[i] = T(f(Float64(xo[i])))
+        yo[i] = T(f(Float32(xo[i])))
         i = i + 1
     return out
 
@@ -440,24 +440,24 @@ fn _apply_eltwise1[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[
 # --------------------------------------------
 
 fn relu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var z = v
         if z < 0.0:
             z = 0.0
         return z
     )
 
-fn leaky_relu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], negative_slope: Float64 = 0.01) -> tensor.Tensor[T]:
+fn leaky_relu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], negative_slope: Float32 = 0.01) -> tensor.Tensor[T]:
     var a = negative_slope
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         if v >= 0.0:
             return v
         return a * v
     )
 
-fn elu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], alpha: Float64 = 1.0) -> tensor.Tensor[T]:
+fn elu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], alpha: Float32 = 1.0) -> tensor.Tensor[T]:
     var a = alpha
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         if v > 0.0:
             return v
         return a * (_exp_approx(v) - 1.0)
@@ -466,25 +466,25 @@ fn elu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], alpha: F
 fn selu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
     var scale = 1.0507009873554805
     var alpha = 1.6732632423543772
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         if v > 0.0:
             return scale * v
         return scale * (alpha * (_exp_approx(v) - 1.0))
     )
 
 fn sigmoid[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var e = _exp_approx(-v)
         return 1.0 / (1.0 + e)
     )
 
 fn tanh[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         return _tanh_approx(v)
     )
 
 fn softplus[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var ab = v
         if ab < 0.0:
             ab = -ab
@@ -497,16 +497,16 @@ fn softplus[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> 
     )
 
 fn softsign[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var ab = v
         if ab < 0.0:
             ab = -ab
         return v / (1.0 + ab)
     )
 
-fn softshrink[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], lambd: Float64 = 0.5) -> tensor.Tensor[T]:
+fn softshrink[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], lambd: Float32 = 0.5) -> tensor.Tensor[T]:
     var l = lambd
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var ab = v
         if ab < 0.0:
             ab = -ab
@@ -519,9 +519,9 @@ fn softshrink[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], l
         return s * m
     )
 
-fn hardshrink[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], lambd: Float64 = 0.5) -> tensor.Tensor[T]:
+fn hardshrink[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], lambd: Float32 = 0.5) -> tensor.Tensor[T]:
     var l = lambd
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var ab = v
         if ab < 0.0:
             ab = -ab
@@ -531,7 +531,7 @@ fn hardshrink[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], l
     )
 
 fn hardsigmoid[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var y = (v * 0.2) + 0.5
         if y < 0.0:
             y = 0.0
@@ -540,10 +540,10 @@ fn hardsigmoid[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) 
         return y
     )
 
-fn hardtanh[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], min_val: Float64 = -1.0, max_val: Float64 = 1.0) -> tensor.Tensor[T]:
+fn hardtanh[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], min_val: Float32 = -1.0, max_val: Float32 = 1.0) -> tensor.Tensor[T]:
     var lo = min_val
     var hi = max_val
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var y = v
         if y < lo:
             y = lo
@@ -553,14 +553,14 @@ fn hardtanh[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], min
     )
 
 fn swish[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var e = _exp_approx(-v)
         var s = 1.0 / (1.0 + e)
         return v * s
     )
 
 fn mish[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var ab = v
         if ab < 0.0:
             ab = -ab
@@ -577,17 +577,17 @@ fn mish[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tens
 fn gelu[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T]) -> tensor.Tensor[T]:
     var c0 = 0.7978845608028654
     var c1 = 0.044715
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         var v3 = v * v * v
         var u = c0 * (v + c1 * v3)
         var th = _tanh_approx(u)
         return 0.5 * v * (1.0 + th)
     )
 
-fn threshold[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], th: Float64, value: Float64) -> tensor.Tensor[T]:
+fn threshold[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], th: Float32, value: Float32) -> tensor.Tensor[T]:
     var t = th
     var val = value
-    return _apply_eltwise1[T](x, fn (v: Float64) -> Float64:
+    return _apply_eltwise1[T](x, fn (v: Float32) -> Float32:
         if v > t:
             return v
         return val
@@ -638,7 +638,7 @@ fn softmax_stable[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T
         var j = 0
         while j < dim:
             var idx = offset + j * stride_ax
-            var v = Float64(xd[idx])
+            var v = Float32(xd[idx])
             if v > maxv:
                 maxv = v
             j = j + 1
@@ -647,7 +647,7 @@ fn softmax_stable[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T
         j = 0
         while j < dim:
             var idx = offset + j * stride_ax
-            var z = _exp_approx(Float64(xd[idx]) - maxv)
+            var z = _exp_approx(Float32(xd[idx]) - maxv)
             yd[idx] = T(z)
             sumv = sumv + z
             j = j + 1
@@ -658,7 +658,7 @@ fn softmax_stable[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T
         j = 0
         while j < dim:
             var idx = offset + j * stride_ax
-            yd[idx] = T(Float64(yd[idx]) * inv)
+            yd[idx] = T(Float32(yd[idx]) * inv)
             j = j + 1
 
         r = r + 1
@@ -703,7 +703,7 @@ fn log_softmax[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], 
         var j = 0
         while j < dim:
             var idx = offset + j * stride_ax
-            var v = Float64(xd[idx])
+            var v = Float32(xd[idx])
             if v > maxv:
                 maxv = v
             j = j + 1
@@ -712,7 +712,7 @@ fn log_softmax[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], 
         j = 0
         while j < dim:
             var idx = offset + j * stride_ax
-            var z = _exp_approx(Float64(xd[idx]) - maxv)
+            var z = _exp_approx(Float32(xd[idx]) - maxv)
             sum_exp = sum_exp + z
             j = j + 1
         var lse = maxv + _log_approx(sum_exp)
@@ -720,7 +720,7 @@ fn log_softmax[T: ImplicitlyCopyable & Copyable & Movable](x: tensor.Tensor[T], 
         j = 0
         while j < dim:
             var idx = offset + j * stride_ax
-            yd[idx] = T(Float64(xd[idx]) - lse)
+            yd[idx] = T(Float32(xd[idx]) - lse)
             j = j + 1
 
         r = r + 1
