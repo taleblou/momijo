@@ -23,9 +23,9 @@ from collections.list import List
 struct LRRecord:
     var step: Int
     var epoch: Int
-    var lrs: List[Float64]
+    var lrs: List[Float32]
 
-    fn __init__(out self, step: Int, epoch: Int, lrs: List[Float64]):
+    fn __init__(out self, step: Int, epoch: Int, lrs: List[Float32]):
         self.step = step
         self.epoch = epoch
         self.lrs = lrs
@@ -72,23 +72,23 @@ struct LRMonitor:
     # Trainer hooks (to be called by your Trainer/Engine)
     # -------------------------------------------------------------------------
     fn on_train_start(mut self):
-        # Reserved for warmup/header printing  
+        # Reserved for warmup/header printing
         pass
 
-    fn on_batch_end(mut self, step: Int, epoch: Int, lrs: List[Float64]):
+    fn on_batch_end(mut self, step: Int, epoch: Int, lrs: List[Float32]):
         if self.log_every_n_steps > 0:
             var should_log = (step % self.log_every_n_steps) == 0
             if should_log:
                 self.record_step(step, epoch, lrs)
 
-    fn on_epoch_end(mut self, epoch: Int, lrs: List[Float64]):
+    fn on_epoch_end(mut self, epoch: Int, lrs: List[Float32]):
         if self.log_on_epoch_end:
             self.record_epoch(epoch, lrs)
 
     # -------------------------------------------------------------------------
     # Recording helpers (public)
     # -------------------------------------------------------------------------
-    fn record_step(mut self, step: Int, epoch: Int, lrs: List[Float64]):
+    fn record_step(mut self, step: Int, epoch: Int, lrs: List[Float32]):
         var rec = LRRecord(step, epoch, lrs)
         self._history.append(rec)
         self._last_logged_step = step
@@ -97,7 +97,7 @@ struct LRMonitor:
             var line = LRMonitor.format_line(String("step"), step, epoch, lrs)
             print(line)
 
-    fn record_epoch(mut self, epoch: Int, lrs: List[Float64]):
+    fn record_epoch(mut self, epoch: Int, lrs: List[Float32]):
         # Convention: step = -1 for epoch-level entries
         var rec = LRRecord(-1, epoch, lrs)
         self._history.append(rec)
@@ -111,7 +111,7 @@ struct LRMonitor:
     # -------------------------------------------------------------------------
     fn last(self) -> LRRecord:
         if len(self._history) == 0:
-            var empty = List[Float64]()
+            var empty = List[Float32]()
             return LRRecord(-1, -1, empty)
         return self._history[len(self._history) - 1]
 
@@ -131,7 +131,7 @@ struct LRMonitor:
     # Utilities
     # -------------------------------------------------------------------------
     @staticmethod
-    fn format_line(kind: String, step: Int, epoch: Int, lrs: List[Float64]) -> String:
+    fn format_line(kind: String, step: Int, epoch: Int, lrs: List[Float32]) -> String:
         # Example: "[LR][step=120, epoch=3] groups=2 [0.01, 0.001]"
         var prefix = String("[LR][") + kind + String("=")
         if kind == String("step"):
@@ -150,7 +150,7 @@ struct LRMonitor:
         return prefix + suffix
 
     # Optional convenience for optimizer integration:
-    # Requires optimizer.current_lrs() -> List[Float64]
+    # Requires optimizer.current_lrs() -> List[Float32]
     fn try_log_from_optimizer(mut self, step: Int, epoch: Int, optimizer, at_epoch_end: Bool = False):
         if at_epoch_end:
             var lrs_end = optimizer.current_lrs()
