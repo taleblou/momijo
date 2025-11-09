@@ -45,7 +45,7 @@ fn json_string_array(xs: List[String]) -> String:
     while i < len(xs): parts.append(json_string(xs[i])); i += 1
     return json_array_str(parts)
 
- 
+
 
 # src/momijo/visual/core/core.mojo
 
@@ -111,7 +111,7 @@ fn echarts_html(
     html += String("  ];\n")
 
     html += String("  function showFallback(){ document.getElementById('fallback').style.display='block'; }\n")
-    html += String("  let myChart=null;\n")
+    html += String("  var myChart=null;\n")
     html += String("  function initChart(){\n")
     html += String("    if(!window.echarts){ showFallback(); return; }\n")
     if len(pre_init_js) > 0:
@@ -123,7 +123,7 @@ fn echarts_html(
     html += String("  }\n")
 
     html += String("  function loadScript(url, ok, fail){ var s=document.createElement('script'); s.src=url; s.onload=ok; s.onerror=function(){ s.remove(); fail&&fail(); }; document.head.appendChild(s); }\n")
-    html += String("  function chain(list, next){ let i=0; (function step(){ if(i>=list.length){ next(false); return; } loadScript(list[i++], function(){ next(true); }, step); })(); }\n")
+    html += String("  function chain(list, next){ var i=0; (function step(){ if(i>=list.length){ next(false); return; } loadScript(list[i++], function(){ next(true); }, step); })(); }\n")
 
     # sequence: echarts -> (optional gl) -> (optional wordcloud) -> init
     html += String("  function afterEcharts(){\n")
