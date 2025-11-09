@@ -7,8 +7,8 @@
 # Expected project utilities (if present):
 #   - write_all_bytes(path: String, data: tensor.Tensor[UInt8]) -> Bool
 #   - read_all_bytes(path: String) -> tensor.Tensor[UInt8]
-#   - tensor.pack_f64_to_bytes(x: tensor.Tensor[Float64]) -> tensor.Tensor[UInt8]
-#   - tensor.unpack_bytes_to_f64(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]
+#   - tensor.pack_f64_to_bytes(x: tensor.Tensor[Float32]) -> tensor.Tensor[UInt8]
+#   - tensor.unpack_bytes_to_f64(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float32]
 #
 # If pack/unpack are not available, we fall back to a simple UTF-8 text format
 # (comma-separated floats) for the blob for portability.
@@ -48,7 +48,7 @@ fn _u8_to_string(b: tensor.Tensor[UInt8]) -> String:
         i += 1
     return s
 
-fn _floats_to_csv(x: tensor.Tensor[Float64]) -> tensor.Tensor[UInt8]:
+fn _floats_to_csv(x: tensor.Tensor[Float32]) -> tensor.Tensor[UInt8]:
     var n = x.numel()
     var s = String("")
     var i = 0
@@ -58,7 +58,7 @@ fn _floats_to_csv(x: tensor.Tensor[Float64]) -> tensor.Tensor[UInt8]:
         i += 1
     return _string_to_u8(s)
 
-fn _csv_to_floats(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
+fn _csv_to_floats(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float32]:
     var s = _u8_to_string(b)
     # Simple CSV split on ','
     var out = tensor.zeros([0])
@@ -69,7 +69,7 @@ fn _csv_to_floats(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
         if ch == ',':
             # append cur
             try:
-                var v = Float64(cur)
+                var v = Float32(cur)
                 out = tensor.append_scalar(out, v)
             except _:
                 out = tensor.append_scalar(out, 0.0)
@@ -79,7 +79,7 @@ fn _csv_to_floats(b: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
         i += 1
     if len(cur) > 0:
         try:
-            var v2 = Float64(cur)
+            var v2 = Float32(cur)
             out = tensor.append_scalar(out, v2)
         except _:
             out = tensor.append_scalar(out, 0.0)
