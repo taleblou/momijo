@@ -103,7 +103,7 @@ struct TypeTag[U: ImplicitlyCopyable & Copyable & Movable]:
 
 
 
-@always_inline 
+@always_inline
 fn from_float64_to[T: ImplicitlyCopyable & Copyable & Movable](x: Float64, f: fn (Float64) -> T) -> T:
     return T(x)
 
@@ -159,6 +159,56 @@ fn f64_to_bool(v: Float64) -> Bool:
     return to_bool_from_f64(v)
 
 
+# ===================== Compatibility aliases for mean_with, etc. =====================
+# These names are referenced elsewhere (e.g., math.mojo). They map to the concrete
+# Float32 -> T converters already defined.
+
+@always_inline
+fn f32_to(v: Float32) -> Float32:
+    return to_f32_from_f32(v)
+
+@always_inline
+fn f32_to_float64(v: Float64) -> Float32:
+    return to_f64_from_f32(v)
+
+@always_inline
+fn f32_to_int8(v: Float32) -> Int8:
+    return to_i8_from_f32(v)
+
+@always_inline
+fn f32_to_int16(v: Float32) -> Int16:
+    return to_i16_from_f32(v)
+
+@always_inline
+fn f32_to_int32(v: Float32) -> Int32:
+    return to_i32_from_f32(v)
+
+@always_inline
+fn f32_to_int64(v: Float32) -> Int64:
+    return to_i64_from_f32(v)
+
+@always_inline
+fn f32_to_int(v: Float32) -> Int:
+    return to_int_from_f32(v)
+
+@always_inline
+fn f32_to_uint8(v: Float32) -> UInt8:
+    return to_u8_from_f32(v)
+
+@always_inline
+fn f32_to_uint16(v: Float32) -> UInt16:
+    return to_u16_from_f32(v)
+
+@always_inline
+fn f32_to_uint32(v: Float32) -> UInt32:
+    return to_u32_from_f32(v)
+
+@always_inline
+fn f32_to_uint64(v: Float32) -> UInt64:
+    return to_u64_from_f32(v)
+@always_inline
+fn f32_to_bool(v: Float32) -> Bool:
+    return to_bool_from_f32(v)
 # ===================== Identity =====================
 
 @always_inline
@@ -307,7 +357,7 @@ fn to_f32_from_f64(x: Float64) -> Float32:
 fn to_f64_from_f64(x: Float64) -> Float64:
     return x
 
- 
+
 # ===================== Float32 -> {Int, UInt, Float} =====================
 
 @always_inline
@@ -511,11 +561,11 @@ fn to_bool_from_u32(x: UInt32) -> Bool:
 fn to_bool_from_u64(x: UInt64) -> Bool:
     return x != 0
 
- 
+
 
 
 # ===================== Overloaded “to_float64_of” (accumulator picker) =====================
- 
+
 @always_inline
 fn to_float64_of(v: Bool) -> Float64:
     if v: return 1.0
@@ -596,7 +646,7 @@ fn to_int_from_float32(x: Float32) -> Int:
     return to_int_from_f32(x)
 
 
- 
+
 
 
 ##################################################################
@@ -1112,7 +1162,69 @@ fn to_float64(x: Tensor[String]) -> Tensor[Float64]:
 
 
 ##################################################################
- 
+
+# ===================== Overloaded “to_float32_of” (accumulator picker) =====================
+
+@always_inline
+fn to_float32_of(v: Bool) -> Float32:
+    if v: return 1.0
+    return 0.0
+
+@always_inline
+fn to_float32_of(v: UInt) -> Float32:
+    return Float32(UInt64(v))
+
+@always_inline
+fn to_float32_of(v: Float32) -> Float32:
+    return v
+
+@always_inline
+fn to_float32_of(v: Float64) -> Float32:
+    return Float32(v)
+
+@always_inline
+fn to_float32_of(v: Float16) -> Float32:
+    return Float32(Float32(v))
+
+@always_inline
+fn to_float32_of(v: Int8) -> Float32:
+    return Float32(Int64(v))
+
+@always_inline
+fn to_float32_of(v: Int16) -> Float32:
+    return Float32(Int64(v))
+
+@always_inline
+fn to_float32_of(v: Int32) -> Float32:
+    return Float32(Int64(v))
+
+@always_inline
+fn to_float32_of(v: Int64) -> Float32:
+    return Float32(v)
+
+@always_inline
+fn to_float32_of(v: Int) -> Float32:
+    return Float32(Int64(v))
+
+@always_inline
+fn to_float32_of(v: UInt8) -> Float32:
+    return Float32(UInt64(v))
+
+@always_inline
+fn to_float32_of(v: UInt16) -> Float32:
+    return Float32(UInt64(v))
+
+@always_inline
+fn to_float32_of(v: UInt32) -> Float32:
+    return Float32(UInt64(v))
+
+@always_inline
+fn to_float32_of(v: UInt64) -> Float32:
+    return Float32(v)
+
+fn to_float32_of_T[T: ImplicitlyCopyable & Copyable & Movable](x: T) -> FloFloat32t64:
+    return to_float32_of(x)
+
 @always_inline
 fn to_float32(x: Tensor[Float32]) -> Tensor[Float32]:
     # Identity: copy as-is.
@@ -5081,7 +5193,7 @@ fn to_bool(x: Tensor[String]) -> Tensor[Bool]:
 
 # --- put these helpers near your Tensor[T] definition (top-level) ---
 
- 
+
 fn tensor_core_print_nd[U: ImplicitlyCopyable & Copyable & Movable](
     x: Tensor[U],
     fmt: fn (U) -> String,
@@ -5155,7 +5267,7 @@ fn tensor_core_print[U: ImplicitlyCopyable & Copyable & Movable](
 
 
 
-    
+
 @always_inline
 fn _fmt_int(x: Int) -> String:
     return x.__str__()
@@ -5219,7 +5331,7 @@ fn to_string(x: Tensor[Bool]) -> String:
 fn to_string(x: Tensor[String]) -> String:
     return tensor_core_print[String](x, _fmt_str)
 
- 
+
 fn to_string[U: ImplicitlyCopyable & Copyable & Movable](x: Tensor[U]) -> String:
     return tensor_core_print[U](x, _fmt_obj_U[U])
 
@@ -5233,7 +5345,7 @@ fn val_f64(xs: List[Float64], i: Int) -> Float64:
 fn val_f64(xs: List[Int], i: Int) -> Float64:
     return Float64(xs[i])
 
- 
+
 
 
 @always_inline
@@ -5242,41 +5354,41 @@ fn to_f64_bool(x: Bool) -> Float64:
     if x:
         return 1.0
     return 0.0
- 
-@always_inline 
-fn to_f64_f64(x: Float64) -> Float64: 
+
+@always_inline
+fn to_f64_f64(x: Float64) -> Float64:
     return x
-@always_inline 
-fn to_f64_f32(x: Float32) -> Float64: 
+@always_inline
+fn to_f64_f32(x: Float32) -> Float64:
     return Float64(x)
 
-@always_inline 
-fn to_f64_i8 (x: Int8 ) -> Float64: 
+@always_inline
+fn to_f64_i8 (x: Int8 ) -> Float64:
     return Float64(Int64(x))
-@always_inline 
-fn to_f64_i16(x: Int16) -> Float64: 
+@always_inline
+fn to_f64_i16(x: Int16) -> Float64:
     return Float64(Int64(x))
-@always_inline 
-fn to_f64_i32(x: Int32) -> Float64: 
+@always_inline
+fn to_f64_i32(x: Int32) -> Float64:
     return Float64(Int64(x))
-@always_inline 
-fn to_f64_i64(x: Int64) -> Float64: 
+@always_inline
+fn to_f64_i64(x: Int64) -> Float64:
     return Float64(x)
-@always_inline 
-fn to_f64_int(x: Int  ) -> Float64: 
+@always_inline
+fn to_f64_int(x: Int  ) -> Float64:
     return Float64(Int64(x))
 
-@always_inline 
-fn to_f64_u8 (x: UInt8 ) -> Float64: 
+@always_inline
+fn to_f64_u8 (x: UInt8 ) -> Float64:
     return Float64(UInt64(x))
-@always_inline 
-fn to_f64_u16(x: UInt16) -> Float64: 
+@always_inline
+fn to_f64_u16(x: UInt16) -> Float64:
     return Float64(UInt64(x))
-@always_inline 
-fn to_f64_u32(x: UInt32) -> Float64: 
+@always_inline
+fn to_f64_u32(x: UInt32) -> Float64:
     return Float64(UInt64(x))
-@always_inline 
-fn to_f64_u64(x: UInt64) -> Float64: 
+@always_inline
+fn to_f64_u64(x: UInt64) -> Float64:
     return Float64(x)
 
 fn astype_f64_from_int(t: Tensor[Int]) -> Tensor[Float64]:
@@ -5305,7 +5417,7 @@ fn astype_f64_from_f32(t: Tensor[Float32]) -> Tensor[Float64]:
         flat.append(Float64(t._data[i]))
         i = i + 1
 
-    var sh = List[Int]()       
+    var sh = List[Int]()
     sh.reserve(len(t._shape))
     var k = 0
     while k < len(t._shape):
@@ -5314,27 +5426,64 @@ fn astype_f64_from_f32(t: Tensor[Float32]) -> Tensor[Float64]:
 
     return Tensor[Float64](sh, flat)
 
-@always_inline 
+
+
+fn astype_f32_from_int(t: Tensor[Int]) -> Tensor[Float32]:
+    var flat = List[Float32]()
+    flat.reserve(len(t._data))
+    var i = 0
+    while i < len(t._data):
+        flat.append(Float32(t._data[i]))
+        i = i + 1
+
+    var sh = List[Int]()
+    sh.reserve(len(t._shape))
+    var k = 0
+    while k < len(t._shape):
+        sh.append(t._shape[k])
+        k = k + 1
+
+    return Tensor[Float32](sh, flat)
+
+
+fn astype_f32_from_f64(t: Tensor[Float64]) -> Tensor[Float32]:
+    var flat = List[Float32]()
+    flat.reserve(len(t._data))
+    var i = 0
+    while i < len(t._data):
+        flat.append(Float32(t._data[i]))
+        i = i + 1
+
+    var sh = List[Int]()
+    sh.reserve(len(t._shape))
+    var k = 0
+    while k < len(t._shape):
+        sh.append(t._shape[k])
+        k = k + 1
+
+    return Tensor[Float32](sh, flat)
+
+@always_inline
 fn opt_i_to_f32(o: Optional[Int])      -> Optional[Float32]:
     if o is None: return None
     return Optional[Float32](Float32(o.value()))
 
-@always_inline 
+@always_inline
 fn opt_i_to_f64(o: Optional[Int])      -> Optional[Float64]:
     if o is None: return None
     return Optional[Float64](Float64(o.value()))
 
-@always_inline 
+@always_inline
 fn opt_f32_to_f64(o: Optional[Float32]) -> Optional[Float64]:
     if o is None: return None
     return Optional[Float64](Float64(o.value()))
 
-@always_inline 
-fn some_i(x: Int) -> Optional[Int]: 
+@always_inline
+fn some_i(x: Int) -> Optional[Int]:
     return Optional[Int](x)
-@always_inline 
-fn some_f32(x: Float32) -> Optional[Float32]: 
+@always_inline
+fn some_f32(x: Float32) -> Optional[Float32]:
     return Optional[Float32](x)
-@always_inline 
-fn some_f64(x: Float64) -> Optional[Float64]: 
+@always_inline
+fn some_f64(x: Float64) -> Optional[Float64]:
     return Optional[Float64](x)
