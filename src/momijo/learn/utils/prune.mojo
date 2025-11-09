@@ -21,14 +21,14 @@ from momijo.learn.nn.layers import Linear
 struct PruneState(Copyable, Movable):
     var has_mask: Bool
     var name: String
-    var mask: tensor.Tensor[Float64]  # same shape as parameter
+    var mask: tensor.Tensor[Float32]  # same shape as parameter
 
     fn __init__(out self):
         self.has_mask = False
         self.name = String("")
         self.mask = tensor.zeros([1])  # placeholder 1-element tensor
 
-    fn _abs_values(self, w: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn _abs_values(self, w: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         # Return |w| flattened as [N]
         var shape = w.shape()
         var n = 1
@@ -43,9 +43,9 @@ struct PruneState(Copyable, Movable):
             out._data[i] = v if v >= 0.0 else -v
             i = i + 1
         return out.copy()
- 
 
-    fn _kth_value(self, a: tensor.Tensor[Float64], k: Int) -> Float64:
+
+    fn _kth_value(self, a: tensor.Tensor[Float32], k: Int) -> Float32:
         # Return the k-th smallest value (0-based) from 1D tensor a.
         var n = a.shape()[0]
 
@@ -54,7 +54,7 @@ struct PruneState(Copyable, Movable):
             return 0.0
 
         # Copy to a simple list for sorting
-        var vals = List[Float64]()
+        var vals = List[Float32]()
         var i = 0
         while i < n:
             vals.append(a._data[i])
@@ -77,13 +77,13 @@ struct PruneState(Copyable, Movable):
         if kk >= n: kk = n - 1
         return vals[kk]
 
-        
 
-    fn _make_mask(self, w: tensor.Tensor[Float64], amount: Float64) -> tensor.Tensor[Float64]:
+
+    fn _make_mask(self, w: tensor.Tensor[Float32], amount: Float32) -> tensor.Tensor[Float32]:
         # Build binary mask (1 keep, 0 prune) by thresholding |w| at the given sparsity.
         var absw = self._abs_values(w)           # [N]
         var n = absw.shape()[0]
-        var n_prune = Int(amount * Float64(n))
+        var n_prune = Int(amount * Float32(n))
         if n_prune < 0: n_prune = 0
         if n_prune > n: n_prune = n
         var thr = self._kth_value(absw, n_prune - 1) if n_prune > 0 else -1.0
@@ -101,7 +101,7 @@ struct PruneState(Copyable, Movable):
         return mask.copy()
 
     # l1_unstructured: no assert, safe guards + early return
-    fn l1_unstructured(mut self, mut lin: Linear, name: String, amount: Float64):
+    fn l1_unstructured(mut self, mut lin: Linear, name: String, amount: Float32):
         # Support only "weight" for now; ignore others safely.
         if not (name == String("weight")):
             return
@@ -138,7 +138,7 @@ struct PruneState(Copyable, Movable):
 
 
 # ----------------------------- Utilities --------------------------------------
-fn tensor_sparsity(x: tensor.Tensor[Float64]) -> Float64:
+fn tensor_sparsity(x: tensor.Tensor[Float32]) -> Float32:
     # Mean of (x == 0). Avoid equality on floats in production; in demos it's OK.
     var n = 1
     var shape = x.shape()
@@ -152,4 +152,4 @@ fn tensor_sparsity(x: tensor.Tensor[Float64]) -> Float64:
         if x._data[i] == 0.0:
             zero = zero + 1.0
         i = i + 1
-    return zero / Float64(n)
+    return zero / Float32(n)
