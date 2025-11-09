@@ -25,7 +25,7 @@ struct AvgPool2d:
         self.stride_h = other.stride_h; self.stride_w = other.stride_w
         self.pad_h = other.pad_h; self.pad_w = other.pad_w
 
-    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
         var OH = (H + 2*self.pad_h - self.kernel_h) // self.stride_h + 1
         var OW = (W + 2*self.pad_w - self.kernel_w) // self.stride_w + 1
@@ -57,7 +57,7 @@ struct AvgPool2d:
             n += 1
         return y
 
-    fn backward(self, x: tensor.Tensor[Float64], grad_y: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn backward(self, x: tensor.Tensor[Float32], grad_y: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var N = x.shape()[0]; var C = x.shape()[1]; var H = x.shape()[2]; var W = x.shape()[3]
         var OH = grad_y.shape()[2]; var OW = grad_y.shape()[3]
         var dx = tensor.zeros_like(x)
