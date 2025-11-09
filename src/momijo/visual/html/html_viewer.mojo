@@ -74,7 +74,7 @@ fn render_echarts(
         theme_js = "'" + theme + "'"
 
     # ---------- SCRIPT ----------
-    
+
 html += "<script>
 (async function(){
   function showErr(msg){ try{ console.error(msg); }catch(_){ } }
@@ -82,12 +82,12 @@ html += "<script>
   try {
     var needWorld = (typeof opts==='string' ? opts.indexOf("'map':'world'")>=0 || opts.indexOf('"map":"world"')>=0 : false);
     if(needWorld && typeof echarts!=='undefined'){
-      let sources = [
+      var sources = [
         'https://fastly.jsdelivr.net/gh/apache/echarts-website@asf-site/examples/data/asset/geo/world.json',
         'https://fastly.jsdelivr.net/npm/echarts-maps@1.0.0/world.json',
         'https://cdn.jsdelivr.net/npm/echarts-maps@1.0.0/world.json'
       ];
-      let ok = false;
+      var ok = false;
       for(const u of sources){
         try{
           const r = await fetch(u);
