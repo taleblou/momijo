@@ -29,7 +29,7 @@ fn _header_path(base: String) -> String:
 fn _blob_path(base: String) -> String:
     return base + String(".state.bin")
 
-fn _tensor_to_csv(x: tensor.Tensor[Float64]) -> String:
+fn _tensor_to_csv(x: tensor.Tensor[Float32]) -> String:
     var n = x.numel()
     var s = String("")
     var i = 0
@@ -39,9 +39,9 @@ fn _tensor_to_csv(x: tensor.Tensor[Float64]) -> String:
         i = i + 1
     return s
 
-fn _csv_to_list(s: String) -> List[Float64]:
+fn _csv_to_list(s: String) -> List[Float32]:
     from collections.list import List
-    var vals = List[Float64]()
+    var vals = List[Float32]()
     var cur = String("")
     var L = len(s)
     var i = 0
@@ -49,14 +49,14 @@ fn _csv_to_list(s: String) -> List[Float64]:
         var ch = s[i]
         if ch == ',':
             if cur.__len__() > 0:
-                try: vals.append(Float64(cur))
+                try: vals.append(Float32(cur))
                 except _: vals.append(0.0)
                 cur = String("")
         else:
             cur = cur + String(ch)
         i = i + 1
     if cur.__len__() > 0:
-        try: vals.append(Float64(cur))
+        try: vals.append(Float32(cur))
         except _: vals.append(0.0)
     return vals.copy()
 
@@ -85,12 +85,12 @@ fn _string_to_u8(s: String) -> tensor.Tensor[UInt8]:
         i = i + 1
     return out.copy()
 
-# Fallback CSV reader for Float64 blobs if binary packers are unavailable.
-fn _csv_to_floats(bytes: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
+# Fallback CSV reader for Float32 blobs if binary packers are unavailable.
+fn _csv_to_floats(bytes: tensor.Tensor[UInt8]) -> tensor.Tensor[Float32]:
     var s = _u8_to_string(bytes)
 
 
-    var vals = List[Float64]()
+    var vals = List[Float32]()
     var cur = String("")
     var L = len(s)
     var i = 0
@@ -99,7 +99,7 @@ fn _csv_to_floats(bytes: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
         if ch == ',':
             if cur.__len__() > 0:
                 try:
-                    vals.append(Float64(cur))
+                    vals.append(Float32(cur))
                 except _:
                     vals.append(0.0)
                 cur = String("")
@@ -108,16 +108,16 @@ fn _csv_to_floats(bytes: tensor.Tensor[UInt8]) -> tensor.Tensor[Float64]:
         i = i + 1
     if cur.__len__() > 0:
         try:
-            vals.append(Float64(cur))
+            vals.append(Float32(cur))
         except _:
             vals.append(0.0)
 
-    return tensor.Tensor[Float64](vals)
+    return tensor.Tensor[Float32](vals)
 
 # -----------------------------------------------------------------------------
 # Internal: flatten/apply for Linear (weight then bias)
 # -----------------------------------------------------------------------------
-fn _flatten_linear(m: Linear) -> tensor.Tensor[Float64]:
+fn _flatten_linear(m: Linear) -> tensor.Tensor[Float32]:
     var n = m.weight.numel() + m.bias_t.numel()
     var out = tensor.zeros([n])
     var k = 0
@@ -129,7 +129,7 @@ fn _flatten_linear(m: Linear) -> tensor.Tensor[Float64]:
         out._data[k] = m.bias_t._data[i]; k = k + 1; i = i + 1
     return out.copy()
 
-fn _apply_linear(mut m: Linear, blob: tensor.Tensor[Float64]) -> Bool:
+fn _apply_linear(mut m: Linear, blob: tensor.Tensor[Float32]) -> Bool:
     var nW = m.weight.numel()
     var nB = m.bias_t.numel()
     if blob.numel() != (nW + nB): return False
@@ -151,7 +151,7 @@ fn save(net: Sequential, base: String) -> Bool:
     return save_checkpoint_files(net, hp, bp)
 
 # Load raw state (header, blob) from files, without applying to a net.
-fn load(base: String) -> (Bool, String, tensor.Tensor[Float64]):
+fn load(base: String) -> (Bool, String, tensor.Tensor[Float32]):
     var hp = _header_path(base)
     var bp = _blob_path(base)
     try:
@@ -165,7 +165,7 @@ fn load(base: String) -> (Bool, String, tensor.Tensor[Float64]):
 
         # parse CSV string
         var vals = _csv_to_list(csv)
-        var blob = tensor.Tensor[Float64](vals)
+        var blob = tensor.Tensor[Float32](vals)
         return (True, header, blob.copy())
     except _:
         return (False, String(""), tensor.zeros([0]))
@@ -174,7 +174,7 @@ fn load(base: String) -> (Bool, String, tensor.Tensor[Float64]):
 
 
 # Apply a loaded state onto an existing Sequential with matching architecture.
-fn load_state_dict(mut net: Sequential, header: String, blob: tensor.Tensor[Float64]) -> Bool:
+fn load_state_dict(mut net: Sequential, header: String, blob: tensor.Tensor[Float32]) -> Bool:
     return apply_checkpoint(net, header, blob)
 
 # Convenience: directly read from files and apply to net.
@@ -207,9 +207,9 @@ fn save_linear(m: Linear, base: String) -> Bool:
 
 
 # Load Linear-only files and return (ok, header, blob).
-fn load_linear(base: String) -> (Bool, String, tensor.Tensor[Float64]):
+fn load_linear(base: String) -> (Bool, String, tensor.Tensor[Float32]):
     return load(base)
 
 # Apply a flattened blob (weight then bias) to a Linear layer.
-fn load_state_dict_linear(mut m: Linear, blob: tensor.Tensor[Float64]) -> Bool:
+fn load_state_dict_linear(mut m: Linear, blob: tensor.Tensor[Float32]) -> Bool:
     return _apply_linear( m, blob)
