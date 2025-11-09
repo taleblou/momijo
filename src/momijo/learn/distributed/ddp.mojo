@@ -59,7 +59,7 @@ struct DDPLinear(Copyable, Movable):
         # allow swapping the wrapped module safely
         self.module = module.copy()
 
-    fn forward(self, x: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
-        # NOTE: only Float64 path provided to match current Linear API.
+    fn forward(self, x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
+        # NOTE: only Float32 path provided to match current Linear API.
         # Add an overload if your Linear supports Float32 forwards too.
         return self.module.forward(x)
