@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.io_json_min
 # File:         io_json_min.mojo
 # Path:         dataframe/io_json_min.mojo
@@ -23,15 +23,6 @@
 
 from collections.list import List
 
-from momijo.dataframe.frame import DataFrame
-
- 
-from collections.list import List
-from pathlib.path import Path
-
-from momijo.dataframe.frame import DataFrame
-
-# ---------- small file helpers (text mode) ----------
 from collections.list import List
 from pathlib.path import Path
 from momijo.dataframe.frame import DataFrame
