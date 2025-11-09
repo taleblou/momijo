@@ -34,7 +34,7 @@ struct EncoderLayer:
         self.ff1 = Linear(d_model, 4*d_model)
         self.ff2 = Linear(4*d_model, d_model)
 
-    fn forward(self, src: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, src: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var attn = self.self_attn.forward(src, src)  # [T,B,C]
         # simple residual
         var out = tensor.zeros(src.shape())
@@ -72,7 +72,7 @@ struct DecoderLayer:
         self.ff1 = Linear(d_model, 4*d_model)
         self.ff2 = Linear(4*d_model, d_model)
 
-    fn forward(self, tgt: tensor.Tensor[Float64], memory: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, tgt: tensor.Tensor[Float32], memory: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var a1 = self.self_attn.forward(tgt, tgt)
         var r1 = tensor.zeros(tgt.shape())
         var i = 0; var n = r1.numel()
@@ -117,8 +117,7 @@ struct TinyTransformer:
         self.dec = DecoderLayer(d_model, nhead)
 
     # src: [T,B,C], tgt: [T2,B,C]
-    fn forward(self, src: tensor.Tensor[Float64], tgt: tensor.Tensor[Float64]) -> tensor.Tensor[Float64]:
+    fn forward(self, src: tensor.Tensor[Float32], tgt: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
         var memory = self.enc.forward(src)
         var out = self.dec.forward(tgt, memory)
         return out.copy()
- 
