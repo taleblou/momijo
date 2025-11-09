@@ -131,23 +131,23 @@ struct AutocastGuard:
 
 struct GradScaler:
     var enabled: Bool
-    var scale_factor: Float64
-    var growth_factor: Float64
-    var backoff_factor: Float64
+    var scale_factor: Float32
+    var growth_factor: Float32
+    var backoff_factor: Float32
     var growth_interval: Int
     var growth_tracker: Int
-    var min_scale: Float64
-    var max_scale: Float64
+    var min_scale: Float32
+    var max_scale: Float32
 
     fn __init__(
         out self,
         enabled: Bool = True,
-        init_scale: Float64 = 65536.0,    # 2^16 default-like
-        growth_factor: Float64 = 2.0,     # multiplicative growth
-        backoff_factor: Float64 = 0.5,    # multiplicative decay on overflow
+        init_scale: Float32 = 65536.0,    # 2^16 default-like
+        growth_factor: Float32 = 2.0,     # multiplicative growth
+        backoff_factor: Float32 = 0.5,    # multiplicative decay on overflow
         growth_interval: Int = 2000,      # steps between successful growths
-        min_scale: Float64 = 1.0,
-        max_scale: Float64 = 1.8446744e19 # ~2^64 / 10 as a safety cap
+        min_scale: Float32 = 1.0,
+        max_scale: Float32 = 1.8446744e19 # ~2^64 / 10 as a safety cap
     ):
         self.enabled = enabled
         self.scale_factor = init_scale
@@ -164,7 +164,7 @@ struct GradScaler:
     fn scale(self, loss: Float32) -> Float32:
         return Float32(loss * Float32(self.scale_factor)) if self.enabled else loss
 
-    fn scale(self, loss: Float64) -> Float64:
+    fn scale(self, loss: Float32) -> Float32:
         return loss * self.scale_factor if self.enabled else loss
 
     fn unscale(self, value: Float32) -> Float32:
@@ -172,7 +172,7 @@ struct GradScaler:
         if self.scale_factor == 0.0: return value
         return Float32(value / Float32(self.scale_factor))
 
-    fn unscale(self, value: Float64) -> Float64:
+    fn unscale(self, value: Float32) -> Float32:
         if not self.enabled: return value
         if self.scale_factor == 0.0: return value
         return value / self.scale_factor
@@ -197,10 +197,10 @@ struct GradScaler:
     fn is_enabled(self) -> Bool:
         return self.enabled
 
-    fn get_scale(self) -> Float64:
+    fn get_scale(self) -> Float32:
         return self.scale_factor
 
-    fn clamp_scale(mut self, lo: Float64, hi: Float64) -> GradScaler:
+    fn clamp_scale(mut self, lo: Float32, hi: Float32) -> GradScaler:
         # Keep scale within [lo, hi]
         var s = self.scale_factor
         if s < lo: s = lo
@@ -208,7 +208,7 @@ struct GradScaler:
         self.scale_factor = s
         return self
 
-    fn reset(mut self, new_scale: Float64 = 65536.0) -> GradScaler:
+    fn reset(mut self, new_scale: Float32 = 65536.0) -> GradScaler:
         self.scale_factor = new_scale
         self.growth_tracker = 0
         return self
