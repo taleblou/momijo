@@ -28,7 +28,7 @@
 
 # -----------------------------------------------------------------------------
 # Optional imports (kept precise, no wildcard)
-# ----------------------------------------------------------------------------- 
+# -----------------------------------------------------------------------------
 from momijo.tensor.tensor import Tensor
 
 # -----------------------------------------------------------------------------
@@ -37,12 +37,12 @@ from momijo.tensor.tensor import Tensor
 
 struct StreamingMetric:
     var _count: Int
-    var _sum: Float64
-    var _mean: Float64
-    var _m2: Float64
+    var _sum: Float32
+    var _mean: Float32
+    var _m2: Float32
     var _has_value: Bool
-    var _min: Float64
-    var _max: Float64
+    var _min: Float32
+    var _max: Float32
 
     fn __init__(out self):
         self._count = 0
@@ -53,7 +53,7 @@ struct StreamingMetric:
         self._min = 0.0
         self._max = 0.0
 
-    fn update(mut self, value: Float64):
+    fn update(mut self, value: Float32):
         if not self._has_value:
             self._has_value = True
             self._count = 1
@@ -72,7 +72,7 @@ struct StreamingMetric:
         var n_prev = self._count
         var n_new = n_prev + 1
         var delta = value - self._mean
-        var mean_new = self._mean + (delta / Float64(n_new))
+        var mean_new = self._mean + (delta / Float32(n_new))
         var delta2 = value - mean_new
         var m2_new = self._m2 + (delta * delta2)
 
@@ -101,8 +101,8 @@ struct StreamingMetric:
             return
 
         var delta = other._mean - self._mean
-        var mean_new = self._mean + (delta * (Float64(n_b) / Float64(n)))
-        var m2_new = self._m2 + other._m2 + (delta * delta) * (Float64(n_a) * Float64(n_b) / Float64(n))
+        var mean_new = self._mean + (delta * (Float32(n_b) / Float32(n)))
+        var m2_new = self._m2 + other._m2 + (delta * delta) * (Float32(n_a) * Float32(n_b) / Float32(n))
 
         self._count = n
         self._sum = self._sum + other._sum
@@ -126,46 +126,46 @@ struct StreamingMetric:
     fn count(self) -> Int:
         return self._count
 
-    fn sum(self) -> Float64:
+    fn sum(self) -> Float32:
         return self._sum
 
-    fn mean(self) -> Float64:
+    fn mean(self) -> Float32:
         if self._count == 0:
             return 0.0
         return self._mean
 
-    fn variance(self, unbiased: Bool = True) -> Float64:
+    fn variance(self, unbiased: Bool = True) -> Float32:
         var n = self._count
         if n == 0:
             return 0.0
         if unbiased:
             if n < 2:
                 return 0.0
-            return self._m2 / Float64(n - 1)
-        return self._m2 / Float64(n)
+            return self._m2 / Float32(n - 1)
+        return self._m2 / Float32(n)
 
-    fn std(self, unbiased: Bool = True) -> Float64:
+    fn std(self, unbiased: Bool = True) -> Float32:
         var v = self.variance(unbiased)
         # TODO: replace with sqrt(v) once math facade is available.
         return v
 
-    fn min(self) -> Float64:
+    fn min(self) -> Float32:
         if not self._has_value:
             return 0.0
         return self._min
 
-    fn max(self) -> Float64:
+    fn max(self) -> Float32:
         if not self._has_value:
             return 0.0
         return self._max
 
     # Convention: compute() returns the primary statistic (mean)
-    fn compute(self) -> Float64:
+    fn compute(self) -> Float32:
         return self.mean()
 
     # -------- Batch adapters (list-based; safe & immediate) --------
 
-    fn update_batch(mut self, values: List[Float64]) -> Int:
+    fn update_batch(mut self, values: List[Float32]) -> Int:
         var i = 0
         while i < len(values):
             self.update(values[i])
@@ -177,12 +177,12 @@ struct StreamingMetric:
 # -----------------------------------------------------------------------------
 
 struct WeightedStreamingMetric:
-    var _w_sum: Float64         # total weight
-    var _mean: Float64          # weighted mean
-    var _m2: Float64            # sum of weighted squared deviations
+    var _w_sum: Float32         # total weight
+    var _mean: Float32          # weighted mean
+    var _m2: Float32            # sum of weighted squared deviations
     var _has_value: Bool
-    var _min: Float64
-    var _max: Float64
+    var _min: Float32
+    var _max: Float32
 
     fn __init__(out self):
         self._w_sum = 0.0
@@ -193,7 +193,7 @@ struct WeightedStreamingMetric:
         self._max = 0.0
 
     # Update with (value, weight). Weight must be >= 0.
-    fn update(mut self, value: Float64, weight: Float64):
+    fn update(mut self, value: Float32, weight: Float32):
         if weight <= 0.0:
             return
 
@@ -262,42 +262,42 @@ struct WeightedStreamingMetric:
         self._min = 0.0
         self._max = 0.0
 
-    fn weight_sum(self) -> Float64:
+    fn weight_sum(self) -> Float32:
         return self._w_sum
 
-    fn mean(self) -> Float64:
+    fn mean(self) -> Float32:
         if self._w_sum <= 0.0:
             return 0.0
         return self._mean
 
-    # Weighted population variance: m2 / W 
+    # Weighted population variance: m2 / W
     # here we return the population-style variance by default.
-    fn variance(self) -> Float64:
+    fn variance(self) -> Float32:
         if self._w_sum <= 0.0:
             return 0.0
         return self._m2 / self._w_sum
 
-    fn std(self) -> Float64:
+    fn std(self) -> Float32:
         var v = self.variance()
         # TODO: replace with sqrt(v) once math facade is available.
         return v
 
-    fn min(self) -> Float64:
+    fn min(self) -> Float32:
         if not self._has_value:
             return 0.0
         return self._min
 
-    fn max(self) -> Float64:
+    fn max(self) -> Float32:
         if not self._has_value:
             return 0.0
         return self._max
 
-    fn compute(self) -> Float64:
+    fn compute(self) -> Float32:
         return self.mean()
 
     # -------- Batch adapters (list-based; safe & immediate) --------
 
-    fn update_batch(mut self, values: List[Float64], weights: List[Float64]) -> Int:
+    fn update_batch(mut self, values: List[Float32], weights: List[Float32]) -> Int:
         var n = len(values)
         var m = len(weights)
         var k = n if n < m else m
@@ -323,9 +323,9 @@ struct ConfusionMatrixBinary:
         self._tn = 0
         self._fn = 0
 
-    # Update using a probability/score (Float64) and a target label (0/1).
+    # Update using a probability/score (Float32) and a target label (0/1).
     # A "threshold" in [0,1] maps the score to a predicted label.
-    fn update(mut self, score: Float64, target: Int, threshold: Float64 = 0.5):
+    fn update(mut self, score: Float32, target: Int, threshold: Float32 = 0.5):
         var pred_label = 0
         if score >= threshold:
             pred_label = 1
@@ -371,35 +371,35 @@ struct ConfusionMatrixBinary:
         return self._tp + self._fp + self._tn + self._fn
 
     # Accuracy = (TP + TN) / Total
-    fn accuracy(self) -> Float64:
+    fn accuracy(self) -> Float32:
         var tot = self.total()
         if tot == 0:
             return 0.0
-        return Float64(self._tp + self._tn) / Float64(tot)
+        return Float32(self._tp + self._tn) / Float32(tot)
 
     # Precision (Positive Predictive Value) = TP / (TP + FP)
-    fn precision(self) -> Float64:
+    fn precision(self) -> Float32:
         var denom = self._tp + self._fp
         if denom == 0:
             return 0.0
-        return Float64(self._tp) / Float64(denom)
+        return Float32(self._tp) / Float32(denom)
 
     # Recall (Sensitivity/TPR) = TP / (TP + FN)
-    fn recall(self) -> Float64:
+    fn recall(self) -> Float32:
         var denom = self._tp + self._fn
         if denom == 0:
             return 0.0
-        return Float64(self._tp) / Float64(denom)
+        return Float32(self._tp) / Float32(denom)
 
     # Specificity (TNR) = TN / (TN + FP)
-    fn specificity(self) -> Float64:
+    fn specificity(self) -> Float32:
         var denom = self._tn + self._fp
         if denom == 0:
             return 0.0
-        return Float64(self._tn) / Float64(denom)
+        return Float32(self._tn) / Float32(denom)
 
     # F1 = 2 * (P * R) / (P + R)
-    fn f1(self) -> Float64:
+    fn f1(self) -> Float32:
         var p = self.precision()
         var r = self.recall()
         var denom = p + r
@@ -408,16 +408,16 @@ struct ConfusionMatrixBinary:
         return 2.0 * p * r / denom
 
     # Balanced Accuracy = (TPR + TNR) / 2
-    fn balanced_accuracy(self) -> Float64:
+    fn balanced_accuracy(self) -> Float32:
         return (self.recall() + self.specificity()) / 2.0
 
     # Convention: compute() returns accuracy by default for classification.
-    fn compute(self) -> Float64:
+    fn compute(self) -> Float32:
         return self.accuracy()
 
     # -------- Batch adapters (list-based; safe & immediate) --------
 
-    fn update_batch_scores(mut self, scores: List[Float64], targets: List[Int], threshold: Float64 = 0.5) -> Int:
+    fn update_batch_scores(mut self, scores: List[Float32], targets: List[Int], threshold: Float32 = 0.5) -> Int:
         var n = len(scores)
         var m = len(targets)
         var k = n if n < m else m
