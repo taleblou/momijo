@@ -35,6 +35,12 @@ from momijo.tensor.creation import empty_tensor_with,zero_scalar_of
 from momijo.tensor.cast import *
 
 from momijo.tensor.tensor import Tensor
+
+from momijo.tensor.gpu.runtime import (
+    gpu_available,
+    Kernel1D_Transpose2D,
+    launch_1d_transpose2d,
+)
 # ============================================================================
 #                          Boundary index maps for padding
 # ============================================================================
@@ -2722,3 +2728,105 @@ fn chunk[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], chunks: Int, 
 @always_inline
 fn unbind[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], dim: Int) -> List[Tensor[T]]:
     return _unbind_impl(x, dim)
+
+
+
+# ------------------------
+# CPU: tiled transpose (cache-friendly)
+# ------------------------
+fn transpose2d_cpu_parallel(x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
+    var shp = x.shape()
+    var rank = len(shp)
+    if rank != 2:
+        # رفتاری که نسخه‌ی قبلی عملاً داشت (کپیِ خود x)
+        return x.copy()
+
+    var H = shp[0]
+    var W = shp[1]
+    var out = tensor.zeros([W, H])
+
+    # کاشی‌بندی حافظه‌ای برای locality بهتر
+    var T = 32              # اندازه‌ی کاشی (امتحان‌شده و عمومی)
+    var bi = 0
+    while bi < H:
+        var bj = 0
+        while bj < W:
+            var i = bi
+            var imax = bi + T
+            if imax > H:
+                imax = H
+            var jmax = bj + T
+            if jmax > W:
+                jmax = W
+
+            while i < imax:
+                var j = bj
+                var row_off = i * W
+                while j < jmax:
+                    # out[j, i] = x[i, j]
+                    out._data[j * H + i] = x._data[row_off + j]
+                    j = j + 1
+                i = i + 1
+            bj = bj + T
+        bi = bi + T
+
+    return out.copy()
+
+# ------------------------
+# GPU-Style: 1D kernel + launcher (CPU fallback)
+# ------------------------
+fn _kernel_transpose2d(
+    tid: Int,
+    x:  List[Float32],
+    mut y:  List[Float32],
+    H: Int, W: Int
+) -> None:
+    # هر نخ یک عنصر از ماتریس ورودی را جابه‌جا می‌کند
+    var total = H * W
+    if tid >= total:
+        return
+    var i = tid // W
+    var j = tid - i * W
+    # x[i, j] -> y[j, i]
+    y[j * H + i] = x[i * W + j]
+
+fn transpose2d_gpu(x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
+    var shp = x.shape()
+    var rank = len(shp)
+    if rank != 2:
+        return x.copy()
+
+    var H = shp[0]
+    var W = shp[1]
+    var y = tensor.zeros([W, H])
+
+    # بافر خروجی قابل‌تغییر
+    var ybuf = y._data.copy()
+
+    var total_threads = H * W
+    var block = 256
+    if block > total_threads:
+        block = total_threads
+
+    launch_1d_transpose2d(
+        total_threads, block, _kernel_transpose2d,
+        x._data, ybuf,
+        H, W
+    )
+
+    y._data = ybuf.copy()
+    return y.copy()
+
+# ------------------------
+# Auto switch
+# ------------------------
+fn transpose2d_auto(x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
+    if gpu_available():
+        return transpose2d_gpu(x)
+    return transpose2d_cpu_parallel(x)
+
+# ------------------------
+# User-facing API
+# ------------------------
+fn transpose2d(x: tensor.Tensor[Float32]) -> tensor.Tensor[Float32]:
+    return transpose2d_auto(x)
