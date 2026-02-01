@@ -8,6 +8,10 @@
   <b>Coming Soon</b><br>
   <sub>© 2025 — <a href="https://taleblou.ir/">Morteza Taleblou</a> & <a href="#">Mitra Daneshmand</a></sub>
 </p>
+ 
+<p align="center">
+  <img src="https://taleblou.ir/countdown.php?v=1" alt="Coming Soon" width="416" height="128">
+</p>
 
 ---
 
