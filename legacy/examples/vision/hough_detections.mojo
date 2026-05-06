@@ -1,4 +1,4 @@
-# MIT License
+# Apache License 2.0
 # SPDX-License-Identifier: Apache-2.0
 # Project: momijo.examples
 # File: examples/vision_hough.mojo

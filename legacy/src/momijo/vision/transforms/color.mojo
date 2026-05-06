@@ -1,4 +1,4 @@
-# MIT License
+# Apache License 2.0
 # SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/color.mojo
 
@@ -431,7 +431,7 @@ fn plot_hist_u8(hist: List[Int], width: Int = 256, height: Int = 200) -> Image:
         x += 1
 
     return img.copy()
-# MIT License
+# Apache License 2.0
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.

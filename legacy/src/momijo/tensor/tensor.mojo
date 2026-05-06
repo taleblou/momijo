@@ -20,7 +20,7 @@
 #   - No wildcard imports.
 #   - Small inline helpers for tight loops (copy/unroll).
 #   - Fast materialization path for contiguous views with arbitrary offset.
-# MIT License
+# Apache License 2.0
 # SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       momijo.Tensor

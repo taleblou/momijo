@@ -1,4 +1,4 @@
-# MIT License
+# Apache License 2.0
 # SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/examples/learn/train_mlp_adamw_cosine.mojo

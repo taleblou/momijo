@@ -1,4 +1,4 @@
-# MIT License — Short Header
+# Apache License 2.0 — Short Header
 # Project: momijo | Package: vision.backend.cpu.__init__
 # File: vision/backend/cpu/__init__.mojo
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand

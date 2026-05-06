@@ -1,4 +1,4 @@
-# MIT License
+# Apache License 2.0
 # SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io.jpeg
 # File: src/momijo/vision/io/internal/jpeg_huffman_encode.mojo

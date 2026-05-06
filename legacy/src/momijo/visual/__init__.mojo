@@ -1,4 +1,4 @@
-# MIT License
+# Apache License 2.0
 # SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: /mnt/data/momijo_visual_final/src/momijo/visual/__init__.mojo

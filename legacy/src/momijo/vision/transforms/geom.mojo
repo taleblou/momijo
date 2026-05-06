@@ -1,11 +1,11 @@
-# MIT License
+# Apache License 2.0
 # SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/geom.mojo
 
 from momijo.vision.image import Image
 from momijo.vision.transforms.array import full, zeros
 
-# MIT License
+# Apache License 2.0
 # Project: momijo.vision.transforms
 # File: momijo/vision/transforms/geom.mojo
 # Shape-only geometric transforms. No pixel resampling yet.

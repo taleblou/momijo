@@ -1,4 +1,4 @@
-# MIT License
+# Apache License 2.0
 # Copyright (c) 2025 Morteza...
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # SPDX-License-Identifier: Apache-2.0

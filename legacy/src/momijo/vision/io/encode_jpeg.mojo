@@ -1,4 +1,4 @@
-# MIT License
+# Apache License 2.0
 # Baseline JPEG encoder (Mojo) — append-based lists, integer ops, no mut at call sites.
 
 from collections.list import List
