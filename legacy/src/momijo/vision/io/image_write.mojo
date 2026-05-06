@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # File: src/momijo/vision/io/image_write.mojo
 
 from momijo.vision.image import Image

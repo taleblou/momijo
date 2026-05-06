@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       tensor.axis
 # File:         src/momijo/tensor/axis.mojo
@@ -46,8 +46,8 @@ fn sqrt64(x: Float64) -> Float64:
         g = 0.5 * (g + v / g)
         i += 1
     return g
-    
- 
+
+
 
 @always_inline
 fn normalize_axes(axs: List[Int], rank: Int) -> List[Int]:
@@ -123,7 +123,7 @@ fn drop_axes(shape: List[Int], axes: List[Int]) -> List[Int]:
     return _shape_drop_axis(shape, axes[0]) if len(axes) == 1 else shape_drop_axes(shape, axes)
 
 # -------------------------------- moveaxis / moveaxes / swapaxes ------------------------------
- 
+
 # Single-axis move: works for any rank >= 1
 fn moveaxis[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T], src: Int, dst: Int) -> Tensor[T]:
     var r = len(x._shape)
@@ -267,7 +267,7 @@ fn _copy_list_int(xs: List[Int]) -> List[Int]:
         i += 1
     return out.copy()
 
- 
+
 # Fill a freshly reserved List[T] with copies of a value (T is copyable)
 @always_inline
 fn _fill_list[T: ImplicitlyCopyable & Copyable & Movable](mut dst: List[T], n: Int, value: T) -> None:
@@ -1298,5 +1298,3 @@ fn normalize_[T: ImplicitlyCopyable & Copyable & Movable](mut x: Tensor[T], axis
     while i < n:
         x._data[i] = t._data[i]
         i += 1
-
-

@@ -1,7 +1,7 @@
 # MIT License
 # Copyright (c) 2025
 # Project: momijo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # File: src/momijo/vision/io/jpeg_scan.mojo
 # Description: Decode one 8x8 block from a JPEG scan: entropy (DC+AC) -> dequant -> IDCT.
 

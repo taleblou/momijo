@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/examples/learn/train_full.mojo
 # Description: Training loop (MLP) with SGD and softmax CE.

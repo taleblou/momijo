@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       momijo.tensor.nanops
 # File:         src/momijo/tensor/nanops.mojo
@@ -26,7 +26,7 @@ from momijo.tensor.helpers import (
     is_row_major_contiguous,
     normalize_axis,
 )
-from momijo.tensor.transform import ( 
+from momijo.tensor.transform import (
     contiguous,
 )
 
@@ -81,8 +81,8 @@ fn _ensure_contig[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[T]) -> T
         # share data; copy shape/strides (header only), keep same offset
         return Tensor[T](x._data, x._shape.copy(), x._strides.copy(), x._offset)
     return contiguous(x)
- 
- 
+
+
 
 @always_inline
 fn _from_f64_tensor[T: ImplicitlyCopyable & Copyable & Movable](x: Tensor[Float64]) -> Tensor[T]:
@@ -634,7 +634,7 @@ fn nanmin_axis_contig_f64(data: List[Float64], shape: List[Int], axis: Int, keep
     return Tensor[Float64](out, out_shape)
 
 # ---- Public API (T -> Float64 compute) ----
- 
+
 
 fn nanmean(x: Tensor[Float64], axis: Optional[Int] = None, keepdims: Bool = False) -> Tensor[Float64]:
     var xf = to_float64(x)

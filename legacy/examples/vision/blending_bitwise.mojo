@@ -10,7 +10,7 @@
 # Repository:   https://github.com/taleblou/momijo   # Canonical repository URL.
 #
 # License:      Apache License 2.0                     # Short license label (do not paste full text).
-# SPDX-License-Identifier: MIT                  # SPDX identifier required by project policies.
+# SPDX-License-Identifier: Apache-2.0                  # SPDX identifier required by project policies.
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand  # Copyright notice.
 
 import momijo.vision as vision                 # Import the vision API for image operations.

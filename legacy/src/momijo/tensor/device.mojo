@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.tensor
 # File: src/momijo/tensor/device.mojo
 # Description: Single-file CPU/GPU device handling with runtime switching.

@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       momijo.tensor.anytensor
 # File:         src/momijo/tensor/anytensor.mojo
@@ -804,5 +804,3 @@ struct TensorView[T: ImplicitlyCopyable & Copyable & Movable]:
             data2.append(self._data[li])
             i += 1
         return Tensor[T](data2, self._shape)
-
-

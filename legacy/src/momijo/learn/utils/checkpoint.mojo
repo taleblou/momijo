@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo
 # File:         src/momijo/learn/utils/checkpoint.mojo
 # Description:  Stateless checkpoint (Linear + Conv2d) -> (header JSON string, flat blob).

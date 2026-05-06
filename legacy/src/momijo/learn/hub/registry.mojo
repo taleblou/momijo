@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.hub.registry
 # File:         src/momijo/learn/hub/registry.mojo

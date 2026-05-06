@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/utils/tensor_bytes.mojo
 # Description: Portable ASCII-based pack/unpack helpers for Float32 tensors.

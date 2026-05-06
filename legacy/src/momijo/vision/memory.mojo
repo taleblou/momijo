@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/memory.mojo
 # Description: Memory utilities, byte buffer (owning), and light-weight views.
@@ -259,7 +259,7 @@ struct BufferU8(Copyable, Movable):
             self._data = UnsafePointer[UInt8]()
             self._length = 0
             return
-        self._length = n 
+        self._length = n
         if zero_init:
             self._data = calloc_u8(n)
         else:

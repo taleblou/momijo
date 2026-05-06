@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: src/momijo/visual/echarts/lines.mojo
 # Description: Geo Lines builder (requires world map).

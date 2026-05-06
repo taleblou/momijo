@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/nn/conv.mojo
 # Description: Naive Conv2d and MaxPool2d (NCHW) with forward+backward.

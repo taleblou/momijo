@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/io/encode_png.mojo
 # Description: PNG encoder Ultra-Pro with:

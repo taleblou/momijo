@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/filter.mojo
 
 from momijo.vision.image import Image
@@ -250,7 +250,7 @@ fn _sqrt64(x: Float64) -> Float64:
     return g
 
 # Computes gradient magnitude from gx, gy (use channel 0), output UInt8 in [0..255].
-# Works on packed HWC/UInt8; will convert inputs  
+# Works on packed HWC/UInt8; will convert inputs
 fn magnitude_u8(gx: Image, gy: Image) -> Image:
     # if packed HWC/UInt8 for safe pixel access
     var ax = gx.ensure_packed_hwc_u8(True)

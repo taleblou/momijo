@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io
 # File: src/momijo/vision/io/jpeg_decoder.mojo
 # Description: Minimal JPEG structure inspection and stub decoder that parses SOF0 to get width/height.

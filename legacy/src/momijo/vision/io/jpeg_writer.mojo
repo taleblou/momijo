@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io.jpeg
 # File: src/momijo/vision/io/internal/jpeg_writer.mojo
 # Description: JPEG marker/segment writers (SOI/APP0/DQT/SOF0/DHT/SOS/EOI)

@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/nn/module.mojo
 # Description: Tagged-union Module wrapper for heterogeneous layers.

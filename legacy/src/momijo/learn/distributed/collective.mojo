@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.distributed.collective
 # File:         src/momijo/learn/distributed/collective.mojo

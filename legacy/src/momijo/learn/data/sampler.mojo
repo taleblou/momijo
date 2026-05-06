@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.data.sampler
 # File:         src/momijo/learn/data/sampler.mojo
@@ -169,7 +169,7 @@ struct DistributedSampler:
             # exact partition (tail dropped)
             num_samples = n // self.world_size
             total_size = num_samples * self.world_size
-            # truncate base  
+            # truncate base
             while len(base) > total_size:
                 # pop from end
                 base.pop()

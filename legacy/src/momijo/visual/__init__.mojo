@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: /mnt/data/momijo_visual_final/src/momijo/visual/__init__.mojo
 # Description: Aggregated public API for this package. English comments only.
@@ -103,10 +103,10 @@ from momijo.visual.html.preview import write_preview_html
 
 from momijo.visual.charts.option import Option
 from momijo.visual.html.preview import render_html
-from momijo.visual.charts.ez_option import EasyOption   
-from momijo.visual.plotting.violin_utils import _compute_violin_curve_json, _ints   
+from momijo.visual.charts.ez_option import EasyOption
+from momijo.visual.plotting.violin_utils import _compute_violin_curve_json, _ints
 
- 
+
 fn preview(option_json: String,
            title: String = String("ECharts Demo"),
            width_px: Int = 960,
@@ -129,5 +129,3 @@ fn preview(option_json: String,
                        include_gl=include_gl,
                        pre_init_js=pre_init_js,
                        include_wordcloud_plugin=include_wordcloud_plugin)
-
-

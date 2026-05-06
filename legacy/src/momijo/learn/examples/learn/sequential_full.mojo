@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/examples/learn/sequential_full.mojo
 # Description: Example: Linear → BN → ReLU → Dropout → Linear

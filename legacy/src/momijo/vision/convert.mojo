@@ -3,7 +3,7 @@
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
 # Momijo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
 #

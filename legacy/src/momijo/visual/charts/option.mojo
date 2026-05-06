@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: src/momijo/visual/charts/option.mojo
 # Description: Comprehensive ECharts Option builder with param-by-param API (2D-friendly).
@@ -83,7 +83,7 @@ struct Option:
     var grid: String                  # JSON object
 
     # 5. Axes & coordinate systems
-    var xAxis: String                 # JSON object  
+    var xAxis: String                 # JSON object
     var yAxis: String                 # JSON object
     var singleAxis: String            # JSON object
     var radar: String                 # JSON object
@@ -357,9 +357,9 @@ struct Option:
             k += 1
         out += String(" }")
         return out
-    
 
- 
+
+
 
     # Simple passthroughs in Option (if missing)
     fn set_xaxis3d_json(mut self, json: String):

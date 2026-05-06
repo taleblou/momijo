@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/examples/learn/train_cnn_backprop.mojo
 # Description: CNN training loop with manual backprop for Conv2d + Linear + ReLU (random data demo).

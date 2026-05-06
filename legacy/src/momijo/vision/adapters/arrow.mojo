@@ -2,18 +2,18 @@
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
+# Momijo
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
 #
 # Project: momijo.vision.adapters
 # File: momijo/vision/adapters/arrow.mojo
-  
+
 from momijo.vision.tensor import Tensor, packed_hwc_strides, packed_chw_strides
 from momijo.vision.dtypes import DType, dtype_bytes
- 
+
 
 # -----------------------------------------------------------------------------
 # Core unsafe view: wraps an existing raw buffer as a Tensor without copying.
@@ -24,7 +24,7 @@ from momijo.vision.dtypes import DType, dtype_bytes
 # -----------------------------------------------------------------------------
 fn unsafe_view_from_raw_u8(ptr: UnsafePointer[UInt8], nbytes: Int,
                            h: Int, w: Int, c: Int,
-                           s0: Int, s1: Int, s2: Int, dt: DType) -> Tensor: 
+                           s0: Int, s1: Int, s2: Int, dt: DType) -> Tensor:
     assert(h > 0 and w > 0 and c > 0, "unsafe_view_from_raw_u8: bad shape")
     assert(nbytes > 0, "unsafe_view_from_raw_u8: nbytes must be > 0")
     assert(s0 > 0 and s1 > 0 and s2 > 0, "unsafe_view_from_raw_u8: bad strides")
@@ -76,5 +76,3 @@ fn tensor_from_raw_strided(ptr: UnsafePointer[UInt8],
     assert(nbytes > 0, "tensor_from_raw_strided: nbytes must be > 0")
     # We trust caller on stride correctness & coverage; pack into a Tensor as-is.
     return Tensor(ptr, nbytes, d0, d1, d2, s0, s1, s2, dt)
-
- 

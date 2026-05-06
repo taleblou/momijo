@@ -2,7 +2,7 @@
 # Project: momijo | Package: vision.transforms.__init__
 # File: vision/transforms/__init__.mojo
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 
 # Core API re-exports for vision.transforms.__init__
 

@@ -2,15 +2,15 @@
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
+# Momijo
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
 #
 # Project: momijo.vision.backend.cpu
 # File: momijo/vision/backend/cpu/resize_tiled_cpu.mojo
- 
+
 from vision.tensor import Tensor, packed_hwc_strides
 from vision.dtypes import DType
 

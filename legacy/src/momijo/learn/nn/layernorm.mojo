@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/nn/layernorm.mojo
 # Description: LayerNorm over last-dimension (2D: [N,C]).

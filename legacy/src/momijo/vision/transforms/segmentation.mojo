@@ -1,7 +1,7 @@
 # MIT License
 # Project: momijo.vision
 # File: momijo/vision/segmentation.mojo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 
 # Connected Components Labeling (binary -> labels)
 # - Input 'bw' is a binary image-like 2D list:
@@ -31,7 +31,7 @@ fn _dirs8() -> List[(Int, Int)]:
 
 fn _cc_label_core(bw: List[List[Int]], connectivity: Int) -> (Int, List[List[Int]]):
     var h = len(bw)
-    if h == 0: 
+    if h == 0:
         return (0, List[List[Int]]())
     var w = len(bw[0])
 
@@ -90,8 +90,8 @@ fn _cc_label_core(bw: List[List[Int]], connectivity: Int) -> (Int, List[List[Int
         y0 += 1
 
     return (current, labels)
- 
- 
+
+
 
 # ----- Matrix image overloads -----
 # ---------------- Core: Int mask (HxW, values 0/1) ----------------
@@ -289,5 +289,3 @@ fn connected_components(img: Image, connectivity: Int = 4) -> (Int, List[List[In
         y += 1
 
     return connected_components(mask, connectivity)
-
- 

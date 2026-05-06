@@ -1,12 +1,12 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/hough.mojo
 
 from momijo.vision.image import Image
 from collections.list import List
 
 
-import math 
+import math
 
 fn abs_f64(x: Float64) -> Float64:
     if x < 0.0:

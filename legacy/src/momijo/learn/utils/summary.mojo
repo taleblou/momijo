@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.learn
 # Module:       learn.utils.summary
 # File:         src/momijo/learn/utils/summary.mojo

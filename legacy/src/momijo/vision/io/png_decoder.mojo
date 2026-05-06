@@ -1,11 +1,11 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io
 # File: src/momijo/vision/io/png_decoder.mojo
 # Description: Minimal PNG chunk/header parsing (no inflate)
 
 from math.bit_ops import lshift, rshift, bitand
- 
+
 # -----------------------------------------------------------------------------
 # Helper: read big-endian u32 from byte pointer
 # -----------------------------------------------------------------------------
@@ -85,7 +85,7 @@ fn parse_ihdr(data: UnsafePointer[UInt8]) -> PNGHeader:
         data[11],
         data[12]
     )
- 
+
 
 # -----------------------------------------------------------------------------
 # Header-only reader (no zlib/inflate)
@@ -113,4 +113,3 @@ fn read_png_header_only(file_data: UnsafePointer[UInt8], length: Int) -> (Bool, 
         cursor = cursor + advance
 
     return (False, PNGHeader(0, 0, UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)))
-

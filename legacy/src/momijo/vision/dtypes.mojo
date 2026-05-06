@@ -3,7 +3,7 @@
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
 # Momijo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
 #
@@ -33,19 +33,19 @@ struct DType(Copyable, Movable):
         return DType(self.id)
 
     # --- factories (enum-like constants) ---
-    @staticmethod 
+    @staticmethod
     fn UInt8()   -> DType: return DType(0)
-    @staticmethod 
+    @staticmethod
     fn UInt16()  -> DType: return DType(1)
-    @staticmethod 
+    @staticmethod
     fn Int32()   -> DType: return DType(2)
-    @staticmethod 
+    @staticmethod
     fn Float16() -> DType: return DType(3)
-    @staticmethod 
+    @staticmethod
     fn Float32() -> DType: return DType(4)
-    @staticmethod 
+    @staticmethod
     fn Int64()   -> DType: return DType(5)
-    @staticmethod 
+    @staticmethod
     fn Float64() -> DType: return DType(6)
 
     # --- equality ---
@@ -127,11 +127,11 @@ struct Layout(Copyable, Movable):
         return Layout(self.id)
 
     # factories
-    @staticmethod 
+    @staticmethod
     fn HWC()    -> Layout: return Layout(0)
-    @staticmethod 
+    @staticmethod
     fn CHW()    -> Layout: return Layout(1)
-    @staticmethod 
+    @staticmethod
     fn PLANAR() -> Layout: return Layout(2)
 
     # equality
@@ -182,15 +182,15 @@ struct ColorSpace(Copyable, Movable):
         return ColorSpace(self.id)
 
     # factories
-    @staticmethod 
+    @staticmethod
     fn SRGB()   -> ColorSpace: return ColorSpace(0)
     @staticmethod
     fn Linear() -> ColorSpace: return ColorSpace(1)
-    @staticmethod 
+    @staticmethod
     fn Gray()   -> ColorSpace: return ColorSpace(2)
-    @staticmethod 
+    @staticmethod
     fn YCbCr()  -> ColorSpace: return ColorSpace(3)
-    @staticmethod 
+    @staticmethod
     fn Unknown() -> ColorSpace: return ColorSpace(255)
 
     # equality

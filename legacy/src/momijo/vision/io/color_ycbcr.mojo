@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: momijo/vision/io/color_ycbcr.mojo
 # Description: RGB <-> YCbCr helpers (8-bit, 4:4:4)
@@ -46,11 +46,11 @@ fn rgb_to_ycbcr(src: UnsafePointer[UInt8], w: Int, h: Int,
         var Y  =  (  77*r + 150*g +  29*b + 128) >> 8         # ≈ 0.299,0.587,0.114
         var Cb = (((-43*r -  85*g + 128*b) + 128) >> 8) + 128 # ≈ -0.1687,-0.3313,0.5
         var Cr = (((128*r - 107*g -  21*b) + 128) >> 8) + 128 # ≈ 0.5,-0.4187,-0.0813
-        if Y  < 0: Y = 0; 
+        if Y  < 0: Y = 0;
         if Y  > 255: Y  = 255
-        if Cb < 0: Cb = 0; 
+        if Cb < 0: Cb = 0;
         if Cb > 255: Cb = 255
-        if Cr < 0: Cr = 0; 
+        if Cr < 0: Cr = 0;
         if Cr > 255: Cr = 255
         y[i]  = UInt8(Y)
         cb[i] = UInt8(Cb)

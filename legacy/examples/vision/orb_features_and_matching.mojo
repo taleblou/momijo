@@ -11,7 +11,7 @@
 # Repository:   https://github.com/taleblou/momijo
 #
 # License:      Apache License 2.0
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
 # Notes:

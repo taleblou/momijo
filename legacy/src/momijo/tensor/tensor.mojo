@@ -14,14 +14,14 @@
 # Repository:   https://github.com/taleblou/momijo
 #
 # License:      Apache License 2.0
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Notes:
 #   - var-only; no asserts.
 #   - No wildcard imports.
 #   - Small inline helpers for tight loops (copy/unroll).
 #   - Fast materialization path for contiguous views with arbitrary offset.
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       momijo.Tensor
 # File:         src/momijo/tensor/tensor.mojo

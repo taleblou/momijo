@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       momijo.tensor.autograd
 # File:         src/momijo/tensor/autograd.mojo

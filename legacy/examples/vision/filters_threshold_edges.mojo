@@ -1,11 +1,11 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.examples
 # File: examples/vision_filters_threshold_edges.mojo
 # Description: Filters, thresholds, and edge detection using a single `import momijo.vision as vision`.
 # Notes: Each step is saved to PPM/PNG/JPG for easy verification.
- 
- 
+
+
 import momijo.vision as vision
 from pathlib import Path
 from os import makedirs
@@ -23,21 +23,21 @@ fn ensure_outdir(outdir: String) -> None:
             pass
 
 
-fn _save_all(outdir: String, stem: String, img: vision.Image) -> None: 
+fn _save_all(outdir: String, stem: String, img: vision.Image) -> None:
     try:
-        vision.write_image(outdir + "/" + stem + ".png", img) 
-    
+        vision.write_image(outdir + "/" + stem + ".png", img)
+
     except e:
-        print(e) 
+        print(e)
     print("Saved: " + outdir + "/" + stem + ".{png}")
 
 fn save(outdir: String, name: String, img: vision.Image) -> String:
     var path = outdir + "/" + name
     try:
         vision.write_image(path, img)
-    
+
     except e:
-        print(e) 
+        print(e)
     print("Saved: " + path)
     return path
 
@@ -68,7 +68,7 @@ fn make_demo_image() -> vision.Image:
             [UInt8(220), UInt8(220), UInt8(220)], 2, True
         )
     except e:
-        print(e) 
+        print(e)
     return img.copy()
 
 fn load_image(path: String) -> vision.Image:
@@ -76,7 +76,7 @@ fn load_image(path: String) -> vision.Image:
     # If reading fails or the image is invalid, generate a demo image, save, and return it.
 
     var p = Path(path)
- 
+
     if not p.exists():
         # Best-effort: try recursive create, then single-level, ignore errors
         try:

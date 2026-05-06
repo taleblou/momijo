@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.learn
 # Module:       learn.optim.adagrad
 # File:         src/momijo/learn/optim/adagrad.mojo

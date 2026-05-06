@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.api.io
 # File:         src/momijo/learn/api/io.mojo
@@ -70,7 +70,7 @@ fn _ensure_parent_dir(path_obj: Path):
 # -----------------------------------------------------------------------------
 # Requirements on `model` (duck-typed path):
 #   - model.state_dict() -> String
-# Prefer saving the architecture config at higher levels 
+# Prefer saving the architecture config at higher levels
 
 fn save_model(model, path: String):
     var p = _normalize_and_default_ext(path)
@@ -107,7 +107,7 @@ fn save_model_ok(model: SerializableModel, path: String) -> Bool:
 # Public API: Load
 # -----------------------------------------------------------------------------
 # Behavior (generic path):
-#   - Creates a generic Model() container and asks checkpoint utils to populate it. 
+#   - Creates a generic Model() container and asks checkpoint utils to populate it.
 #   - In production, prefer constructing the exact model then calling its
 #     load_state_dict(...) yourself to guarantee shape/topology compatibility.
 

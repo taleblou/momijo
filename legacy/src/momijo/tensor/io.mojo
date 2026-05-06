@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.tensor
 # File: src/momijo/tensor/io.mojo
 # Description: Text/structured I/O helpers for Tensor. Pure Mojo parsers for
@@ -22,7 +22,7 @@ from io.file import open
 # =============================================================================
 # Tiny utilities
 # =============================================================================
-@always_inline 
+@always_inline
 fn _is_space_ch(ch: String) -> Bool:
     # Single-char String whitespace check
     return ch == " " or ch == "\t" or ch == "\n" or ch == "\r"
@@ -44,7 +44,7 @@ fn _trim_ascii(s: String) -> String:
     return String(sl[i:j])
 
 
-# ---- helpers for char access as String ---- 
+# ---- helpers for char access as String ----
 
 @always_inline
 fn _ch(sl: StringSlice, i: Int) -> String:
@@ -537,7 +537,7 @@ fn xml_numbers_to_tensor_with[T: ImplicitlyCopyable & Copyable & Movable](
             if en < 0:
                 break
             var num_s = String(row_body.as_string_slice()[st + len(item_tag) + 3 : en])
-             
+
             var (_ok, f)= _parse_f64(num_s)
             vals.append(f)
             p2 = en + len(item_tag) + 3

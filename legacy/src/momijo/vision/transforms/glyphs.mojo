@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/transforms/glyphs.mojo
 # Description: 5x7 bitmap font (row-major) without custom structs; bit0=leftmost.

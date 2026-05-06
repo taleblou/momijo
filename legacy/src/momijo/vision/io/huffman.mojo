@@ -1,7 +1,7 @@
 # MIT License
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # File: momijo/vision/io/huffman.mojo
 
 from momijo.vision.io.bitreader import BitReader

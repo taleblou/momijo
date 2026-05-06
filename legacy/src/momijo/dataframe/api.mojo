@@ -12,7 +12,7 @@
 # Repository:   https://github.com/taleblou/momijo
 #
 # License:      Apache License 2.0
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
 # Notes:
@@ -57,7 +57,7 @@ from collections.list import List
 
 # -------------------- Minimal DType facade   --------------------
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.dataframe
 # File: src/momijo/dataframe/dtype.mojo
 # Description: Simple DType with nullability flag.

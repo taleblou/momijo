@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/io/image_read.mojo
 # Description: Image reader (PNG RGB/RGBA) supporting Adam7 + dynamic Huffman.

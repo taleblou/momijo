@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/io/unfilter.mojo
 # Description: PNG scanline unfilter types 0..4 (None, Sub, Up, Average, Paeth).
@@ -9,11 +9,11 @@ from collections.list import List
 @always_inline
 fn _paeth(a: Int, b: Int, c: Int) -> Int:
     var p = a + b - c
-    var pa = (p - a); 
+    var pa = (p - a);
     if pa < 0: pa = -pa
-    var pb = (p - b); 
+    var pb = (p - b);
     if pb < 0: pb = -pb
-    var pc = (p - c); 
+    var pc = (p - c);
     if pc < 0: pc = -pc
     if pa <= pb and pa <= pc: return a
     if pb <= pc: return b
@@ -24,7 +24,7 @@ fn _paeth(a: Int, b: Int, c: Int) -> Int:
 @always_inline
 fn _ceil_div(a: Int, b: Int) -> Int:
     return (a + b - 1) // b
- 
+
 
 
 # Unfilter in-place-like into new buffer.
@@ -66,7 +66,7 @@ fn png_unfilter(width: Int, height: Int, channels: Int, data: List[UInt8], bit_d
             raw.append(UInt8(val))
             x += 1
         pos += row_payload
-        var i = 0; 
+        var i = 0;
         while i < len(raw): out.append(raw[i]); i += 1
         prev = raw.copy()
         y += 1

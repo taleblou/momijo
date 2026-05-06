@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/io/decode_png.mojo
 # Description: PNG reader: Gray/GA/RGB/RGBA + Indexed; bit depths 1/2/4/8/16; filters 0..4; interlace none/Adam7;

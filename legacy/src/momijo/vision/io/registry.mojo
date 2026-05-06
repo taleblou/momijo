@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io
 # File: src/momijo/vision/io/registry.mojo
 # Description: Unified image reader registry. Routes by file extension to PNG/JPEG/PPM backends.

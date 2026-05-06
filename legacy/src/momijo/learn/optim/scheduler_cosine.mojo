@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/optim/scheduler_cosine.mojo
 # Description: CosineAnnealingLR scheduler (no warm restarts).

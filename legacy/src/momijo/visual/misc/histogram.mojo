@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.math
 # File: src/momijo/math/histogram.mojo
 # Description: histogram binning

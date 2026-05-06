@@ -1,12 +1,12 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tests
 # Module:       tests.test_tensor_stats
 # File:         examples/Tensor/demo_tensor_stats.mojo
 #
 # Description:
 #   sort / unique / bincount / histogram / digitize tests for momijo.tensor.
- 
+
 from momijo.tensor import tensor
 
 # -----------------------------------------------------------------------------

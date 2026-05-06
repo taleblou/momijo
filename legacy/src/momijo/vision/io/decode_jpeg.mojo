@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/vision/io/decode_jpeg.mojo
 # Description: Minimal baseline JPEG decoder (no subsampling) using single DQT/DHT,

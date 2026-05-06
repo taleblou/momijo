@@ -10,7 +10,7 @@
 # Repository:   https://github.com/taleblou/momijo       # Canonical source repository.
 #
 # License:      Apache License 2.0                              # License label (short form only).
-# SPDX-License-Identifier: MIT                           # SPDX identifier for tooling.
+# SPDX-License-Identifier: Apache-2.0                           # SPDX identifier for tooling.
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand  # Copyright notice.
 #
 # Notes:                                                   # Quick pointers for readers.

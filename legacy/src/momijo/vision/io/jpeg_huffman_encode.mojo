@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io.jpeg
 # File: src/momijo/vision/io/internal/jpeg_huffman_encode.mojo
 # Description: JPEG Baseline Huffman (DC/AC) encoder helpers.
@@ -9,7 +9,7 @@
 # - Keeps a no-arg shim 'build_default_codebooks() -> Int' for legacy callers.
 # - HuffCode is ImplicitlyCopyable to simplify list element usage.
 
- 
+
 from collections.list import List
 from momijo.vision.io.bitwriter import BitWriter
 

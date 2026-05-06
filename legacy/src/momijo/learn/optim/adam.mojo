@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo
 # File:         src/momijo/learn/optim/adamw.mojo
 # Description:  AdamW optimizer for Linear/Conv2d layers (Float64 tensors).

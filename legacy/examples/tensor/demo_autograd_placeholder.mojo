@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tensor
 # Module:       tests.tensor
 # File:         examples/Tensor/demo_autograd_placeholder.mojo
@@ -39,7 +39,7 @@ fn demo_autograd() -> None:
     var grad_expected = x.mul_scalar(2.0)
     print("Expected grad dy/dx = 2x:\n" + grad_expected.__str__())
 
- 
+
 
 # -----------------------------------------------------------------------------
 # Main entry point

@@ -1,7 +1,7 @@
 # MIT License
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # File: momijo/vision/io/idct.mojo
 
 # Integer-based Inverse Discrete Cosine Transform (IDCT) for an 8x8 block.

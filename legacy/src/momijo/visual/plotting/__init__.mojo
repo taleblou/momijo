@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: /mnt/data/momijo_visual_final/src/momijo/visual/plotting/__init__.mojo
 # Description: Aggregated public API for this package. English comments only.

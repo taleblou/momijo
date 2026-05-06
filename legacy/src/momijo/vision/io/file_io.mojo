@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io
 # File: src/momijo/vision/io/file_io.mojo
 # Description: In-memory file store (no globals) + simple file I/O helpers

@@ -1,12 +1,12 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tensor
 # Module:       tests.tensor
 # File:         examples/Tensor/demo_reshape.mojo
 #
 # Description:
 #   Demo & quick tests for reshape / reshape_infer / reshape_like
-#   and resize_like_with_pad (non-reshape helper). 
+#   and resize_like_with_pad (non-reshape helper).
 
 from momijo.tensor import tensor
 

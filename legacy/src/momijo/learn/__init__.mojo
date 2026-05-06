@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/__init__.mojo
 # Description: Public re-exports for Momijo Learn (deduplicated, clean surface).
@@ -37,7 +37,7 @@ from momijo.learn.nn.layernorm import LayerNorm1d
 from momijo.learn.nn.functional import conv2d, max_pool2d
 
 # Activations (export softmax from activations ONLY to avoid collision with losses)
-from momijo.learn.nn.activations import relu, gelu, sigmoid, softmax 
+from momijo.learn.nn.activations import relu, gelu, sigmoid, softmax
  # from momijo.learn.nn.activations import log_softmax
 
 # -----------------------------------------------------------------------------

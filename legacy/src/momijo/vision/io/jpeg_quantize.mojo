@@ -1,7 +1,7 @@
 # MIT License
 # Copyright (c) 2025 Morteza
 # Project: momijo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # File: src/momijo/vision/io/jpeg_quantize.mojo
 # Description: Quantize and zigzag utilities for JPEG encoder (no globals, var-only).
 
@@ -41,7 +41,7 @@ fn quantize_block(dct: UnsafePointer[Int],
 # -------- Zigzag mapping --------
 # IMPORTANT:
 # The table below maps: zigzag index 'z' -> natural index 'n'.
-# That is, n = ZIGZAG[z]. This is the form used by most JPEG code paths. 
+# That is, n = ZIGZAG[z]. This is the form used by most JPEG code paths.
 
 @always_inline
 fn _zigzag_table_noalloc() -> List[Int]:

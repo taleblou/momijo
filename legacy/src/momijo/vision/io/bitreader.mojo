@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision.io
 # File: src/momijo/vision/io/bit_reader.mojo
 # Description: MSB-first JPEG bitstream reader with 0xFF/0x00 stuffing handling and safe EOF/marker detection.
@@ -151,7 +151,7 @@ struct BitReader(Copyable, Movable):
     # Read a single "data byte" from the entropy stream, honoring stuffing.
     # Returns (ok, byte). If a marker boundary is reached, ok=False.
     fn read_data_byte(mut self) -> (Bool, UInt8):
-        # First flush to a byte boundary 
+        # First flush to a byte boundary
         if (self.bit_count % 8) != 0:
             _ = self.align_byte()
 

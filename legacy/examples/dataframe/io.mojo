@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.dataframe
 # File: examples/pd_io_csv_jsonl.mojo
 # Description: IO demo for CSV and JSON Lines using the functional momijo.dataframe API.

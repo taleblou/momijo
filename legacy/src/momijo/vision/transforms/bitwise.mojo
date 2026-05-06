@@ -1,7 +1,7 @@
 # MIT License
 # Project: momijo.vision
 # File: momijo/vision/bitwise.mojo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 
 from momijo.vision.image import Image
 

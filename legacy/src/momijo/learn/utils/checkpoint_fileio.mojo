@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/utils/checkpoint_fileio.mojo
 # Description: File I/O wrappers for checkpoints. Uses project-level I/O helpers when available.

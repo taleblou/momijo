@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/io/jpeg.mojo
 # Description: JPEG read/write using pure Mojo encoder/decoder (file_io backend)

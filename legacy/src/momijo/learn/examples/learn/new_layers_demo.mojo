@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/examples/learn/new_layers_demo.mojo
 # Description: Demo for AvgPool2d, ConvTranspose2d, and LayerNorm1d.

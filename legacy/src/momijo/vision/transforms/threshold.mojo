@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/threshold.mojo
 
 from momijo.vision.image import Image

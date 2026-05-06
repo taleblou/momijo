@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.prob.kl_losses
 # File:         src/momijo/learn/prob/kl_losses.mojo

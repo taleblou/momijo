@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/__init__.mojo
 
 from momijo.vision.image import Image
@@ -35,25 +35,25 @@ from momijo.vision.transforms.geom import (
     resize,
     rotate,
     rotate90,
-    translate, 
+    translate,
     flip, affine, perspective,deg2rad,
-    crop, BorderSpec,copy_make_border, 
+    crop, BorderSpec,copy_make_border,
     BORDER_CONSTANT_BS, BORDER_REPLICATE_BS, BORDER_REFLECT_BS,
     BORDER_CONSTANT, BORDER_REPLICATE, BORDER_REFLECT,
     INTER_LINEAR, INTER_AREA,
     MORPH_OPEN, MORPH_CLOSE, MORPH_GRADIENT,
     ADAPTIVE_GAUSSIAN,
     FONT_PLAIN, FONT_SIMPLEX,
-   
+
 )
- 
+
 from momijo.vision.transforms.filter import (
     gaussian_blur,
     median_blur,
     bilateral_filter,
     sobel,
     laplacian,
-    canny, 
+    canny,
     magnitude_u8,
     ones_u8,
     bilateral_blur,
@@ -99,9 +99,9 @@ from momijo.vision.transforms.contour import (
 
 from momijo.vision.transforms.hough import (
     hough_lines_p,
-    hough_circles, 
+    hough_circles,
 )
- 
+
 from momijo.vision.transforms.array import (
     add_weighted,
     abs_u8,
@@ -112,7 +112,7 @@ from momijo.vision.transforms.array import (
     top_k_matches,len_keypoints,bf_match_hamming,
     valid_descriptors, Descriptor,orb_detect_and_compute
 )
- 
+
 
 # Display an image (stub: prints info instead of opening a real window).
 fn imshow(name: String, img: Image) -> None:

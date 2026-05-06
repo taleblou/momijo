@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: src/momijo/visual/echarts/map.mojo
 # Description: Map builder (world).

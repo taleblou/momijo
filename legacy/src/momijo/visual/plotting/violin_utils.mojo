@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: src/momijo/visual/stats/violin_utils.mojo
 # Description: Utilities for building violin curves (histogram-based) and simple list passthrough.

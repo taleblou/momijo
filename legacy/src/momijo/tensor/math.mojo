@@ -15,7 +15,7 @@
 # Repository:   https://github.com/taleblou/momijo
 #
 # License:      Apache License 2.0
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 
 from collections.list import List
 from momijo.tensor.tensor import Tensor

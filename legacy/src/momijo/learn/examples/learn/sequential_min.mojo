@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/examples/learn/sequential_min.mojo
 # Description: Minimal Sequential demo: Linear(10,32) -> ReLU -> Linear(32,2)

@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/geom.mojo
 
 from momijo.vision.image import Image
@@ -10,7 +10,7 @@ from momijo.vision.transforms.array import full, zeros
 # File: momijo/vision/transforms/geom.mojo
 # Shape-only geometric transforms. No pixel resampling yet.
 
- 
+
 
 # --- helpers ---------------------------------------------------------------
 
@@ -25,7 +25,7 @@ fn _norm_rot90(k: Int) -> Int:
     return t
 
 
- 
+
 
 # --- public API ------------------------------------------------------------
 
@@ -39,7 +39,7 @@ fn resize(img: Image, new_w: Int, new_h: Int, inter: Int = 0) -> Image:
     # Replace with actual resampling later.
     return Image.new_hwc_u8(H, W, C, UInt8(0))
 
-    
+
 # basic rotation
 fn rotate_basic(img: Image, angle: Float64) -> Image:
     if angle == 0.0:
@@ -88,14 +88,14 @@ fn flip(img: Image, axis: Int = 0) -> Image:
     return Image.new_hwc_u8(img.height(), img.width(), img.channels(), UInt8(0))
 
 # --- optional: affine (shape-only stub) ---
-# Expects 2x3 row-major matrix: [a00, a01, a02, a10, a11, a12] 
+# Expects 2x3 row-major matrix: [a00, a01, a02, a10, a11, a12]
 # from collections.list import List
 # fn affine(img: Image, matrix: List[Float64]) -> Image:
 #     if len(matrix) != 6:
 #         return Image.new_hwc_u8(img.height(), img.width(), img.channels(), UInt8(0))
 #     return Image.new_hwc_u8(img.height(), img.width(), img.channels(), UInt8(0))
 
- 
+
 
 
 @fieldwise_init("implicit")
@@ -436,15 +436,15 @@ fn translate(src: Image, dx: Int, dy: Int, border: BorderSpec = BorderSpec.CONST
     return dst.copy()
 
 
- 
- 
+
+
 
 # ---------------- Scalars / small helpers ----------------
 
 fn _abs(x: Float64) -> Float64:
     if x >= 0.0: return x
     return -x
-  
+
 
 # ---------------- 3x3 helpers (row-major) ----------------
 fn _det3(m: List[Float64]) -> Float64:
@@ -928,5 +928,3 @@ fn copy_make_border(
 
 fn deg2rad(deg: Float64) -> Float64:
     return deg * 3.141592653589793 / 180.0
-
-

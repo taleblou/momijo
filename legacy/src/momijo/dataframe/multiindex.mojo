@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.dataframe
 # File: src/momijo/dataframe/multiindex.mojo
 # Description: String-backed MultiIndex with factories, reordering, masking, and helpers.

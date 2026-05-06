@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.visual
 # File: src/momijo/visual/charts/ez_option.mojo
 # Description: Ergonomic DSL wrapper around Option.
@@ -74,7 +74,7 @@ fn _append_segment(mut s: String,
         s += String("[") + String(p2x) + String(",") + String(p2y) + String("], null")
         is_first = False
 
-# Add this tiny helper near the top of the file (outside the struct), 
+# Add this tiny helper near the top of the file (outside the struct),
 fn _format_scaled_6(scaled: Int) -> String:
     # scaled represents a fixed-point value with 6 decimals, i.e., value * 1_000_000
     var one_million = 1000000
@@ -98,18 +98,18 @@ struct EasyOption:
     var _x3d: String
     var _y3d: String
     var _z3d: String
-    var _grid3d: String 
+    var _grid3d: String
     var _parallel_axes: List[String]
     var _parallel_obj: String
 
     fn __init__(out self):
         self.inner = Option()
         self._titles = List[String]()
-        self._extra_kv = List[String]()  
+        self._extra_kv = List[String]()
         self._x3d = String("")
         self._y3d = String("")
         self._z3d = String("")
-        self._grid3d = String("") 
+        self._grid3d = String("")
         self._parallel_axes = List[String]()
         self._parallel_obj = String("")
 
@@ -412,7 +412,7 @@ struct EasyOption:
         obj += String(" }")
 
         self.inner.add_series_json(obj)
-        
+
     # Heatmap series from triplets (x_idx, y_idx, value).
     # x_idx, y_idx, values must have the same length.
     fn add_heatmap_series_from_triplets(
@@ -608,8 +608,8 @@ struct EasyOption:
 
         # Build data: [ [xIndex, y], ... ]
         var data = String("[")
-        var n = len(xcats); 
-        if len(y) < n: 
+        var n = len(xcats);
+        if len(y) < n:
             n = len(y)
         var k = 0
         while k < n:
@@ -661,7 +661,7 @@ struct EasyOption:
         line_width: Int = 2,
         cap_width_px: Int = 12
     ):
-        # if x-axis categories exist 
+        # if x-axis categories exist
         var lbl = String("[")
         var i = 0
         while i < len(xcats):
@@ -822,7 +822,7 @@ struct EasyOption:
             if i + 1 < n: data += String(",")
             i += 1
         data += String("]")
- 
+
         var render = String(
             "function(params, api){" +
             "  var cx = api.value(0), cy = api.value(1), val = api.value(2);" +
@@ -842,7 +842,7 @@ struct EasyOption:
             "  };" +
             "}"
         )
- 
+
         var obj = String("{ 'name':")
         obj += _json_str(name)
         obj += String(", 'type':'custom'")
@@ -853,7 +853,7 @@ struct EasyOption:
         obj += String("function(p){ var v=p.value; return '<b>(' + v[0] + ', ' + v[1] + ')</b><br/>Value: <b>' + v[2] + '</b>'; }")
         obj += String(" }")
         obj += String(" }")
- 
+
         self.inner.set_xaxis_json(String("{ 'type':'value', 'name':'X', 'nameLocation':'middle', 'nameGap':30, 'axisLabel':{ 'color':'#333' } }"))
         self.inner.set_yaxis_json(String("{ 'type':'value', 'name':'Y', 'nameLocation':'middle', 'nameGap':40, 'axisLabel':{ 'color':'#333' } }"))
 
@@ -997,7 +997,7 @@ struct EasyOption:
         # inject: 'polar': { ... }
         self._extra_kv.append(String("'polar': ") + obj)
 
- 
+
 
     fn set_angle_axis_value(mut self,
                             min_deg: Int = 0,
@@ -1027,7 +1027,7 @@ struct EasyOption:
         self._extra_kv.append(String("'radiusAxis': ") + obj)
 
     # ---- Polar Series (coordinateSystem='polar') -----------------------------
- 
+
 
     fn add_polar_scatter_series(mut self,
                                 name: String,
@@ -1079,10 +1079,10 @@ struct EasyOption:
         obj += String(" }")
         self.inner.set_radius_axis(obj)  # <-- name fixed
 
- 
+
 
     # Keep only ONE definition of this function
- 
+
 
     fn add_polar_line_series(mut self,
                             name: String,
@@ -1184,7 +1184,7 @@ struct EasyOption:
     # Polar coordinate utilities
     # --------------------------
 
- 
+
     # Angle axis as categories (e.g., months around the circle)
     fn set_angle_axis_category(mut self,
                             labels: List[String],
@@ -1420,7 +1420,7 @@ struct EasyOption:
         var obj = String("{ 'name':") + _json_str(name) + String(", 'type':'pictorialBar'")
         obj += String(", 'symbol':") + _json_str(symbol)
         obj += String(", 'symbolSize':[") + String(symbol_size_w) + String(",") + String(symbol_size_h) + String("]")
-        obj += String(", 'symbolOffset':[") + String(symbol_offset_x) + String(",") + String(symbol_offset_y) + String("]") 
+        obj += String(", 'symbolOffset':[") + String(symbol_offset_x) + String(",") + String(symbol_offset_y) + String("]")
         if symbol_repeat == "true":
             obj += String(", 'symbolRepeat':true")
         else:
@@ -1555,7 +1555,7 @@ struct EasyOption:
                String("'borderColor':") + _json_str(up_border) + String(", ") +
                String("'borderColor0':") + _json_str(down_border) +
                String(" }")
- 
+
 
         obj += String(" }")
         self.inner.add_series_json(obj)
@@ -1726,7 +1726,7 @@ struct EasyOption:
 
         # --- Parallel coordinates support ---------------------------------------
     # We collect axes & layout locally and inject them at finalize (to_json).
- 
+
 
     # Call this once in __init__
     # (Add to your __init__ if not already there)
@@ -1967,7 +1967,7 @@ struct EasyOption:
         return data_json
 
     # Add a Treemap series.
-    # - Provide either your own `data_json` (hierarchical) or use `build_treemap_flat(...)`. 
+    # - Provide either your own `data_json` (hierarchical) or use `build_treemap_flat(...)`.
     fn add_treemap_series(mut self,
                           name: String,
                           data_json: String,
@@ -2033,7 +2033,7 @@ struct EasyOption:
         obj += String(" }")
         return obj
 
-    # Add a Tree series. 'root' must be a single JSON object (a node). 
+    # Add a Tree series. 'root' must be a single JSON object (a node).
     fn add_tree_series(mut self,
                        name: String,
                        root: String,
@@ -2072,7 +2072,7 @@ struct EasyOption:
         self.inner.add_series_json(obj)
 
 
- 
+
 
     fn add_wordcloud_series(mut self,
                             name: String,
@@ -2196,12 +2196,12 @@ struct EasyOption:
             negatives.append(0)
             cum.append(prev)
 
-        # 2) Save cumulative for tooltips (inject as custom KV on the option root) 
+        # 2) Save cumulative for tooltips (inject as custom KV on the option root)
         var cum_json = _json_array_int(cum)
         self._extra_kv.append(String("'_cum': ") + cum_json)
 
         # 3) x/y axes (value-value label styling handled by caller as needed)
-        #    NOTE: We only set X categories if the caller hasn't set them already. 
+        #    NOTE: We only set X categories if the caller hasn't set them already.
         var x_json = String("{ 'type':'category', 'name':'', 'axisLabel':{ 'color':'#333' }, 'data':") +
                      _json_array_str(cats) + String(" }")
         self.inner.set_xaxis_json(x_json)
@@ -2368,7 +2368,7 @@ struct EasyOption:
 
                     if idx != 0 and idx != 15:
                         # helper to append one segment (two points) + null separator
-                   
+
 
                         # compute per-case edge intersections and append
                         if idx == 1 or idx == 14:
@@ -2422,7 +2422,7 @@ struct EasyOption:
 
 
     # Build Empirical CDF (ECDF) or Survival(=1-ECDF) from raw samples.
-    # - samples: raw observations (integers).  
+    # - samples: raw observations (integers).
     # - survival=True yields S(x)=1-ECDF(x).
     # - normalized=True outputs probabilities in [0,1]; False => cumulative counts.
     # - step_style: 'end'|'start'|'middle' (ECharts line.step). Default 'end' (right-continuous ECDF).
@@ -2529,7 +2529,7 @@ struct EasyOption:
 
         self.inner.add_series_json(obj)
 
- 
+
 
     fn add_survival_series(mut self,
                         name: String,

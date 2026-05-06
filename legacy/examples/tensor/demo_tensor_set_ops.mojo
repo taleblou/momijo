@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tests
 # Module:       tests.test_tensor_set_ops
 # File:         examples/Tensor/demo_tensor_set_ops.mojo
@@ -36,7 +36,7 @@ fn np_set_ops() -> None:
     # difference (a - b)
     var diff_ab = a.set_difference(b)
     print("setdiff a-b: " + diff_ab.__str__())
-    
+
     # xor (symmetric difference)
     var xor = a.set_xor(b)
     print("setxor: " + xor.__str__())

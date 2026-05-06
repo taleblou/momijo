@@ -2,7 +2,7 @@
 # Project: momijo | Package: vision.schedule.__init__
 # File: vision/schedule/__init__.mojo
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 
 # Core API re-exports for vision.schedule.__init__
 

@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.math
 # File: src/momijo/math/marching_squares.mojo
 # Description: marching squares

@@ -1,11 +1,11 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tests
 # Module:       tests.test_tensor_dtypes
 # File:         examples/Tensor/demo_tensor_dtypes.mojo
 #
 # Description:
-#   dtype casting & simple column-like access tests for momijo.tensor. 
+#   dtype casting & simple column-like access tests for momijo.tensor.
 
 from momijo.tensor import tensor
 from collections.list import List

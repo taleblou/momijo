@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/contour.mojo
 
 from momijo.vision.image import Image
@@ -17,7 +17,7 @@ fn _is_on(img: Image, x: Int, y: Int, thresh: UInt8 = UInt8(1)) -> Bool:
 # --- Small math helpers -----------------------------------------------------
 fn _fabs(x: Float64) -> Float64:
     return -x if x < 0.0 else x
- 
+
 
 fn _order_boundary(points: List[(Int, Int)], W: Int, H: Int) -> List[(Int, Int)]:
     var contour = List[(Int, Int)]()
@@ -296,7 +296,7 @@ fn find_contours(img: Image, external_only: Bool = False) -> List[List[(Int, Int
                 # Order boundary points into a contour polyline
                 var contour = _order_boundary(comp_boundary, W, H)
 
-                # external_only hook (placeholder): implement hierarchy filtering  
+                # external_only hook (placeholder): implement hierarchy filtering
                 if len(contour) > 0:
                     contours.append(contour.copy())
             x += 1
@@ -313,7 +313,7 @@ fn get_contour(contours: List[List[(Int,Int)]], idx: Int) -> List[(Int,Int)]:
 
 fn len_contours(cs: List[List[(Int, Int)]]) -> Int:
     return len(cs)
- 
+
 
 # Returns True if pixel at (x,y) is considered "on" in a binary mask.
 # If strict=True and on_value is provided, it requires equality; otherwise any nonzero is on.

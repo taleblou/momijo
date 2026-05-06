@@ -1,10 +1,8 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.profiler
 # File:         src/momijo/learn/profiler/__init__.mojo
 #
 # Description:
 #   Public re-exports for profiler utilities.
-
- 

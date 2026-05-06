@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision
 # File: src/momijo/vision/features.mojo
 # Description: Minimal feature types/utilities (Keypoint, Descriptor, matching helpers)

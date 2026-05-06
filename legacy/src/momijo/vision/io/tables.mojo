@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/vision/io/tables.mojo
 # Description: Standard JPEG Huffman and Quantization tables (baseline).

@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.vision | File: src/momijo/vision/transforms/color.mojo
 
 from momijo.vision.image import Image
@@ -224,7 +224,7 @@ fn histogram(img: Image) -> List[Int]:
 
 # Computes a per-pixel histogram for a grayscale image (channel 0).
 # If the image has multiple channels, it uses channel 0.
-# Works on packed HWC/UInt8; converts 
+# Works on packed HWC/UInt8; converts
 fn histogram(img: Image, bins: Int = 256) -> List[Int]:
     var base = img.ensure_packed_hwc_u8(True)
 
@@ -435,8 +435,8 @@ fn plot_hist_u8(hist: List[Int], width: Int = 256, height: Int = 200) -> Image:
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
+# Momijo
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
@@ -444,7 +444,7 @@ fn plot_hist_u8(hist: List[Int], width: Int = 256, height: Int = 200) -> Image:
 # Project: momijo.vision.transforms
 # File: momijo/vision/transforms/color_jitter.mojo
 
- 
+
 from momijo.vision.tensor import Tensor, packed_hwc_strides
 from momijo.vision.dtypes import DType
 
@@ -739,7 +739,7 @@ fn _u8_3d_to_image(rgb: List[List[List[UInt8]]]) -> Image:
     return img.copy()
 
 # Overload: CLAHE on Image by adapting to existing list-based implementation.
- 
+
 fn clahe_color_bgr(img: Image, clip_limit: Float64 = 2.0, tile: Int = 8) -> Image:
     var rgb = _image_to_u8_3d(img)
     var enhanced = clahe_color_bgr(rgb, clip_limit, tile)   # resolves to the list-based overload

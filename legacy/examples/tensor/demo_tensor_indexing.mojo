@@ -1,12 +1,12 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tests
 # Module:       tests.test_tensor_indexing
 # File:         examples/Tensor/demo_tensor_indexing.mojo
 #
 # Description:
 #   Advanced indexing, gather, and plane/broadcast write tests for momijo.tensor.
- 
+
 
 from momijo.tensor import tensor
 

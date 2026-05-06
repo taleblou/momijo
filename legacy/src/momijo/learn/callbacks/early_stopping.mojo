@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.callbacks.early_stopping
 # File:         src/momijo/learn/callbacks/early_stopping.mojo

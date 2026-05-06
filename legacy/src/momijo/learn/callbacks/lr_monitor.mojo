@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.callbacks.lr_monitor
 # File:         src/momijo/learn/callbacks/lr_monitor.mojo

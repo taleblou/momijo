@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/utils/fileio_stub.mojo
 # Description: Minimal real file I/O using Path.read_text/write_text.

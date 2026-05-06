@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tensor
 # Module:       tests.tensor
 # File:         examples/Tensor/demo_indexing_numpy_parity.mojo
@@ -48,7 +48,7 @@ fn demo_indexing_numpy_parity() -> None:
     show_tensor("""arr1[":"]""", arr1[":"])
     show_tensor("arr1[-1] ->", arr1[-1])
     show_tensor("""arr1["::2"]""", arr1["::2"])
- 
+
     show_tensor("arr1[[0,2]]", arr1[0,2])
 
     # =========================
@@ -110,7 +110,7 @@ fn demo_indexing_numpy_parity() -> None:
     print("""arr5[":,:,1,:,:"].shape -> """ + arr5[":,:,1,:,:"].shape().__str__())
     print("""arr5["::2,:,:,:,0"].shape -> """ + arr5["::2,:,:,:,0"].shape().__str__())
     print("""arr5[":,1,:,:,1:3"].shape -> """ + arr5[":,1,:,:,1:3"].shape().__str__())
- 
+
     show_tensor("arr5[[0,1]]", arr5[0,1])
 
 # -----------------------------------------------------------------------------

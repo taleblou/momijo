@@ -1,11 +1,11 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo.examples
 # File: examples/vision_hough.mojo
 # Description: Hough line and circle detection using `import momijo.vision as vision`.
 # Notes: Each detection step is saved to PPM/PNG/JPG.
 
- 
+
 import momijo.vision as vision
 from pathlib import Path
 from os import makedirs
@@ -23,21 +23,21 @@ fn ensure_outdir(outdir: String) -> None:
             pass
 
 
-fn _save_all(outdir: String, stem: String, img: vision.Image) -> None: 
+fn _save_all(outdir: String, stem: String, img: vision.Image) -> None:
     try:
-        vision.write_image(outdir + "/" + stem + ".png", img) 
-    
+        vision.write_image(outdir + "/" + stem + ".png", img)
+
     except e:
-        print(e) 
+        print(e)
     print("Saved: " + outdir + "/" + stem + ".{png}")
 
 fn save(outdir: String, name: String, img: vision.Image) -> String:
     var path = outdir + "/" + name
     try:
         vision.write_image(path, img)
-    
+
     except e:
-        print(e) 
+        print(e)
     print("Saved: " + path)
     return path
 

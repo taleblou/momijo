@@ -1,12 +1,12 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tensor
 # Module:       tests.tensor
 # File:         examples/Tensor/demo_io_all.mojo
 #
 # Description:
 #   End-to-end demos for CSV / JSON / XML I/O across Float64 / Float32 / Int.
- 
+
 
 from collections.list import List
 from momijo.tensor import tensor

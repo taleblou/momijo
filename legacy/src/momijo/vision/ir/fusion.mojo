@@ -2,16 +2,16 @@
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
 # This file is part of the Momijo project. See the LICENSE file at the repository root.
-# Momijo 
-# SPDX-License-Identifier: MIT
+# Momijo
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2025 Morteza Talebou and Mitra Daneshmand
 # Website: https://taleblou.ir/
 # Repository: https://github.com/taleblou/momijo
 #
 # Project: momijo.vision.ir
 # File: momijo/vision/ir/fusion.mojo
- 
- 
+
+
 
 from momijo.vision.ir.ir import Graph, OpKind, OpNode
 
@@ -31,7 +31,7 @@ fn _node_ow(n: OpNode) -> Int:
 fn _make_resize(oh: Int, ow: Int) -> OpNode:
     # Adjust this ctor to your real OpNode constructor if different.
     return OpNode(OpKind.ResizeNearest, oh, ow)
- 
+
 fn _set_nodes(mut g: Graph, nodes: List[OpNode]):
     # Prefer a setter if available; otherwise assign to the backing field.
     g._nodes = nodes

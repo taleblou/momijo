@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      Momijo
 # Module:       learn.hub.download
 # File:         src/momijo/learn/hub/download.mojo
@@ -54,7 +54,7 @@ struct DownloadOptions:
 # -----------------------------------------------------------------------------
 # Minimal FS shims (replace these with your project's real FS utils)
 # -----------------------------------------------------------------------------
-# NOTE: 
+# NOTE:
 #  - If your project already has write_all_bytes/read_all_bytes etc., call them here.
 
 fn _exists(p: Path) -> Bool:
@@ -63,11 +63,11 @@ fn _exists(p: Path) -> Bool:
     return p.exists()
 
 fn _mkdirs(p: Path):
-    # Create directory hierarchy if not present. 
+    # Create directory hierarchy if not present.
     # Fallback: do nothing if Path API handles auto-create on write.
     pass
 
-fn _remove(p: Path): 
+fn _remove(p: Path):
     # This shim silently ignores errors to keep behavior side-effect free.
     pass
 

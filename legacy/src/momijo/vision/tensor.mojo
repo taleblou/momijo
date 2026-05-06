@@ -1,7 +1,7 @@
 # MIT License
 # Copyright (c) 2025 Morteza...
 # Project: momijo  |  Source: https://github.com/taleblou/momijo
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # File: src/momijo/vision/tensor.mojo
 # Description: Minimal Tensor using UnsafePointer with ownership flag; HWC/CHW helpers.
 
@@ -27,7 +27,7 @@ fn packed_chw_strides(c: Int, h: Int, w: Int) -> (Int, Int, Int):
     var s1 = w                 # step per row (H)
     var s0 = h * w             # step per channel (C)
     return (s0, s1, s2)
- 
+
 # -------------------------------------------------------------------
 # Tensor (Copyable & Movable)
 # Owns a raw UnsafePointer[UInt8] buffer optionally.
@@ -87,7 +87,7 @@ struct Tensor(Copyable, Movable):
         self._stride0 = other._stride0
         self._stride1 = other._stride1
         self._stride2 = other._stride2
-        self._owns   = False  
+        self._owns   = False
 
     fn __del__(deinit self):
         # Free only if we own and length > 0 (length is authoritative)
@@ -113,7 +113,7 @@ struct Tensor(Copyable, Movable):
             dtype = self._dtype.copy(),
             owns = True                 # ⬅️ چون بافر جدید ساختیم
         )
- 
+
     fn dtype(self) -> DType: return self._dtype.copy()
     fn ndim(self) -> Int: return self._ndim
     fn height(self) -> Int: return self._shape0
@@ -274,7 +274,7 @@ struct Tensor(Copyable, Movable):
 
         return out.copy()   # IMPORTANT: return owning tensor (no .copy())
 
- 
+
     # ------------------------------ __str__ ------------------------------
     # Human-readable string summary (no nested functions)
     fn __str__(self) -> String:

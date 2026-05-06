@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tests
 # Module:       tests.test_tensor_linalg
 # File:         examples/Tensor/demo_tensor_linalg.mojo
@@ -8,7 +8,7 @@
 #   Advanced linear algebra tests for momijo.tensor:
 #   - matrix-vector and matrix-matrix products
 #   - tensordot with axis
-#   - column-wise reductions 
+#   - column-wise reductions
 
 from momijo.tensor import tensor
 

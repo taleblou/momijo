@@ -1,12 +1,12 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tensor
 # Module:       examples.Tensor
 # File:         examples/Tensor/demo_setitem_numpy_parity.mojo
 #
 # Description:
 #   Parity demo for __setitem__ (writing with indices/slices) vs. NumPy-style,
-#   covering 1D..5D with native and string-spec selectors. 
+#   covering 1D..5D with native and string-spec selectors.
 #   - Consistent RHS tensor shapes for scalar/broadcast writes
 
 from momijo.tensor import tensor

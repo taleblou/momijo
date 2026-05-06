@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/examples/learn/train_mlp_adamw_cosine.mojo
 # Description: MLP training with AdamW + CosineAnnealingLR.

@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project:      momijo.tensor
 # Module:       tests.test_tensor_axis_windows
 # File:         examples/Tensor/demo_tensor_axis_windows.mojo
@@ -12,7 +12,7 @@
 #   - mean with axis/keepdims
 #   - pad across 2D/3D/4D
 #   - sliding_window (1D direct and ND via flatten)
-#   - 2D flips (fliplr/flipud) 
+#   - 2D flips (fliplr/flipud)
 
 from momijo.tensor import tensor
 from collections.list import List

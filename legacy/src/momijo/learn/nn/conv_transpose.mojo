@@ -1,5 +1,5 @@
 # MIT License
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Project: momijo
 # File: src/momijo/learn/nn/conv_transpose.mojo
 # Description: ConvTranspose2d (deconvolution) forward + backward, naive loops (NCHW).
