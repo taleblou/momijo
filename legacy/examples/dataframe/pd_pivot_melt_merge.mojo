@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/                # Project or author website.
 # Repository:   https://github.com/taleblou/momijo  # Canonical Git repository.
 #
-# License:      MIT License                         # License label (short form only).
+# License:      Apache License 2.0                         # License label (short form only).
 # SPDX-License-Identifier: MIT                      # SPDX identifier required by policy.
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand  # Copyright.
 #
@@ -80,7 +80,7 @@ fn pd_pivot_melt_merge():                          # Define a demo function to s
     print(merged.__str__())                        # Print the merged and sorted result.
     print("merged.dtypes:")                        # Label before printing dtypes of the merged table.
     print(merged.dtypes().__str__())               # Show dtypes for the final table.
- 
+
 
 # ---------------- main ---------------- #
 fn main() -> None:                                 # Program entry point; no CLI args.

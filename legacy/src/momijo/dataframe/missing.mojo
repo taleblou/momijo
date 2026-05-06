@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.missing
 # File:         missing.mojo
 # Path:         dataframe/missing.mojo
@@ -10,7 +10,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -20,7 +20,7 @@
 #                    dropna_any, drop_duplicates, isin_i64/f64.
 #   - Static methods present: N/A.
 
-from momijo.arrow_core.poly_column import get_string 
+from momijo.arrow_core.poly_column import get_string
 from momijo.dataframe.column import Column
 from momijo.dataframe.frame import DataFrame, width
 from momijo.dataframe.helpers import isna_str
@@ -230,7 +230,7 @@ fn dropna_any(df0: DataFrame) -> DataFrame:
                     _ = valid.set(j, col.s.valid.is_set(i2))
                     j += 1
                 i2 += 1
- 
+
             var cnew = col_string_with_valid(name, data, valid)
             out.set_column(cnew)
 
@@ -243,7 +243,7 @@ fn dropna_any(df0: DataFrame) -> DataFrame:
                 if keep[i]:
                     data.append(col.f64.data[i])
                 i += 1
- 
+
             var valid = Bitmap()
             valid.resize(len(data), True)
             var cnew = col_f64(name, data, valid)
@@ -365,15 +365,15 @@ fn drop_duplicates(df: DataFrame, subset: List[String], keep: String = "first") 
     # ---------- build output frame (DataFrame() + set fields + set_column) ----------
     var out = DataFrame()
     out.index_name = String(df.index_name)
- 
+
     var new_index = List[String]()
     var ii = 0
     while ii < len(kept) and ii < len(df.index_vals):
         new_index.append(df.index_vals[kept[ii]])
-        ii += 1 
+        ii += 1
     if len(new_index) > 0:
         out.index_vals = new_index.copy()
- 
+
     var c3 = 0
     while c3 < df.ncols():
         var vals = List[String]()
@@ -431,9 +431,9 @@ fn fillna_value(frame: DataFrame, col: String, value: String) -> DataFrame:
         return out
 
     var c = out.get_column(col)
-    if c.dtype() != ColumnTag.STR(): 
+    if c.dtype() != ColumnTag.STR():
         return out
- 
+
 
     var s = c.s.copy()
     var n = s.len()
@@ -447,11 +447,11 @@ fn fillna_value(frame: DataFrame, col: String, value: String) -> DataFrame:
             s.data[i] = value
             _ = s.valid.set(i, True)
             filled += 1
-        i += 1 
+        i += 1
 
     # Build a new Column explicitly and replace by index
     var cnew = col_string_with_valid(out.col_names[idx], s.data, s.valid)
-    out.set_column(idx, cnew) 
+    out.set_column(idx, cnew)
     return out
 
 
@@ -486,10 +486,10 @@ fn fillna_value(frame: DataFrame, col: String, value: Float64) -> DataFrame:
         data.append(v)
         _ = valid.set(i, ok)
         i += 1
- 
+
 
     var cnew = col_f64_with_valid(out.col_names[idx], data, valid)
-    out.set_column(idx, cnew) 
+    out.set_column(idx, cnew)
     return out
 
 
@@ -501,9 +501,9 @@ fn fillna_value(frame: DataFrame, col: String, value: Int) -> DataFrame:
         return out
 
     var c = out.get_column(col)
-    if c.dtype() != ColumnTag.I64(): 
+    if c.dtype() != ColumnTag.I64():
         return out
- 
+
 
     var s = c.i64.copy()
     var n = s.len()
@@ -516,11 +516,11 @@ fn fillna_value(frame: DataFrame, col: String, value: Int) -> DataFrame:
             _ = s.valid.set(i, True)
             filled += 1
         i += 1
- 
+
 
     # Reuse the same Column shell and then replace by index
     c.from_i64(s)
-    out.set_column(idx, c) 
+    out.set_column(idx, c)
     return out
 
 
@@ -532,9 +532,9 @@ fn fillna_value(frame: DataFrame, col: String, value: Bool) -> DataFrame:
         return out
 
     var c = out.get_column(col)
-    if c.dtype() != ColumnTag.BOOL(): 
+    if c.dtype() != ColumnTag.BOOL():
         return out
- 
+
 
     var s = c.b.copy()
     var n = s.len()
@@ -546,9 +546,9 @@ fn fillna_value(frame: DataFrame, col: String, value: Bool) -> DataFrame:
             s.data[i] = value
             _ = s.valid.set(i, True)
             filled += 1
-        i += 1 
+        i += 1
     c.from_bool(s)
-    out.set_column(idx, c) 
+    out.set_column(idx, c)
     return out
 
 
@@ -675,11 +675,11 @@ fn _is_missing_col(col: Column, i: Int) -> Bool:
 
 fn _is_missing_cell(s: String) -> Bool:
     if len(s) == 0:
-        return True 
+        return True
     if s == "NaN" or s == "nan" or s == "NaN ":
         return True
     return False
-  
+
 
 # NA detection and summary
 
@@ -723,4 +723,3 @@ fn isna_count_by_col(df0: DataFrame) -> String:
             out += "\n"
         c += 1
     return out
-

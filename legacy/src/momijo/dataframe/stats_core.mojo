@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.stats_core
 # File:         stats_core.mojo
 # Path:         dataframe/stats_core.mojo
@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -238,8 +238,8 @@ fn str_replace_all(s: String, old: String, newv: String):
             out = out + String(s[i])
             i += 1
     return out
- 
-# Compute mean of a column parsed from string values; empty strings ignored. 
+
+# Compute mean of a column parsed from string values; empty strings ignored.
 fn col_mean(frame: DataFrame, col: String) -> Float64:
     var idx = frame.col_index(col)
     if idx < 0:
@@ -269,7 +269,7 @@ fn col_mean(frame: DataFrame, col: String) -> Float64:
 
 
 
- 
+
 # ---- Forward fill (per column) ----
 
 # [moved] cut_numeric

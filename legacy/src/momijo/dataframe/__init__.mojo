@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -34,7 +34,7 @@ from momijo.dataframe._groupby_core import Agg,pivot_table
 # ---- Core types ----
 from momijo.dataframe.frame import DataFrame as DataFrame
 
-# ---- Series & helpers ---- 
+# ---- Series & helpers ----
 from momijo.dataframe.series import series_from_list as series_from_list
 from momijo.dataframe.helpers import isna as _isna
 
@@ -88,7 +88,7 @@ from momijo.dataframe.api import df_rename as _df_rename
 # Returns a List[String] to be used with assign(...).
 
 from momijo.dataframe.string_ops import col_str_concat as col_str_concat
-from momijo.dataframe.series_str import df_label_where 
+from momijo.dataframe.series_str import df_label_where
 from momijo.dataframe.api import make_pairs
 
 from momijo.dataframe.series import series_index
@@ -100,7 +100,7 @@ from momijo.dataframe.api import set_value
 from momijo.dataframe.missing import isna_count_by_col
 from momijo.dataframe.api import replace_values,coerce_str_to_f64
 from momijo.dataframe.stats_core import col_mean
-from momijo.dataframe._groupby_core import groupby 
+from momijo.dataframe._groupby_core import groupby
 from momijo.dataframe.string_ops import NaN
 from momijo.dataframe.string_ops import NoneStr
 from momijo.dataframe.categorical import to_category
@@ -143,7 +143,7 @@ from momijo.dataframe.string_ops import str_replace_regex
 
 from momijo.dataframe.join import merge,Join,AsOf,merge_asof
 
- 
+
 
 # ---- Pairs helpers (functional, no inout) ----
 # alias ColPair = (String, List[String])

@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -31,7 +31,7 @@ fn pd_categorical_datetime_resample() -> df.DataFrame:  # Demo function returnin
     var cat_raw = df.Series(                                     # Build a categorical-like string Series.
         ["A","A","B","B","C","C","D","D"],                       # Eight labels aligned with 'ts'.
         dtype=df.string()                                        # Explicit string dtype for portability.
-    ) 
+    )
 
     var vals = df.Series([0,10,20,30,40,50,60,70], dtype=df.int32())  # Numeric Series with explicit int32 dtype.
 

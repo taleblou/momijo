@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -181,7 +181,7 @@ struct Categorical(Copyable, Movable):
         out.cats = new_cats
         out.codes = new_codes
         return out
- 
+
 
 # Build categorical (cats, codes) purely as tuple without importing Categorical
 # fn to_category(col: Column) -> (List[String], List[Int]):
@@ -202,7 +202,7 @@ struct Categorical(Copyable, Movable):
 #         i += 1
 #     return (cats, codes)
 
-# Column-level overload with options 
+# Column-level overload with options
 # Convert a string column to categorical integer codes and append as a new column.
 # - If `categories` is non-empty: use its order to map; unseen values → -1.
 # - Else: build categories on the fly by first occurrence order.
@@ -281,8 +281,8 @@ fn to_category(df: DataFrame,
 
     # Assemble SeriesI64 (or Int) and set into frame (replace or append)
     var s = SeriesI64()
-    s.set_name(new_name) 
-    s.data = codes.copy()   # deep copy semantics for List[Int] 
+    s.set_name(new_name)
+    s.data = codes.copy()   # deep copy semantics for List[Int]
     # s.valid = Bitmap.full(nrows, True)
 
     # If a column named new_name exists, replace it; else append.

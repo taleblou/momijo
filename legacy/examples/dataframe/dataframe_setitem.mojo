@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -125,7 +125,7 @@ fn main() -> None:                           # Program entry point.
     # Build an rhs frame with at least first 3 columns so idx [0,1,2] is valid
     var rhs_pos = frame.loc(df.rows_all(), df.cols_all())             # Full-width rhs with same shape.
     var idxs: List[Int] = [0, 1, 2]                                   # Positional targets to update.
- 
+
     frame.set_columns(idxs, rhs_pos)                                  # Assign columns at indices [0,1,2].
     print(frame.loc(df.rows_all(), list_str2("name","age")).__str__())# Verify some affected columns.
     print(frame[Int(2)].__str__())                                    # Print column at index 2 for inspection.

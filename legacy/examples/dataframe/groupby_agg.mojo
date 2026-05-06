@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -104,7 +104,7 @@ fn main() -> None:                           # Program entry point.
     print_section("Input DataFrame")         # Section header for the input preview.
     print(df.head(frame, 8).to_string())     # Show the first eight rows of the input data.
     print("dtypes:\n" + df.df_dtypes(frame)) # Show column data types for quick verification.
- 
+
     var out = groupby_agg(frame)             # Run the groupby/aggregation/transform demo to get output.
 
     print_section("Final DataFrame (with score_z_per_city)")  # Header for the final result preview.

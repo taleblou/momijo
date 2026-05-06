@@ -10,7 +10,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -70,7 +70,7 @@ fn make_demo_image() -> vision.Image:          # Create a synthetic demo image s
     img = vision.circle(                       # Draw a solid red circle (BGR order) for additional features.
         img, 360, 120, 60, [UInt8(0), UInt8(0), UInt8(255)], -1
     )
-    
+
     try:                                       # Draw some text; this can fail if fonts are not available.
         img = vision.put_text(                 # Render the label "ORB Demo" near the bottom.
             img, "ORB Demo",                   # Target image and text string.

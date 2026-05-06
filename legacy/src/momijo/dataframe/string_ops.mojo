@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.string_ops
 # File:         string_ops.mojo
 # Path:         dataframe/string_ops.mojo
@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -41,7 +41,7 @@ from momijo.dataframe.df_api import concat_rows as concat_rows
 from momijo.dataframe.df_api import copy as copy
 from momijo.dataframe.df_api import head_str as head_str
 from momijo.dataframe.df_api import isna_count_by_col as isna_count_by_col
-from momijo.dataframe.df_api import make_pairs as make_pairs 
+from momijo.dataframe.df_api import make_pairs as make_pairs
 from momijo.dataframe.df_api import rename as rename
 from momijo.dataframe.df_api import replace_values as replace_values
 from momijo.dataframe.df_api import series_from_list as series_from_list
@@ -276,7 +276,7 @@ fn str_len(df0: DataFrame, col: String)->List[Float64]:
             r += 1
         return out
 
-         
+
 
 @always_inline
 fn _upper_ascii1(ch: String) -> String:
@@ -667,12 +667,12 @@ fn col_str_concat(df0: DataFrame, col: String, prefix: String = String(""), suff
         out.append(prefix + s + suffix)
         r += 1
     return out.copy()
- 
+
 # ---- Small sentinels ----
 fn NaN() -> String:     return String("NaN")
 fn NoneStr() -> String: return String("")
 
- 
+
 
 # Helper: check if string is NA/empty
 fn _isna(s: String)->Bool:
@@ -750,7 +750,7 @@ fn str_contains(
         r += 1
 
     return out.copy()
- 
+
 
 
 

@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -28,7 +28,7 @@ from momijo.dataframe.io_json import read_json, to_json, read_json_lines, to_jso
 from momijo.dataframe.utils import infer_dtype, compute_stats,clip_f64, nlargest_f64, nsmallest_f64
 from momijo.dataframe.frame import DataFrame, get_column_at, width
 from momijo.dataframe.helpers import find_col,__dict_contains
-from momijo.dataframe.na import fillna_col_bool, fillna_col_f64, fillna_col_i64 
+from momijo.dataframe.na import fillna_col_bool, fillna_col_f64, fillna_col_i64
 from momijo.dataframe.series_bool import append
 from momijo.dataframe.series_f64 import SeriesF64
 from momijo.dataframe.series_str import SeriesStr
@@ -41,10 +41,10 @@ from momijo.dataframe.datetime_ops import _clip_date_part
 from momijo.dataframe.series_bool import SeriesBool as SeriesBoolT
 from momijo.dataframe.series_str import SeriesStr as SeriesStrT
 from momijo.dataframe.series_f64 import SeriesF64 as SeriesF64T
-from momijo.dataframe.series_i64 import SeriesI64 as SeriesI64T 
+from momijo.dataframe.series_i64 import SeriesI64 as SeriesI64T
 
 from collections.dict import Dict
- 
+
 # Type aliases
 #alias ColPair = (String, List[String])
 # ColPair: a (name, values) column pair with deep-copy semantics.
@@ -85,22 +85,22 @@ struct DType:
         return DType(self.tag, make_nullable)
 
     # ---------- Tag constants (static) ----------
-    @always_inline 
+    @always_inline
     @staticmethod
     fn tag_bool() -> Int:    return 1
-    @always_inline 
+    @always_inline
     @staticmethod
     fn tag_int32() -> Int:   return 2
-    @always_inline 
+    @always_inline
     @staticmethod
     fn tag_int64() -> Int:   return 3
-    @always_inline 
+    @always_inline
     @staticmethod
     fn tag_f32() -> Int:     return 4
-    @always_inline 
+    @always_inline
     @staticmethod
     fn tag_f64() -> Int:     return 5
-    @always_inline 
+    @always_inline
     @staticmethod
     fn tag_string() -> Int:  return 6
 
@@ -231,7 +231,7 @@ fn f64_nan() -> Float64:
 @always_inline
 fn is_nan(x: Float64) -> Bool:
     return x != x
- 
+
 # Returns (value, ok). ok=False ⇒ value=NaN.
 fn try_parse_f64(s: String) -> (Float64, Bool):
     # empty-like sentinels
@@ -337,10 +337,10 @@ fn parse_f64_or_nan(s: String) -> Float64:
     return f64_nan()
 
 # -------------------- Series facades (return Column) --------------------
- 
+
 
 # Single generic facade: covers Bool, Int, Float64, String (and similar),
-# and returns List[String] to feed your existing DataFrame(columns, data, index, ...) 
+# and returns List[String] to feed your existing DataFrame(columns, data, index, ...)
 
 # # ---------------- Int (no nulls) ----------------
 # fn Series(values: List[Int], dtype: DType) -> List[String]:
@@ -357,7 +357,7 @@ fn parse_f64_or_nan(s: String) -> Float64:
 #     return values.copy()
 
 # ---------- helpers ----------
-@always_inline 
+@always_inline
 fn _ensure_nullable(d: DType) -> DType:
     # If dtype is already nullable, return an explicit copy; otherwise return a nullable twin.
     if d.is_nullable():
@@ -389,7 +389,7 @@ fn Series_from_strings(values: List[String], dtype: DType) -> List[String]:
         out.append(String(values[i]))
         i += 1
     return out.copy()
- 
+
 # ---------------- Int32 (nullable) ----------------
 fn Series(values: List[Optional[Int]], dtype: DType) -> List[String]:
     var _ = _ensure_nullable(dtype)              # force nullable dtype (ignored here, but consistent)
@@ -407,10 +407,10 @@ fn Series(values: List[Optional[Int]], dtype: DType) -> List[String]:
     return out.copy()
 
 
- 
- 
 
-# ---------------- Int64 (nullable) ---------------- 
+
+
+# ---------------- Int64 (nullable) ----------------
 # Keep it if you’ve split Int32/Int64 separately in your API.
 fn Series(values: List[Optional[Int64]], dtype: DType) -> List[String]:
     var _ = _ensure_nullable(dtype)
@@ -480,7 +480,7 @@ fn Series(values: List[Optional[String]], dtype: DType) -> List[String]:
         i += 1
     return out.copy()
 
- 
+
 
 fn _list_f64_to_str(xs: List[Float64]) -> List[String]:
     var out = List[String]()
@@ -521,7 +521,7 @@ fn ToDataFrame(mapping: Dict[String, List[String]], index: List[String]) -> Data
     # delegate to your existing ctor: DataFrame(columns, data, index, index_name="")
     return DataFrame(names, data, index, String(""))
 
- 
+
 # ---------- ToDataFrame without index (auto 0..n-1) ----------
 fn ToDataFrame(mapping: Dict[String, List[String]]) -> DataFrame:
     # Collect names first
@@ -567,7 +567,7 @@ fn ToDataFrame(mapping: Dict[String, List[Float64]], index: List[String]) -> Dat
 
     return DataFrame(names, data, index, String(""))
 
- 
+
 
 fn ToDataFrame(mapping: Dict[String, List[Int]], index: List[String]) -> DataFrame:
     var names = List[String]()
@@ -722,11 +722,11 @@ fn _align_to_index_length(vals: List[String], nrows: Int) -> List[String]:
         i += 1
     return out.copy()
 
- 
- 
 
- 
- 
+
+
+
+
 
 # ---------- helpers: convert typed lists to List[String] ----------
 fn to_string_list_i(xs: List[Int]) -> List[String]:
@@ -748,7 +748,7 @@ fn to_string_list_f(xs: List[Float64]) -> List[String]:
 fn to_string_list_s(xs: List[String]) -> List[String]:
     return xs.copy()
 
- 
+
 
 
 
@@ -758,7 +758,7 @@ fn Index(labels: List[String]) -> List[String]:
 struct ColKind(Copyable, Movable):
     var tag: Int
     fn __init__(out self):
-        self.tag = 0   
+        self.tag = 0
 
     @staticmethod
     fn STR() -> ColKind:
@@ -789,7 +789,7 @@ struct ColPair(Copyable, Movable):
         self.kind = ColKind.STR()
         self.s = List[String]()
         self.i = List[Int]()
-        self.f = List[Float64]() 
+        self.f = List[Float64]()
 
     fn __copyinit__(out self, other: Self):
         self.name = String(other.name)
@@ -797,7 +797,7 @@ struct ColPair(Copyable, Movable):
         self.s = other.s.copy()
         self.i = other.i.copy()
         self.f = other.f.copy()
- 
+
     @staticmethod
     fn of_str(name: String, values: List[String]) -> Self:
         var cp = ColPair()
@@ -821,8 +821,8 @@ struct ColPair(Copyable, Movable):
         cp.kind = ColKind.F64()
         cp.f = values.copy()
         return cp.copy()
-  
- 
+
+
     # -------- Convenience factories --------
     @staticmethod
     fn of(name: String, values: List[String]) -> Self:
@@ -913,7 +913,7 @@ struct IndexPair(ExplicitlyCopyable, Movable):
     # Explicit copy() method (required by ExplicitlyCopyable)
     fn copy(self) -> Self:
         return Self(self)
- 
+
 
 
 # Internal helper: find column index by name (returns -1 if not found)
@@ -931,12 +931,12 @@ fn df_from_columns(columns: List[String], data: List[List[String]]) -> DataFrame
     var idx = List[String]()
     return DataFrame(columns, data, idx, String(""))
 
- 
- 
+
+
 
 # ColPair: struct with fields .name: String and .values: List[String]
 
-# if names are non-empty and unique by adding suffixes when needed. 
+# if names are non-empty and unique by adding suffixes when needed.
 # ---------- Helpers (keep English-only comments) ----------
 fn _ensure_unique_names(raw: List[String]) -> List[String]:
     var out = List[String]()
@@ -981,7 +981,7 @@ fn _columns_to_rows(cols_values: List[List[String]]) -> List[List[String]]:
     return rows.copy()
 
 
- 
+
 fn _to_strings_i64(xs: List[Int], limit: Int) -> List[String]:
     var out = List[String]()
     var j = 0
@@ -1118,14 +1118,14 @@ fn coerce_str_to_i64(frame: DataFrame, col: String) -> DataFrame:
 
 
 
- 
+
 
 # Minimal df_make: build DataFrame from column names and values
 fn df_make(col_names: List[String], cols: List[List[String]]) -> DataFrame:
     var idx = List[String]()
     return DataFrame(col_names, cols, idx, String(""))
 
- 
+
 
 # Introspection
 fn df_head(df: DataFrame, n: Int) -> DataFrame:
@@ -1209,7 +1209,7 @@ fn df_describe(df: DataFrame) -> String:
     return s
 
 # Rename / index helpers
-# NOTE: 'Dict' is assumed available in project context;  
+# NOTE: 'Dict' is assumed available in project context;
 fn df_rename(df: DataFrame, mapping: Dict[String, String], axis_name: String) -> DataFrame:
     var out = df.copy()
     var i = 0
@@ -1437,7 +1437,7 @@ fn series_index(s: Series) -> String:
 
 # ---- DataFrame constructors & meta ----
 
- 
+
 fn pairs_append(pairs: List[ColPair], name: String, values: List[String]) -> List[ColPair]:
     var out = pairs.copy()
     out.append(ColPair.of_str(name, values))
@@ -1452,7 +1452,7 @@ fn pairs_append(pairs: List[ColPair], name: String, values: List[Float64]) -> Li
     var out = pairs.copy()
     out.append(ColPair.of_f64(name, values))
     return out.copy()
- 
+
 
 
 # ---- Drop NA (any) ----
@@ -1533,9 +1533,9 @@ fn col_str(name: String, data: List[String]) -> Column:
         j += 1
 
     var c = Column()
-    c.from_str(s)    
-    return c.copy()        
-        
+    c.from_str(s)
+    return c.copy()
+
 # Build a String column from name + data + validity (deep copies, no aliasing)
 fn col_string_with_valid(name: String, data: List[String], valid: Bitmap) -> Column:
     # --- build SeriesStr
@@ -1636,19 +1636,19 @@ fn col_f64_with_valid(name: String, data: List[Float64], valid: Bitmap) -> Colum
         c.f64.valid.resize(n, True)
     return c.copy()
 
- 
+
 fn set_value(frame: DataFrame, row: Int, col: String, value: String) -> DataFrame:
     var out = frame.copy()
     var idx = out.col_index(col)
-    
-    if idx < 0 or row < 0 or row >= out.nrows(): 
+
+    if idx < 0 or row < 0 or row >= out.nrows():
         return out
 
     var c = out.get_column(col)
-    if c.dtype() != ColumnTag.STR(): 
-        return out 
+    if c.dtype() != ColumnTag.STR():
+        return out
 
-    var n = c.s.len() 
+    var n = c.s.len()
 
     var data = List[String]()
     data.reserve(n)
@@ -1665,11 +1665,11 @@ fn set_value(frame: DataFrame, row: Int, col: String, value: String) -> DataFram
         data.append(v)
         _ = valid.set(i, ok)
         i += 1
- 
+
 
     var cnew = col_string_with_valid(out.col_names[idx], data, valid)
-    out.set_column(cnew) 
-    var c2 = out.get_column(col)  
+    out.set_column(cnew)
+    var c2 = out.get_column(col)
     return out
 
 
@@ -1769,7 +1769,7 @@ fn set_value(frame: DataFrame, row: Int, col: String, value: Bool) -> DataFrame:
     var cnew = col_bool(out.col_names[idx], data, valid)
     out.set_column(cnew)
     return out
- 
+
 # --------------------- set_null (dtype-preserving) ---------------------
 
 # Set a single cell to null without changing the column dtype.
@@ -1778,14 +1778,14 @@ fn set_value(frame: DataFrame, row: Int, col: String, value: Bool) -> DataFrame:
 fn set_null(frame: DataFrame, row: Int, col: String) -> DataFrame:
     var out = frame.copy()
     var idx = out.col_index(col)
-    if idx < 0 or row < 0 or row >= out.nrows(): 
+    if idx < 0 or row < 0 or row >= out.nrows():
         return out
 
     var c = out.get_column(col)
     var tag = c.dtype()
 
     # Float64
-    if tag == ColumnTag.F64(): 
+    if tag == ColumnTag.F64():
 
         var n = len(c.f64.data)
         var data = List[Float64]()
@@ -1809,7 +1809,7 @@ fn set_null(frame: DataFrame, row: Int, col: String) -> DataFrame:
         return out
 
     # Int64
-    if tag == ColumnTag.I64(): 
+    if tag == ColumnTag.I64():
 
         var n = len(c.i64.data)
         var data = List[Int]()
@@ -1827,11 +1827,11 @@ fn set_null(frame: DataFrame, row: Int, col: String) -> DataFrame:
             i += 1
 
         var cnew = col_i64_with_valid(out.col_names[idx], data, valid)
-        out.set_column(idx, cnew) 
+        out.set_column(idx, cnew)
         return out
 
     # Bool
-    if tag == ColumnTag.BOOL(): 
+    if tag == ColumnTag.BOOL():
 
         var n = len(c.b.data)
         var data = List[Bool]()
@@ -1849,11 +1849,11 @@ fn set_null(frame: DataFrame, row: Int, col: String) -> DataFrame:
             i += 1
 
         var cnew = col_bool_with_valid(out.col_names[idx], data, valid)
-        out.set_column(idx, cnew) 
+        out.set_column(idx, cnew)
         return out
 
     # String
-    if tag == ColumnTag.STR(): 
+    if tag == ColumnTag.STR():
 
         var n = len(c.s.data)
         var data = List[String]()
@@ -1871,9 +1871,9 @@ fn set_null(frame: DataFrame, row: Int, col: String) -> DataFrame:
             i += 1
 
         var cnew = col_string_with_valid(out.col_names[idx], data, valid)
-        out.set_column(idx, cnew) 
+        out.set_column(idx, cnew)
         return out
- 
+
     return out
 
 
@@ -1913,7 +1913,7 @@ fn replace_values(frame: DataFrame, col: String, from_value: String, to_value: S
         r += 1
 
     var cnew = col_string_with_valid(out.col_names[idx], data, valid)
-    out.set_column(idx, cnew) 
+    out.set_column(idx, cnew)
     return out
 
 # -------------- coerce_str_to_f64 (robust replace by index) --------------
@@ -1930,7 +1930,7 @@ fn coerce_str_to_f64(frame: DataFrame, col: String) -> DataFrame:
         return out
     if c.dtype() != ColumnTag.STR():
         return out
- 
+
 
     # Build F64 buffers from string payload
     var n = len(c.s.data)
@@ -1958,11 +1958,11 @@ fn coerce_str_to_f64(frame: DataFrame, col: String) -> DataFrame:
         i += 1
 
     var cnew = col_f64_with_valid(out.col_names[idx], data, valid)
-    out.set_column(idx, cnew) 
+    out.set_column(idx, cnew)
     return out
 
 
- 
+
 
 
 
@@ -2107,10 +2107,10 @@ fn copy(df0: DataFrame) -> DataFrame:
     return df0.copy()
 
 
- 
- 
+
+
 # Map a single-character string "0".."9" to its int value without any raising.
-@always_inline 
+@always_inline
 fn _digit(c: String, mut v: Int) -> Bool:
     if c == "0": v = 0;  return True
     if c == "1": v = 1;  return True
@@ -2137,7 +2137,7 @@ fn _to_int(s: String, mut v: Int) -> Bool:
 
     var acc = 0
     while i < len(s):
-        var c = s[i:i+1]       
+        var c = s[i:i+1]
         var d = 0
         if not _digit(c, d):
             return False
@@ -2178,8 +2178,8 @@ fn rename(
 
     return out.copy()
 
- 
-# Convert a string column to normalized ISO date strings (YYYY-MM-DD). 
+
+# Convert a string column to normalized ISO date strings (YYYY-MM-DD).
 fn to_datetime(frame: DataFrame, col: String, fmt: String = String("%Y-%m-%d")) -> DataFrame:
     var out = frame.copy()
 
@@ -2212,19 +2212,19 @@ fn to_datetime(frame: DataFrame, col: String, fmt: String = String("%Y-%m-%d")) 
 
         if ok:
             vals.append(_iso_date(y, m, d))  # always YYYY-MM-DD with zero padding
-        else: 
+        else:
             vals.append(raw)
         r += 1
 
     # Rebuild a fresh SeriesStr and set it into the column (deep copy, no aliasing)
     var s = SeriesStr()
     s.set_name(col)
-    s.data = vals.copy() 
+    s.data = vals.copy()
     # s.valid = Bitmap.full(n, True)
 
-    # Requires your Column to have this setter 
+    # Requires your Column to have this setter
     out.cols[j].set_string_series(s)
- 
+
     # out.dtypes[j] = String("datetime")
 
     return out
@@ -2292,8 +2292,8 @@ fn _to_ymd_checked(ys: String, ms: String, ds: String, mut y: Int, mut m: Int, m
     return True
 
 
- 
- 
+
+
 
 fn _is_leap(y: Int) -> Bool:
     if (y % 400) == 0: return True
@@ -2310,7 +2310,7 @@ fn _iso_date(y: Int, m: Int, d: Int) -> String:
     if len(ds) == 1: ds = String("0") + ds
     return ys + "-" + ms + "-" + ds
 
- 
+
 
 
 
@@ -2410,10 +2410,10 @@ fn melt(frame: DataFrame, id_vars: List[String], var_name: String, value_name: S
 
 
 fn cut_numeric(frame: DataFrame, col: String, bins: List[Int], labels: List[String]) -> List[String]:
-    var out = List[String](); var i = 0; 
-    while i < frame.nrows(): 
-        out.append(labels[0]); 
-        i += 1; 
+    var out = List[String](); var i = 0;
+    while i < frame.nrows():
+        out.append(labels[0]);
+        i += 1;
     return out.copy()
 
 # Overload: rename with Dict[String,String]
@@ -2598,7 +2598,7 @@ fn assign(frame: DataFrame, newcols: Dict[String, List[Bool]]) -> DataFrame:
     return assign_bool(frame, newcols)
 
 
- 
+
 
 fn resolve_label_slice(index_labels: List[String], sel: LabelSlice) -> List[Int]:
     var out = List[Int]()
@@ -2766,7 +2766,7 @@ fn range(start: Int, stop: Int, step: Int = 1, dtype: DType = DType.INT32()) -> 
             v += eff_step
 
     return out.copy()
- 
+
 @always_inline
 fn range_f64(start: Int, stop: Int, step: Int = 1) -> List[Float64]:
     var eff_step = step
@@ -3005,6 +3005,3 @@ fn date_range(start: String, periods: Int, freq: String = "D") -> List[String]:
         i += 1
 
     return out.copy()
-
-
-

@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -199,7 +199,7 @@ fn _col_index(df: DataFrame, name: String) -> Int:
             return i
         i += 1
     return -1
- 
+
 
 
 
@@ -705,7 +705,7 @@ fn groupby_sum_f64(df: DataFrame, key: String, val: String) -> DataFrame
                    List[Column]([col_str(key, state.keys),
                                  col_f64(String("sum_") + val, sums)]))
 
- 
+
 
 # Aggregate functions
 fn apply_agg(values: List[Optional[Float64]], func: String) -> Optional[Float64]:
@@ -1414,7 +1414,7 @@ fn pivot_table(frame: DataFrame,
         while cj2 < len(cols_unique):
             var mstr = String("")
             if counts[ri][cj2] > 0:
-                # NOTE: current behavior = mean; extend with 'agg' later 
+                # NOTE: current behavior = mean; extend with 'agg' later
                 var m = sums[ri][cj2] / Float64(counts[ri][cj2])
                 mstr = String(m)
                 row_sum = row_sum + sums[ri][cj2]

@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -40,10 +40,10 @@ fn save(outdir: String, name: String, img: vision.Image) -> String:  # Save an i
         vision.write_image(path, img)        # Write image to disk in a format inferred from extension.
     except e:                                # Catch any write error (I/O, unsupported codec, etc.).
         print(e)                             # Print the error to aid debugging without aborting.
-    
+
     print("Saved: " + path)                  # Log the saved path for user feedback.
     return path                              # Return the final file path to the caller.
- 
+
 # ----------------------- Demo Image -----------------------
 
 fn make_demo_image() -> vision.Image:        # Build a synthetic demo image with shapes and text.
@@ -82,15 +82,15 @@ fn make_demo_image() -> vision.Image:        # Build a synthetic demo image with
         )
     except e:                              # If text rendering fails, continue gracefully.
         print(e)                           # Log the error for visibility.
-     
+
     return img.copy()                      # Return a defensive copy to avoid shared ownership issues.
- 
+
 fn load_image(path: String) -> vision.Image:   # Load an image; if missing/invalid, generate and return a demo image.
     # Ensure parent directory exists; then try to read the image.
     # If reading fails or the image is invalid, generate a demo image, save, and return it.
 
     var p = Path(path)                      # Wrap the given path string in a Path object.
- 
+
     if not p.exists():                      # If the target file does not exist, ensure parent dirs exist.
         # Best-effort: try recursive create, then single-level, ignore errors
         try:                                # First, attempt to create all missing directories recursively.

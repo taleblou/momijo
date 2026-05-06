@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.utils
 # File:         utils.mojo
 # Path:         dataframe/utils.mojo
@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -192,7 +192,7 @@ fn compute_stats(col: List[String]) -> Stats:
     var st = Stats()
     var n = len(col)
     if n == 0:
-        return st.copy() 
+        return st.copy()
     var i = 0
     var sumv: Float64 = 0.0
     var minv: Float64 = 0.0
@@ -227,7 +227,7 @@ fn compute_stats(col: List[String]) -> Stats:
     st.std = stdv
     st.min = minv
     st.max = maxv
-    return st.copy() 
+    return st.copy()
 
 # --- Added for API completeness: pairs_append ---
 
@@ -257,7 +257,7 @@ fn percentile_f64(xs: List[Float64], p: Float64) -> Float64:
     var idx = Int(Float64(len(xs) - 1) * p)
     return xs[argsort_f64(xs, True)[idx]]
 
- 
+
 
 fn between_i64(x: Int64, a: Int64, b: Int64) -> Bool:
     return x >= a and x <= b
@@ -706,7 +706,7 @@ fn parse_simple_expr(expr: String) -> Expr:
 fn eval_where(df: DataFrame, expr_text: String) -> Bitmap:
     var e = parse_simple_expr(expr_text)
     return eval_expr(df, e)
- 
+
 fn _pow10(n: Int) -> Float64:
     var r = 1.0
     var i = 0

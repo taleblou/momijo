@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -58,7 +58,7 @@ struct Column(Copyable, Movable):
     # ------------------------------------------------------------------
     # Constructors
     # ------------------------------------------------------------------
-    fn __init__(out self): 
+    fn __init__(out self):
         self.tag = ColumnTag.STR()
         self.f64 = SeriesF64()
         self.i64 = SeriesI64()
@@ -101,7 +101,7 @@ struct Column(Copyable, Movable):
             if self.b.valid.len() != n:
                 self.b.valid.resize(n, True)
 
- 
+
     fn clone(self) -> Self:
         var out = Column()
         out.tag = self.tag
@@ -192,7 +192,7 @@ struct Column(Copyable, Movable):
 
     # ------------------------------------------------------------------
     # Builders from series (deep copy)
-    # ------------------------------------------------------------------  
+    # ------------------------------------------------------------------
     fn from_str(mut self, src: SeriesStr) -> None:
         self.tag = ColumnTag.STR()
         self.s.set_name(src.get_name())
@@ -301,7 +301,7 @@ struct Column(Copyable, Movable):
             out.from_str(self.s.gather(mask))
         return out.copy()
 
-    # ---------------- Column setters ---------------- 
+    # ---------------- Column setters ----------------
 
     # String
     fn set_string_series(mut self, src: SeriesStr) -> None:
@@ -388,7 +388,7 @@ struct Column(Copyable, Movable):
             self.i64.valid.resize(n, True)
 
 
- 
+
     # Return a boolean series where True marks null/None cells (validity == False)
     fn null_mask(self) -> SeriesBool:
         var out = SeriesBool()
@@ -484,7 +484,7 @@ struct Column(Copyable, Movable):
             return False
 
         return False
- 
+
     fn is_none(self) -> Bool:
         return self.has_none()
 
@@ -648,7 +648,7 @@ fn remove_unused(col: Column) -> (List[String], List[Int]):
     return (cats, codes)
 
 
- 
+
 # ---------------- Value facade (string-backed) ----------------
 struct Value(Copyable, Movable):
     var tag: Int       # 1=BOOL, 2=INT32, 3=INT64, 5=FLOAT64
@@ -700,7 +700,7 @@ struct Value(Copyable, Movable):
         v.b = x
         return v.copy()
 
- 
+
 
 # ---------------- CellAccessor ----------------
 struct CellAccessor:
@@ -739,7 +739,7 @@ fn labels_to_indices(index_vals: List[String], labels: List[String]) -> List[Int
         if pos >= 0:
             out.append(pos)
         i += 1
-    return out.copy() 
+    return out.copy()
 
 
 fn col_from_list(values: List[String], name: String) -> Column:
@@ -754,11 +754,11 @@ fn col_from_list(values: List[String], name: String) -> Column:
     col.from_str(s)
     return col.copy()
 
- 
+
 # Build a column from a list of String with an explicit dtype tag
 fn col_from_list_with_tag(vals: List[String], name: String, tag: Int) -> Column:
-    var c = col_from_list(vals, name)   
-    c.tag = tag                      
+    var c = col_from_list(vals, name)
+    c.tag = tag
     return c.copy()
 
 

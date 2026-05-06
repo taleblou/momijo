@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.series_f64
 # File:         series_f64.mojo
 # Path:         dataframe/series_f64.mojo
@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -30,7 +30,7 @@ struct SeriesF64(Copyable, Movable):
     var valid: Bitmap
 
     # Constructors
-    fn __init__(out self): 
+    fn __init__(out self):
         self.name = String("")
         self.data = List[Float64]()
         self.valid = Bitmap(0, True)

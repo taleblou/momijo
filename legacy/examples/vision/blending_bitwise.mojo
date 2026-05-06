@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/                 # Project/author website.
 # Repository:   https://github.com/taleblou/momijo   # Canonical repository URL.
 #
-# License:      MIT License                     # Short license label (do not paste full text).
+# License:      Apache License 2.0                     # Short license label (do not paste full text).
 # SPDX-License-Identifier: MIT                  # SPDX identifier required by project policies.
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand  # Copyright notice.
 

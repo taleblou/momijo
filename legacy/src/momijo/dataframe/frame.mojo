@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -20,8 +20,8 @@
 #   - Key functions: __copyinit__, clone, copy, __init__, ncols, nrows, shape_str, find_col, with_rows, to_string, width, height, make_module_state, select_columns_safe, _deep_copy_df, _find_col, _nrows, set_index
 
 from momijo.dataframe.column import *
-from momijo.dataframe.series_str import SeriesStr 
- 
+from momijo.dataframe.series_str import SeriesStr
+
 from momijo.dataframe.io_csv import is_bool
 from momijo.dataframe.series_bool import SeriesBool, append
 from momijo.dataframe.series_f64 import SeriesF64
@@ -32,11 +32,11 @@ from collections.list import List
 from pathlib.path import Path
 
 from momijo.dataframe.compat import df_from_pairs as _df_from_pairs
- 
+
 from momijo.dataframe.io_csv import read_csv ,write_csv
 
 
-  
+
 from momijo.dataframe._groupby_core import pivot_table
 
 from momijo.dataframe.series_bool import append
@@ -44,7 +44,7 @@ from momijo.dataframe.datetime_ops import parse_minutes
 from momijo.dataframe.helpers import argsort_f64, argsort_i64
 from momijo.dataframe.api import *
 from momijo.dataframe.datetime_ops import Resampler
- 
+
 from collections.list import List
 
 
@@ -147,25 +147,25 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             self.cols.append(other.cols[i].copy())
             i += 1
 
-    @always_inline 
+    @always_inline
     fn copy(self) -> DataFrame: var out = self; return out
-    @always_inline 
+    @always_inline
     fn clone(self) -> DataFrame: return self.copy()
 
     # ---------------------------------------------------------------------
     # Introspection
     # ---------------------------------------------------------------------
-    @always_inline 
+    @always_inline
     fn ncols(self) -> Int: return len(self.col_names)
-    @always_inline 
+    @always_inline
     fn nrows(self) -> Int:
         if len(self.cols) == 0: return 0
         return self.cols[0].len()
-    @always_inline 
+    @always_inline
     fn width(self) -> Int: return self.ncols()
-    @always_inline 
+    @always_inline
     fn height(self) -> Int: return self.nrows()
-    @always_inline 
+    @always_inline
     fn shape_str(self) -> String:
         return "(" + String(self.nrows()) + ", " + String(self.ncols()) + ")"
 
@@ -188,13 +188,13 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             return col_from_list_with_tag(empty, name, 4).copy()   # 4 == STR tag in ColumnTag
         return self.cols[idx].copy()
 
-    @always_inline 
+    @always_inline
     fn get_column_by_name(self, name: String) -> Column:
         return self.get_column(name)
 
 
 
-    @always_inline 
+    @always_inline
     fn add_column(mut self, col: Column): self.set_column(col)
 
     # ---------------------------------------------------------------------
@@ -202,12 +202,12 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     # ---------------------------------------------------------------------
 
     # df['col'] -> Column
-    @always_inline 
+    @always_inline
     fn __getitem__(self, name: String) -> Column:
         return self.get_column(name)
 
     # df[idx] -> Column by position (0-based)
-    @always_inline 
+    @always_inline
     fn __getitem__(self, idx: Int) -> Column:
         if idx >= 0 and idx < self.ncols(): return self.cols[idx].copy()
         # out-of-range: return empty string column with synthetic name
@@ -372,7 +372,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     # ---------------------------------------------------------------------
     # loc(rows, cols)
     # ---------------------------------------------------------------------
-    @always_inline 
+    @always_inline
     fn loc(self, rows: RowAll, cols: ColAll) -> DataFrame: return self.copy()
     fn loc(self, rows: RowAll, cols: List[String]) -> DataFrame: return self._select_cols_by_names(cols)
     fn loc(self, rows: RowAll, cols: List[Int])    -> DataFrame: return self._select_cols_by_positions(cols)
@@ -397,10 +397,10 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     # ---------------------------------------------------------------------
     # iloc(rows, cols) -- strictly positional
     # ---------------------------------------------------------------------
-    @always_inline 
+    @always_inline
     fn iloc(self, rows: RowAll, cols: ColAll) -> DataFrame: return self.copy()
     fn iloc(self, rows: RowAll, cols: List[Int]) -> DataFrame: return self._select_cols_by_positions(cols)
-    @always_inline 
+    @always_inline
     fn iloc(self, rows: RowAll, cols: Int) -> Column:
         if cols >= 0 and cols < self.ncols(): return self.cols[cols].copy()
         var empty = List[String]()
@@ -517,7 +517,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         var col  = self._broadcast_scalar_with_tag(name, scalar, tag)
         self.set_column(idx, col)
 
- 
+
 
         # ---------- single-column from frame (explicit; replaces name+DataFrame overload) ----------
     # Replace/insert a column by name using data from a rhs DataFrame.
@@ -539,8 +539,8 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         col.rename(name)
 
         # FIX: insert-or-replace path (نه replace-only)
-        self.set_column(col)  
-  
+        self.set_column(col)
+
 
     # Replace a column by positional index from a string list (preserve target tag).
     fn set_column(mut self, idx: Int, values: List[String]) -> None:
@@ -588,7 +588,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
                 var pos = rhs.find_col(nm)
                 if pos >= 0:
                     var src = rhs.cols[pos].copy()
-                    src.rename(nm)                   
+                    src.rename(nm)
                     self.set_column(src)             # ← insert-or-replace
             i += 1
 
@@ -643,7 +643,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         if idx < len(self.col_names):
             self.col_names[idx] = new_name
         if idx < len(self.names):
-            self.names[idx] = new_name     
+            self.names[idx] = new_name
 
     fn set_column(mut self, name: String, src: Column) -> None:
         var found = -1
@@ -658,7 +658,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         col.rename(name)
 
         if found < 0:
-            # INSERT when not found 
+            # INSERT when not found
             self.col_names.append(name)
             self.names.append(name)
             self.cols.append(col.copy())
@@ -750,8 +750,8 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             var col = col_from_list_with_tag(vals, self.col_names[c], self.cols[c].tag)
             self.set_column(c, col)
             c += 1
- 
- 
+
+
     # -------------------------------------------------------------------------
     # String rendering
     # -------------------------------------------------------------------------
@@ -1100,12 +1100,12 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     #     if j >= m:
     #         return String("")
     #     return String(self.cols[j].get_string(r))
-        
-     
+
+
     # fn iloc(self, row_indices: List[Int], col_range: ColRange) -> DataFrame:
     #     return iloc(self, row_indices, col_range)
 
-  
+
     # fn iloc(self, rows: ILocRowSlice, cols: ILocColSlice) -> DataFrame:
     #     # clamp rows
     #     var nr = self.nrows()
@@ -1156,7 +1156,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
 
 
 
- 
+
     # Build a one-cell DataFrame by label row and column name
     fn at(self, label_row: String, col: String) -> DataFrame:
         # resolve row
@@ -1257,9 +1257,9 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         self.cols[0] = col_from_list(vals, cname)
         return True
 
- 
 
-    fn set_at(mut df: DataFrame, label_row: String, col: String, v: Value) -> Bool: 
+
+    fn set_at(mut df: DataFrame, label_row: String, col: String, v: Value) -> Bool:
         var r = -1
         var i = 0
         var n = len(df.index_vals)
@@ -1275,20 +1275,20 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
             if df.col_names[c] == col:
                 j = c
                 break
-            c += 1 
-        if r < 0 or r >= df.nrows() or j < 0 or j >= df.ncols(): 
+            c += 1
+        if r < 0 or r >= df.nrows() or j < 0 or j >= df.ncols():
             return False
-        var ok = set_cell_preserve_type( df, r, j, v) 
+        var ok = set_cell_preserve_type( df, r, j, v)
         return ok
 
-    fn set_iat(mut df: DataFrame, row: Int, col: Int, v: Value) -> Bool: 
-        if row < 0 or row >= df.nrows() or col < 0 or col >= df.ncols(): 
+    fn set_iat(mut df: DataFrame, row: Int, col: Int, v: Value) -> Bool:
+        if row < 0 or row >= df.nrows() or col < 0 or col >= df.ncols():
             return False
-        var ok = set_cell_preserve_type( df, row, col, v) 
+        var ok = set_cell_preserve_type( df, row, col, v)
         return ok
 
 
-  
+
     # ------------------------------------------------------------------
     # DataFrame.dtypes(): returns a printable doc listing "name: dtype"
     # ------------------------------------------------------------------
@@ -1330,7 +1330,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
 
         var name = self.col_names[idx]
         var c = self.get_column(name)     # assumes this returns the core Column
-        return c.copy()   
+        return c.copy()
 
 
 
@@ -1339,9 +1339,9 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     fn col_values(self, name: String) -> List[String]:
         var idx = 0
         while idx < len(self.col_names):
-            if self.col_names[idx] == name: 
- 
-                return self.cols[idx].as_strings()   
+            if self.col_names[idx] == name:
+
+                return self.cols[idx].as_strings()
 
             idx += 1
         # not found → empty
@@ -1349,14 +1349,14 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
      # ------------------------------------------------------------------
     # Pipe: apply an arbitrary transformation and return its result.
     # Usage: df.pipe(fn(d: DataFrame) -> DataFrame: /* ... */)
-    # ------------------------------------------------------------------ 
+    # ------------------------------------------------------------------
     fn pipe(self, f: fn (DataFrame) -> DataFrame) -> DataFrame:
         var tmp = self.copy()
         return f(tmp)
     # ------------------------------------------------------------------
-    # Assign (callable version): name -> fn(DataFrame) -> Series 
+    # Assign (callable version): name -> fn(DataFrame) -> Series
     # ------------------------------------------------------------------
- 
+
 
     fn assign(self, mapping: Dictionary[String, fn (DataFrame) -> List[String]]) -> DataFrame:
         var out = self.copy()
@@ -1416,7 +1416,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
     # Dispatches by dtype/tag and deep-copies buffers.
     # --------------------------------------------------------------
     fn from_series(mut self, src: Series) -> None:
-        # Prefer dtype() if available; fall back to tag  
+        # Prefer dtype() if available; fall back to tag
         var dt = src.dtype()
 
         if dt.is_string():
@@ -1476,17 +1476,17 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         out.reserve(n)
 
         var r = 0
-        while r < n: 
+        while r < n:
             out.append(col[r])
             r += 1
 
         return out.copy()
 
 
-    
+
 
     # fn pivot_table(self,index: String,columns: String,values: String,agg: Agg,margins: Bool,margins_name: String) -> DataFrame:
-    #     return pivot_table(self,index,columns,agg,margins,margins_name) 
+    #     return pivot_table(self,index,columns,agg,margins,margins_name)
 
     # ---------- DataFrame methods: pivot_table ----------
 
@@ -1579,7 +1579,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
                         Optional[String](fill_value),
                         margins, margins_name)
 
-    
+
     fn reset_index(self) -> DataFrame:
         return reset_index(self)
 
@@ -1592,7 +1592,7 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         keys.append(on)
         return merge(self, right, keys.copy(), how)
 
-    
+
     # Convenience: default 'left' join
     fn merge(self, right: DataFrame, on: List[String]) -> DataFrame:
         return merge(self, right, on.copy(), String("left"))
@@ -1603,8 +1603,8 @@ struct DataFrame(ImplicitlyCopyable, Copyable, Movable):
         return merge(self, right, keys.copy(), String("left"))
 
     fn sort_values(self, by: List[String], ascending: List[Bool]=[True]) -> DataFrame:
-        return sort_values(self, by , ascending ) 
- 
+        return sort_values(self, by , ascending )
+
 
     fn to_csv(self: DataFrame,
           path: String,
@@ -1667,7 +1667,7 @@ fn _dtype_name_for(col: Column) -> String:
     # If your Column has predicates, use them:
     # bool / int64 / float64 / string
     var t = String("string")
-    # NOTE: guard calls in case these helpers exist in your project. 
+    # NOTE: guard calls in case these helpers exist in your project.
     if col.is_bool():
         t = String("bool")
     elif col.is_i64():
@@ -1912,7 +1912,7 @@ fn reset_index(df: DataFrame) -> DataFrame:
 
     # 4) decide whether to insert an index column
     var need_insert_index = True
- 
+
     # skip inserting synthetic "index"
     if (not has_idx_name) and has_city_col:
         need_insert_index = False
@@ -2309,7 +2309,7 @@ fn sort_values_key(xs: List[String]) -> List[Int]
     return idxs
 
 
- 
+
 
 # two-key argsort: primary by city (String), secondary by parsed minutes of timestamp
 fn argsort_city_ts(cities: List[String], ts: List[String]) raises -> List[Int]:

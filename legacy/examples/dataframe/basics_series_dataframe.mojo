@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -20,7 +20,7 @@
 # Import the dataframe module under a short alias for convenience.
 import momijo.dataframe as df
 # Import List for typed dynamic arrays used to hold values and indices.
-from collections.list import List 
+from collections.list import List
 # Import Path for filesystem-safe path handling.
 from pathlib import Path
 # Import recursive mkdir to create nested directories when needed.

@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -40,7 +40,7 @@ fn workdir_make() -> Path:                  # Ensure a local working directory e
             pass                            # Ignore errors to keep this teaching demo resilient.
     print("[INFO] Working directory: " + String(p))  # Log where artifacts will be written.
     return p                                # Return the path for potential downstream use.
-    
+
 
 # ---------- 7) Merge / Join / Concat ----------
 

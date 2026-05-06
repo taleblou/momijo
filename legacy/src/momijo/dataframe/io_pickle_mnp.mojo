@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -250,7 +250,7 @@ fn from_mnp_string(s: String):
     var cur = String("")
     while i < s_len:
         var ch = s.bytes()[i]
-        if ch == UInt8(10):  # 
+        if ch == UInt8(10):  #
 
             lines.append(cur)
             cur = String("")

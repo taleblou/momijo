@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -43,7 +43,7 @@ struct ModuleState:
 fn make_module_state() -> ModuleState:
     return ModuleState(0)
 
- 
+
 # --------------------------- String list helpers ----------------------------
 
 fn contains_string(xs: List[String], x: String) -> Bool:
@@ -186,7 +186,7 @@ fn argsort_i64(xs: List[Int64]) -> List[Int]:
         j += 1
     return idx
 
-    
+
 fn rank_dense_f64(xs: List[Float64]) -> List[Int]:
     var order = argsort_f64(xs, True)
     var ranks = List[Int]()

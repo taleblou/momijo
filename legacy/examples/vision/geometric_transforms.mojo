@@ -9,7 +9,7 @@
 # Website:      https://taleblou.ir/                 # Project/author website.
 # Repository:   https://github.com/taleblou/momijo   # Canonical repository.
 #
-# License:      MIT License                   # Short license tag (no full text here).
+# License:      Apache License 2.0                   # Short license tag (no full text here).
 # SPDX-License-Identifier: MIT               # SPDX identifier required by policy.
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand  # Copyright.
 #
@@ -66,7 +66,7 @@ fn make_demo_image() -> vision.Image:                                    # Build
     img = vision.rectangle(img, 60, 60, 300, 220, (UInt8(0), UInt8(255), UInt8(255)), -1)  # Solid cyan rectangle.
     img = vision.circle(img, 520, 160, 70, [UInt8(0), UInt8(0), UInt8(255)], -1)           # Solid red disk.
     img = vision.arrowed_line(img, 80, 300, 300, 380, [UInt8(255), UInt8(255), UInt8(255)], 3, 0.15)  # White arrow.
- 
+
     try:                                                                 # Text rendering may fail if fonts unavailable.
         # Text edges                                                     # Context: add edges via text for features.
         img = vision.put_text(                                           # Draw text onto the image.
@@ -84,7 +84,7 @@ fn load_image(path: String) -> vision.Image:                             # Load 
     # save, and return it.                                               # The demo is also saved when possible.
 
     var p = Path(path)                                                   # Wrap path string into a Path object.
- 
+
     if not p.exists():                                                   # If the target path does not exist...
         # Best-effort: try recursive create, then single-level, ignore errors  # Directory creation strategy.
         try:                                                             # First attempt: recursive creation.

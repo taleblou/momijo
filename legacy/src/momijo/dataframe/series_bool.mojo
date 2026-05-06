@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.series_bool
 # File:         series_bool.mojo
 # Path:         dataframe/series_bool.mojo
@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -101,7 +101,7 @@ struct SeriesBool(Copyable, Movable):
 
     fn values(self) -> List[Bool]:
         return self.data.copy()
-        
+
     fn validity(self) -> Bitmap:
         return self.valid.copy()
 
@@ -212,4 +212,3 @@ struct SeriesBool(Copyable, Movable):
 
     fn logical_xor(self, other: SeriesBool) -> SeriesBool:
         return self._binary_op(other, 2)
-

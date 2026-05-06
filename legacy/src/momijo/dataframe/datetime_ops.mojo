@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -139,7 +139,7 @@ fn datetime_year(df0: DataFrame, col: String, take: Int) -> String:
     while i < n:
         # NOTE: read string cell via column API
         var s = String(df0.cols[idx].get_string(i))
- 
+
         # For now we keep the whole string if length >= 4 to match prior behavior.
         var year = String("")
         if len(s) >= 4:
@@ -236,7 +236,7 @@ fn datetime_year_df(df0: DataFrame, col: String, take: Int) -> DataFrame:
     return _make_single_string_frame(years, "year")
 
 
-# ---------- Minimal helper to build a 1-column (string) DataFrame ---------- 
+# ---------- Minimal helper to build a 1-column (string) DataFrame ----------
 
 fn _make_single_string_frame(values: List[String], name: String) -> DataFrame:
     # Build a SeriesStr
@@ -251,7 +251,7 @@ fn _make_single_string_frame(values: List[String], name: String) -> DataFrame:
 
     # Wrap into a Column (string-tag)
     var col = Column()
-    col.set_string_series(s)        
+    col.set_string_series(s)
 
     # Assemble DataFrame with a single column
     var out = DataFrame()
@@ -279,15 +279,15 @@ fn tz_convert(ts: List[String], target: String) -> List[String]
         i += 1
     return out
 
-  
- 
+
+
 
 # -------------------- DataFrame API --------------------
 fn resample(self, freq: String) -> Resampler:
     return Resampler(self, freq)
- 
 
-  
+
+
 # --- Add to: dataframe/frame.mojo -------------------------------------------------
 # English-only comments. Conforms to Momijo style (var-only, no raises, Copyable.)
 # Minimal time-based resampling over a datetime-like String index.
@@ -1271,5 +1271,3 @@ struct Resampler(Copyable, Movable):
                 r += 1
             c += 1
         return out.copy()
-
-    

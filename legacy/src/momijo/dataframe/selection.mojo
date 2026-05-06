@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.selection
 # File:         selection.mojo
 # Path:         dataframe/selection.mojo
@@ -10,7 +10,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -57,7 +57,7 @@ struct ColRange:
         self.stop = stop
 
 
-# ---------------- Indexer types & helpers ---------------- 
+# ---------------- Indexer types & helpers ----------------
 # -------- Marker types need explicit empty ctors --------
 struct RowAll(Copyable, Movable):
     fn __init__(out self):
@@ -90,7 +90,7 @@ struct RowMask(Copyable, Movable):
 
     fn __copyinit__(out self, other: Self):
         self.mask = other.mask.copy()
- 
+
 
 # Positional half-open slice [start:stop) for iloc
 struct PosSlice(ImplicitlyCopyable, Copyable, Movable):
@@ -181,7 +181,7 @@ fn select(df: DataFrame, cols: List[String]) -> DataFrame:
         while j < nsrc:
             out.col_names.append(String(df.col_names[j]))
             out.names.append(String(df.col_names[j]))
-            out.cols.append(df.cols[j].copy())   # Column expected Copyable; replace with a real clone 
+            out.cols.append(df.cols[j].copy())   # Column expected Copyable; replace with a real clone
             j += 1
         return out.copy()
 
@@ -392,8 +392,8 @@ fn loc_impl_indices(df: DataFrame, row_idxs: List[Int], cols: List[String]) -> D
         c += 1
 
     return out
- 
- 
+
+
 # boolean mask to filter rows
 struct Mask(Copyable, Movable):
     var vals: List[Bool]
@@ -407,8 +407,8 @@ struct Mask(Copyable, Movable):
         while i < len(other.vals):
             self.vals.append(other.vals[i])
             i += 1
- 
-  
+
+
 
 
 
@@ -492,7 +492,7 @@ fn filter_rows(df: DataFrame, mask: List[Bool]) -> DataFrame:
 
 # Helper: extract ASCII/UTF-8 bytes for simple [0-9 + -] parsing
 @always_inline
-fn ascii_at(s: String, i: Int) -> UInt8: 
+fn ascii_at(s: String, i: Int) -> UInt8:
     return UInt8(ord(s[i]))
 
 @always_inline
@@ -639,7 +639,7 @@ fn col_isin(df: DataFrame, name: String, values: List[String]) -> Mask:
 fn where(df: DataFrame, mask: Mask) -> DataFrame:
     # filter_rows already guards for mask/data length mismatches
     return filter_rows(df, mask.vals)
- 
+
 
 # iloc: select by explicit row indices and a half-open column range [start, stop)
 fn clamp(v: Int, lo: Int, hi: Int) -> Int:
@@ -735,12 +735,12 @@ struct ColumnBoolOps:
     fn isin(self, values: List[String]) -> Mask: return Mask()
     fn between(self, lo: Int, hi: Int) -> Mask: return Mask()
 
- 
- 
+
+
 
 # -----------------------------------------------------------------------------
 # Label-based row slicing token + helpers
-# ----------------------------------------------------------------------------- 
+# -----------------------------------------------------------------------------
 
 # fn slice_labels(start: String, end: String, inclusive: Bool = True) -> LabelSlice:
 #     var s = LabelSlice()
@@ -793,17 +793,17 @@ fn labels_to_row_range(index_vals: List[String], sel: LabelSlice) -> RowRange:
 
 
 
-@always_inline 
+@always_inline
 fn rows_all() -> RowAll: var r = RowAll(); return r.copy()
-@always_inline 
+@always_inline
 fn cols_all() -> ColAll: var c = ColAll(); return c.copy()
-@always_inline 
+@always_inline
 fn rows(indices: List[Int]) -> RowPos: var r = RowPos(indices); return r.copy()
-@always_inline 
+@always_inline
 fn rows(mask: List[Bool]) -> RowMask: var r = RowMask(mask); return r.copy()
-@always_inline 
+@always_inline
 fn slice_labels(start: String, end: String, inclusive: Bool = True) -> LabelSlice:
     var s = LabelSlice(start, end, inclusive); return s.copy()
-@always_inline 
+@always_inline
 fn pslice(start: Int, stop: Int) -> PosSlice:
     var s = PosSlice(start, stop); return s.copy()

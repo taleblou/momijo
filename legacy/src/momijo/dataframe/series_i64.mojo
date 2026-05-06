@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.series_i64
 # File:         series_i64.mojo
 # Path:         dataframe/series_i64.mojo
@@ -11,7 +11,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -93,7 +93,7 @@ struct SeriesI64(Copyable, Movable):
         return self.data.copy()
     fn validity(self) -> Bitmap:
         return self.valid.copy()
-        
+
     fn head(self, k: Int) -> SeriesI64:
         var out = SeriesI64(List[Int](), self.name)
         var i = 0
@@ -160,4 +160,3 @@ struct SeriesI64(Copyable, Movable):
         if c == 0:
             return 0.0
         return Float64(self.sum()) / Float64(c)
-

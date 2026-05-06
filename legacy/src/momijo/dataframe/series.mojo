@@ -1,4 +1,4 @@
-# Project:      Momijo 
+# Project:      Momijo
 # Module:       dataframe.series
 # File:         series.mojo
 # Path:         dataframe/series.mojo
@@ -10,7 +10,7 @@
 # Website:      https://taleblou.ir/
 # Repository:   https://github.com/taleblou/momijo
 #
-# License:      MIT License
+# License:      Apache License 2.0
 # SPDX-License-Identifier: MIT
 # Copyright:    (c) 2025 Morteza Taleblou & Mitra Daneshmand
 #
@@ -19,7 +19,7 @@
 #   - Key functions: values, index, to_string, series_from_list, series_values, series_index,
 #                    resample_sum_min.
 #   - Static methods present: N/A.
- 
+
 from momijo.dataframe.series_bool import append
 struct Series(Copyable, Movable):
     var name: String
@@ -72,7 +72,7 @@ struct Series(Copyable, Movable):
             s = s + "…\n"
         return s
 
-   
+
 
 # Build a Series from a string index and integer values.
 # NOTE: explicit return type is important.
@@ -99,7 +99,7 @@ fn series_index(s: Series) -> String:
             out += String(", ")
         i += 1
     out += "]"
-    return out 
+    return out
 
 
 # Sum-resample over fixed-size windows (freq)
