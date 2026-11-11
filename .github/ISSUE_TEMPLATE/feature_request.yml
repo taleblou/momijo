@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose an API or performance change within one engine.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Target engine
+      options: [momijo.tensor, momijo.tensor_light, shared project tooling]
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Goal, API contract and motivating example
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Dtype/device/shape limitations and expected fallback
+  - type: textarea
+    id: oracle
+    attributes:
+      label: Correctness checks and benchmark methodology (if relevant)
