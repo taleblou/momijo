@@ -1,0 +1,61 @@
+name: Security and Source Policy
+on:
+  pull_request:
+  schedule:
+    - cron: '21 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-policy:
+    name: Check source language and reserved namespaces
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required namespaces and prevent reserved-domain light forks
+        run: |
+          set -eu
+          for engine in tensor tensor_light; do
+            test -f "src/momijo/$engine/__init__.mojo"
+          done
+          for domain in dataframe learn vision visual; do
+            test -f "src/momijo/$domain/__init__.mojo"
+          done
+          for domain in dataframe learn vision visual; do
+            forbidden=$(find src/momijo tests examples benchmarks docs -name "${domain}_light*" -print)
+            if [ -n "$forbidden" ]; then
+              echo "Forbidden light variant of $domain" >&2
+              exit 1
+            fi
+          done
+      - name: Enforce allowed source and documentation formats
+        run: |
+          set -eu
+          unexpected=$(find . -type f ! -path './.git/*' \
+            ! \( -name '*.mojo' -o -name '*.md' -o -name '*.toml' \
+              -o -name '*.yaml' -o -name '*.yml' -o -name '*.lock' \
+              -o -name '*.cff' -o -name '*.png' -o -name '*.jpg' \
+              -o -name '*.jpeg' -o -name '*.webp' -o -name '*.svg' \
+              -o -name '*.gif' -o -name '*.ico' -o -name '*.pdf' \
+              -o -name '.editorconfig' -o -name '.gitattributes' \
+              -o -name '.gitignore' -o -name 'LICENSE' -o -name 'CODEOWNERS' \) -print)
+          if [ -n "$unexpected" ]; then
+            printf 'Unexpected repository files (review source-language policy):\n%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          symlinks=$(find . -type l ! -path './.git/*' -print)
+          if [ -n "$symlinks" ]; then
+            printf 'Symlinks are not permitted in this repository:\n%s\n' "$symlinks" >&2
+            exit 1
+          fi
+      - name: Scope limitation
+        run: echo 'This is not a Mojo vulnerability, memory-safety, or GPU audit.'
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
