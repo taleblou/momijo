@@ -9,7 +9,7 @@ jobs:
   source-package:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Enforce allowed source and documentation formats
         run: |
           set -eu
@@ -40,7 +40,7 @@ jobs:
               exit 1
             fi
           done
-      - uses: prefix-dev/setup-pixi@v0.10.0
+      - uses: prefix-dev/setup-pixi@v0.11.3
         with:
           cache: true
       - name: Require both engine smoke tests
@@ -61,7 +61,7 @@ jobs:
           git rev-parse HEAD > dist/SOURCE-COMMIT.txt
           pixi run mojo --version > dist/TOOLCHAIN.txt
       - name: Upload for explicit maintainer verification (no publication)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: momijo-compiler-matched-candidate
           path: |
