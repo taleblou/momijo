@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Morteza Taleblou
+# SPDX-FileCopyrightText: 2026 Mitra Daneshmand
+# SPDX-License-Identifier: MIT
+# Use `pixi lock` with network access; never fabricate the lockfile.
+[workspace]
+name = "momijo"
+version = "0.1.0"
+description = "Two independent Mojo tensor engines within one source package"
+authors = ["Morteza Taleblou", "Mitra Daneshmand"]
+channels = ["https://conda.modular.com/max/", "conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
+
+[dependencies]
+# A source compatibility target; resolve and test these pins on the target host.
+mojo = "==1.1.0"
+max = "==26.6.0"
+
+[tasks]
+# The only checked-in programming-language files are .mojo.
+# Bash and POSIX utilities below are command-line build/test orchestration, not source code.
+# pipefail prevents a failed file-discovery stage being masked by a succeeding sort/loop.
+list-tests = '''bash -euo pipefail -c 'find tests/tensor tests/tensor_light -type f -name "*.mojo" -exec grep -lE "^(fn|def)[[:space:]]+main[[:space:]]*\(" {} + | LC_ALL=C sort''''
+test-smoke = "mojo run -I src -I . tests/tensor/smoke_cpu.mojo && mojo run -I src -I . tests/tensor_light/smoke_cpu.mojo"
+test-tensor = '''bash -euo pipefail -c 'set -eu; test -s tests/tensor/smoke_cpu.mojo; grep -Eq "^(fn|def)[[:space:]]+main[[:space:]]*\(" tests/tensor/smoke_cpu.mojo; find tests/tensor -type f -name "*.mojo" | LC_ALL=C sort | while IFS= read -r file; do if grep -Eq "^(fn|def)[[:space:]]+main[[:space:]]*\(" "$file"; then echo "RUN $file"; mojo run -I src -I . "$file"; else grep_status=$?; if [ "$grep_status" -ne 1 ]; then echo "FAIL: cannot inspect $file (grep exit $grep_status)" >&2; exit "$grep_status"; fi; fi; done' '''
+test-tensor-light = '''bash -euo pipefail -c 'set -eu; test -s tests/tensor_light/smoke_cpu.mojo; grep -Eq "^(fn|def)[[:space:]]+main[[:space:]]*\(" tests/tensor_light/smoke_cpu.mojo; find tests/tensor_light -type f -name "*.mojo" | LC_ALL=C sort | while IFS= read -r file; do if grep -Eq "^(fn|def)[[:space:]]+main[[:space:]]*\(" "$file"; then echo "RUN $file"; mojo run -I src -I . "$file"; else grep_status=$?; if [ "$grep_status" -ne 1 ]; then echo "FAIL: cannot inspect $file (grep exit $grep_status)" >&2; exit "$grep_status"; fi; fi; done' '''
+test-all = '''bash -euo pipefail -c 'set -eu; for suite in tensor tensor_light; do test -s "tests/$suite/smoke_cpu.mojo"; grep -Eq "^(fn|def)[[:space:]]+main[[:space:]]*\(" "tests/$suite/smoke_cpu.mojo"; done; find tests/tensor tests/tensor_light -type f -name "*.mojo" | LC_ALL=C sort | while IFS= read -r file; do if grep -Eq "^(fn|def)[[:space:]]+main[[:space:]]*\(" "$file"; then echo "RUN $file"; mojo run -I src -I . "$file"; else grep_status=$?; if [ "$grep_status" -ne 1 ]; then echo "FAIL: cannot inspect $file (grep exit $grep_status)" >&2; exit "$grep_status"; fi; fi; done' '''
+list-examples = '''bash -euo pipefail -c 'find examples/tensor examples/tensor_light -type f -name "*.mojo" -exec grep -lE "^(fn|def)[[:space:]]+main[[:space:]]*\(" {} + | LC_ALL=C sort''''
+list-benchmarks = '''bash -euo pipefail -c 'find benchmarks/tensor benchmarks/tensor_light -type f -name "*.mojo" -exec grep -lE "^(fn|def)[[:space:]]+main[[:space:]]*\(" {} + | LC_ALL=C sort''''
+bench-cpu-matmul = "mojo run -I src -I . -O 3 benchmarks/tensor/cpu_matmul.mojo && mojo run -I src -I . -O 3 benchmarks/tensor_light/cpu_matmul.mojo"
+# Fail closed: remove prior artifacts, build to a private staging directory, validate
+# the new payload, then move it into place. A failed/empty compile leaves no stale
+# dist/momijo.mojoc that could be mistaken for fresh output.
+# This compiler-matched .mojoc is not a stable cross-version ABI.
+package = '''bash -euo pipefail -c '
+  test -f src/momijo/__init__.mojo
+  test -f src/momijo/tensor/__init__.mojo
+  test -f src/momijo/tensor_light/__init__.mojo
+  mkdir -p dist
+  test ! -L dist
+  rm -f dist/momijo.mojoc
+  staging_dir=$(mktemp -d dist/.momijo-stage.XXXXXX)
+  trap "rm -rf -- $staging_dir" EXIT
+  mojo precompile -I src src/momijo -o "$staging_dir/momijo.mojoc"
+  test -s "$staging_dir/momijo.mojoc"
+  mv "$staging_dir/momijo.mojoc" dist/momijo.mojoc
+' '''
