@@ -11,7 +11,7 @@ jobs:
     name: Source layout, language policy and attribution
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check required Mojo modules and reserved domains
         run: |
           set -eu
@@ -75,8 +75,8 @@ jobs:
     runs-on: ubuntu-24.04
     needs: source-policy
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.10.0
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.11.3
         with:
           cache: true
       - name: Record compiler version
