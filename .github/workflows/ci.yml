@@ -1,0 +1,91 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-policy:
+    name: Source layout, language policy and attribution
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required Mojo modules and reserved domains
+        run: |
+          set -eu
+          test -f src/momijo/__init__.mojo
+          test -s tests/tensor/smoke_cpu.mojo
+          test -s tests/tensor_light/smoke_cpu.mojo
+          for engine in tensor tensor_light; do
+            test -f "src/momijo/$engine/__init__.mojo"
+          done
+          for domain in dataframe learn vision visual; do
+            test -f "src/momijo/$domain/__init__.mojo"
+          done
+          for domain in dataframe learn vision visual; do
+            forbidden=$(find src/momijo tests examples benchmarks docs -name "${domain}_light*" -print)
+            if [ -n "$forbidden" ]; then
+              echo "Forbidden light variant of $domain" >&2
+              exit 1
+            fi
+          done
+          grep -Fq 'Morteza Taleblou' LICENSE
+          grep -Fq 'Mitra Daneshmand' LICENSE
+      - name: Verify SPDX, source paths, and module location in each Mojo file
+        run: |
+          set -eu
+          find src tests examples benchmarks -type f -name '*.mojo' -exec sh -c '
+            set -eu
+            for file do
+              test "$(sed -n "1p" "$file")" = "# SPDX-FileCopyrightText: 2026 Morteza Taleblou"
+              test "$(sed -n "2p" "$file")" = "# SPDX-FileCopyrightText: 2026 Mitra Daneshmand"
+              test "$(sed -n "3p" "$file")" = "# SPDX-License-Identifier: MIT"
+              test "$(sed -n "s/^# Source:[[:space:]]*//p" "$file")" = "$file"
+              expected=${file#src/}
+              expected=${expected%.mojo}
+              expected=$(printf "%s" "$expected" | tr / .)
+              case "$expected" in *.__init__) expected=${expected%.__init__} ;; esac
+              test "$(sed -n "s/^# Module:[[:space:]]*//p" "$file")" = "$expected"
+            done
+          ' sh {} +
+      - name: Enforce allowed source and documentation formats
+        run: |
+          set -eu
+          unexpected=$(find . -type f ! -path './.git/*' \
+            ! \( -name '*.mojo' -o -name '*.md' -o -name '*.toml' \
+              -o -name '*.yaml' -o -name '*.yml' -o -name '*.lock' \
+              -o -name '*.cff' -o -name '*.png' -o -name '*.jpg' \
+              -o -name '*.jpeg' -o -name '*.webp' -o -name '*.svg' \
+              -o -name '*.gif' -o -name '*.ico' -o -name '*.pdf' \
+              -o -name '.editorconfig' -o -name '.gitattributes' \
+              -o -name '.gitignore' -o -name 'LICENSE' -o -name 'CODEOWNERS' \) -print)
+          if [ -n "$unexpected" ]; then
+            printf 'Unexpected repository files (review source-language policy):\n%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          symlinks=$(find . -type l ! -path './.git/*' -print)
+          if [ -n "$symlinks" ]; then
+            printf 'Symlinks are not permitted in this repository:\n%s\n' "$symlinks" >&2
+            exit 1
+          fi
+  mojo-smoke:
+    name: Mojo CPU baseline and AOT precompile
+    runs-on: ubuntu-24.04
+    needs: source-policy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          cache: true
+      - name: Record compiler version
+        run: pixi run mojo --version
+      - name: Run both independent smoke tests
+        run: pixi run test-smoke
+      - name: Execute all discovered Mojo regression entry points
+        run: pixi run test-all
+      - name: Precompile the Momijo namespace
+        run: pixi run package
+      - name: Require a non-empty compiler-generated artifact
+        run: test -s dist/momijo.mojoc
