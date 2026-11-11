@@ -1,0 +1,24 @@
+name: CPU Benchmarks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  matrix-cpu:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [tensor, tensor_light]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          cache: true
+      - name: Record environment
+        run: |
+          pixi run mojo --version
+          uname -a
+          lscpu
+      - name: Run allocation-inclusive matmul sample (not a formal speed gate)
+        run: pixi run mojo run -I src -I . -O 3 benchmarks/${{ matrix.engine }}/cpu_matmul.mojo
