@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a reproducible Momijo defect (not a security vulnerability).
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options: [momijo.tensor, momijo.tensor_light, tooling or documentation]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction and exact commands
+      description: Include input shape, dtype, strides and relevant expected/observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Toolchain and target
+      description: Mojo/MAX version, OS, CPU/GPU and any build flags.
+    validations:
+      required: true
+  - type: textarea
+    id: trace
+    attributes:
+      label: Output or traceback
+      render: shell
