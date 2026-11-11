@@ -1,0 +1,26 @@
+# Pixi environment and compiler-generated artifacts
+.pixi/
+build/
+dist/
+output/
+.artifacts/
+*.mojopkg
+*.mojoc
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.dSYM/
+*.profraw
+*.profdata
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Commit a real pixi.lock after resolving it with the target toolchain.
