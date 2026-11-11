@@ -1,0 +1,8 @@
+# Project co-founders and co-owners: Morteza Taleblou and Mitra Daneshmand.
+# GitHub reviews currently use @taleblou; add the second co-owner GitHub handle
+# after their repository permission is configured.
+# Maintainer review for engine boundary and release changes.
+* @taleblou
+/src/momijo/ @taleblou
+/conda.recipe/ @taleblou
+/.github/workflows/ @taleblou
