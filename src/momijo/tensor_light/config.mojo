@@ -134,7 +134,7 @@ def default_fp32_math_mode() -> Fp32MathMode:
 
 def default_reduction_accuracy_mode() -> ReductionAccuracyMode:
     # Stable reduction association unless FAST_TREE is explicitly requested.
-    return ReductionAccuracyMode.DETERMINISTIC_PAIRWISE
+    return materialize[ReductionAccuracyMode.DETERMINISTIC_PAIRWISE]()
 
 # The core's execution-policy vocabulary is defined once in the execution
 # layer. Do not create incompatible local copies of these types.
@@ -173,8 +173,8 @@ struct TensorCoreConfig(Copyable):
     @staticmethod
     def cpu_only() -> Self:
         return Self(
-            ExecutionPreference.CPU, Fp32MathMode.STRICT_FP32,
-            ReductionAccuracyMode.DETERMINISTIC_PAIRWISE, False, False, False,
+            materialize[ExecutionPreference.CPU](), Fp32MathMode.STRICT_FP32,
+            materialize[ReductionAccuracyMode.DETERMINISTIC_PAIRWISE](), False, False, False,
         )
 
     def validate(self) -> TensorStatus:
@@ -265,8 +265,8 @@ def default_execution_preference[target_kind: Int]() -> ExecutionPreference:
     comptime assert target_kind >= 0 and target_kind <= 3, "Unsupported target family"
     # Merely selecting a preference never grants a native device lease.
     comptime if target_kind == 0:
-        return ExecutionPreference.CPU
-    return ExecutionPreference.GPU
+        return materialize[ExecutionPreference.CPU]()
+    return materialize[ExecutionPreference.GPU]()
 
 
 def hybrid_execution_enabled(config: TensorCoreConfig) -> Bool:
@@ -316,18 +316,18 @@ def target_tuning_profile[target_kind: Int]() -> TargetTuningProfile:
     # -1 means NO selected executable variant, not a working GPU kernel.
     comptime if target_kind == 0:
         return TargetTuningProfile(
-            TargetKind.CPU, 64, 1, 1, 1, 1, 1, 65536, 0, 0, 0, 0, -1, False,
+            materialize[TargetKind.CPU](), 64, 1, 1, 1, 1, 1, 65536, 0, 0, 0, 0, -1, False,
         )
     comptime if target_kind == 1:
         return TargetTuningProfile(
-            TargetKind.NVIDIA_GPU, 256, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, False,
+            materialize[TargetKind.NVIDIA_GPU](), 256, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, False,
         )
     comptime if target_kind == 2:
         return TargetTuningProfile(
-            TargetKind.AMD_GPU, 256, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, False,
+            materialize[TargetKind.AMD_GPU](), 256, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, False,
         )
     return TargetTuningProfile(
-        TargetKind.APPLE_GPU, 256, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, False,
+        materialize[TargetKind.APPLE_GPU](), 256, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, False,
     )
 
 

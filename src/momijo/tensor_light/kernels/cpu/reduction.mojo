@@ -101,7 +101,7 @@ from ...dtype.fp32 import fp32_minimum, fp32_maximum, fp32_argmin_prefers, fp32_
 from std.sys.info import simd_width_of
 from ...parallel.parallel_for import CpuWorkPolicy, recommend_worker_count, execute_parallel_shards
 
-def cpu_sum_contiguous[width: Int, origin: Origin](src: Span[False, Float32, origin]) -> Float32:
+def cpu_sum_contiguous[width: Int, origin: Origin](src: Span[Float32, origin]) -> Float32:
     comptime assert width >= 1, "SIMD width must be positive"
     var n = len(src)
     var bound = n - n % width
@@ -124,7 +124,7 @@ def cpu_sum_contiguous[width: Int, origin: Origin](src: Span[False, Float32, ori
 # no untrusted raw address or forged length is authenticated here.
 def cpu_sum_contiguous_parallel_fast[
     width: Int, origin: Origin,
-](src: Span[False, Float32, origin]) -> TensorResult[Float32]:
+](src: Span[Float32, origin]) -> TensorResult[Float32]:
     # `width` is a positive AOT SIMD specialization supplied by the caller.
     comptime if width <= 0:
         return TensorResult[Float32](TensorStatus.INVALID_SHAPE)
@@ -189,7 +189,7 @@ def cpu_sum_contiguous_parallel_fast[
 # cells and writes one private stack partial; no input mutation or atomics.
 def cpu_sum_strided_parallel_fast[
     rank: Int, origin: Origin,
-](source: Span[False, Float32, origin], mapping: TensorLayout[rank]) -> TensorResult[Float32]:
+](source: Span[Float32, origin], mapping: TensorLayout[rank]) -> TensorResult[Float32]:
     comptime if rank < 0 or rank > 8:
         return TensorResult[Float32](TensorStatus.INVALID_SHAPE)
     var checked = mapping.validated_snapshot(len(source))
@@ -249,7 +249,7 @@ def cpu_sum_strided_parallel_fast[
 # argmin/argmax tie-breaking without materializing N-D coordinates.
 @inline(.always)
 def cpu_sum_c_strict_fp32[origin: Origin](
-    source: Span[False, Float32, origin], begin: Int, count: Int,
+    source: Span[Float32, origin], begin: Int, count: Int,
 ) -> Float32:
     var ptr = source.unsafe_ptr()
     var total = Float32(0.0)
@@ -260,7 +260,7 @@ def cpu_sum_c_strict_fp32[origin: Origin](
 
 @inline(.always)
 def cpu_prod_c_fp32[origin: Origin](
-    source: Span[False, Float32, origin], begin: Int, count: Int,
+    source: Span[Float32, origin], begin: Int, count: Int,
 ) -> Float32:
     var ptr = source.unsafe_ptr()
     var product = Float32(1.0)
@@ -271,7 +271,7 @@ def cpu_prod_c_fp32[origin: Origin](
 
 @inline(.always)
 def cpu_extremum_c_fp32[find_min: Bool, origin: Origin](
-    source: Span[False, Float32, origin], begin: Int, count: Int,
+    source: Span[Float32, origin], begin: Int, count: Int,
 ) -> Float32:
     # PRECONDITION: count >= 1 and every referenced FP32 is initialized.
     var ptr = source.unsafe_ptr()
@@ -291,7 +291,7 @@ def cpu_extremum_c_fp32[find_min: Bool, origin: Origin](
 
 @inline(.always)
 def cpu_argextremum_c_fp32[find_min: Bool, origin: Origin](
-    source: Span[False, Float32, origin], begin: Int, count: Int,
+    source: Span[Float32, origin], begin: Int, count: Int,
 ) -> Int:
     # PRECONDITION: count >= 1; return the earliest C-logical index of
     # the selected extreme, including the first NaN if present.
@@ -321,7 +321,7 @@ def cpu_argextremum_c_fp32[find_min: Bool, origin: Origin](
 # repeated per-element bounds proof is introduced inside this hot kernel.
 @inline(.always)
 def cpu_reduce_strided_fp32_fast[operation: Int, origin: Origin](
-    src: Span[False, Float32, origin],
+    src: Span[Float32, origin],
     start: Int, step: Int, count: Int,
 ) -> Float32:
     comptime assert operation >= 0 and operation <= 4, "FP32 reduction opcode"
@@ -385,7 +385,7 @@ def cpu_reduce_strided_fp32_fast[operation: Int, origin: Origin](
 # Call cpu_reduce_strided_fp32_fast explicitly to request reassociation.
 @inline(.always)
 def cpu_reduce_strided_fp32[operation: Int, origin: Origin](
-    src: Span[False, Float32, origin],
+    src: Span[Float32, origin],
     start: Int, step: Int, count: Int,
 ) -> Float32:
     comptime assert operation >= 0 and operation <= 4, "FP32 reduction opcode"
@@ -408,7 +408,7 @@ def cpu_reduce_strided_fp32[operation: Int, origin: Origin](
 # No parallel tree or implicit fast-math policy is introduced here.
 @inline(.always)
 def cpu_reduce_row_ordered_fp32[operation: Int, origin: Origin](
-    source: Span[False, Float32, origin], start: Int, columns: Int,
+    source: Span[Float32, origin], start: Int, columns: Int,
 ) -> Float32:
     comptime assert operation >= 0 and operation <= 4, "FP32 ordered row reduction"
     comptime if operation == 0 or operation == 4:
@@ -448,8 +448,8 @@ def cpu_reduce_row_ordered_fp32[operation: Int, origin: Origin](
 def _validate_c_reduction_span_boundary[
     operation: Int, source_origin: Origin, target_origin: Origin[mut=True],
 ](
-    source: Span[False, Float32, source_origin],
-    target: Span[True, Float32, target_origin],
+    source: Span[Float32, source_origin],
+    target: Span[Float32, target_origin],
     source_base: Int, outer: Int, reduced_count: Int, inner: Int,
 ) -> TensorStatus:
     if outer < 0 or reduced_count < 0 or inner < 0:
@@ -496,8 +496,8 @@ def _validate_c_reduction_span_boundary[
 def cpu_reduce_c_trailing_axes_fp32[
     operation: Int, source_origin: Origin, target_origin: Origin[mut=True],
 ](
-    source: Span[False, Float32, source_origin],
-    target: Span[True, Float32, target_origin],
+    source: Span[Float32, source_origin],
+    target: Span[Float32, target_origin],
     source_base: Int, rows: Int, columns: Int,
 ) -> TensorStatus:
     comptime assert operation >= 0 and operation <= 4, "FP32 reduction opcode"
@@ -567,8 +567,8 @@ def cpu_reduce_c_trailing_axes_fp32[
 def cpu_reduce_c_axis_block_fp32[
     operation: Int, source_origin: Origin, target_origin: Origin[mut=True],
 ](
-    source: Span[False, Float32, source_origin],
-    target: Span[True, Float32, target_origin],
+    source: Span[Float32, source_origin],
+    target: Span[Float32, target_origin],
     source_base: Int, outer: Int, reduced_count: Int, inner: Int,
 ) -> TensorStatus:
     comptime assert operation >= 0 and operation <= 4, "FP32 reduction opcode"
@@ -662,8 +662,8 @@ def _scan_combine_fp32[operation: Int](previous: Float32, current: Float32) -> F
 def cpu_scan_strided_fp32[
     operation: Int, rank: Int, source_origin: Origin, target_origin: Origin[mut=True],
 ](
-    source: Span[False, Float32, source_origin],
-    destination: Span[True, Float32, target_origin],
+    source: Span[Float32, source_origin],
+    destination: Span[Float32, target_origin],
     mapping: TensorLayout[rank], selected_axis: Int, output_pitch: Int,
 ) -> TensorStatus:
     # 0..3 inclusive sum/prod/min/max; 4..5 exclusive sum/prod.

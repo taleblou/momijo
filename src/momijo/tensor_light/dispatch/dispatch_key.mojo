@@ -156,8 +156,8 @@ def make_dispatch_key(
 def with_operation_kind(key: DispatchKey, operation: Int) -> TensorResult[DispatchKey]:
     var checked = key.checked_snapshot()
     if not checked.is_ok():
-        return checked
-    var previous = checked.payload.value()
+        return checked^
+    var previous = checked.payload.value().copy()
     return DispatchKey.checked(
         operation, previous.rank, previous.shape_bucket,
         previous.layout_class, previous.target_arch, previous.math_mode,
@@ -168,8 +168,8 @@ def with_operation_kind(key: DispatchKey, operation: Int) -> TensorResult[Dispat
 def with_shape_bucket(key: DispatchKey, bucket: Int) -> TensorResult[DispatchKey]:
     var checked = key.checked_snapshot()
     if not checked.is_ok():
-        return checked
-    var previous = checked.payload.value()
+        return checked^
+    var previous = checked.payload.value().copy()
     return DispatchKey.checked(
         previous.operation, previous.rank, bucket,
         previous.layout_class, previous.target_arch, previous.math_mode,
@@ -184,8 +184,8 @@ def dispatch_key_matches(a: DispatchKey, b: DispatchKey) -> Bool:
     var right = b.checked_snapshot()
     if not right.is_ok():
         return False
-    var x = left.payload.value()
-    var y = right.payload.value()
+    var x = left.payload.value().copy()
+    var y = right.payload.value().copy()
     return (
         x.operation == y.operation and x.rank == y.rank
         and x.shape_bucket == y.shape_bucket

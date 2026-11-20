@@ -101,7 +101,8 @@
 # GPU is enqueued BEFORE the CPU partition; the final synchronize is a join.
 from std.collections import Span, Optional
 from std.collections.list import List
-from max.gpu.host import DeviceContext, DeviceExternalFunction, HostBuffer, DeviceBuffer
+from max.gpu.host import DeviceContext, HostBuffer, DeviceBuffer
+from max.gpu.host.device_context import DeviceExternalFunction
 from std.memory import forget_deinit
 from ..execution.execution_plan import ExecutionPlan, ExecutionPlacement
 from ..execution.launch_policy import build_host_binary_split_schedule, build_host_binary_pipeline_window_schedule
@@ -272,24 +273,24 @@ struct _HybridBinaryWindowOwners(Movable):
 def _hybrid_binary_host_fp32[
     static_gpu_capacity: Int,
     operation: Int,
-    a: Origin,
-    b: Origin,
+    a: Origin[mut=False],
+    b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext,
     precompiled_binary: DeviceExternalFunction,
     plan: ExecutionPlan,
-    left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) raises -> TensorStatus:
     comptime assert static_gpu_capacity > 0, "GPU staging capacity must be positive"
     comptime assert operation >= 0 and operation <= 5, "FP32 opcode must be 0..5"
     var plan_proof = plan.checked_snapshot()
     if not plan_proof.is_ok():
         return plan_proof.status
-    var checked_plan = plan_proof.payload.value()
-    if checked_plan.placement != ExecutionPlacement.HYBRID_SPLIT and checked_plan.placement != ExecutionPlacement.HYBRID_CPU_ASSIST:
+    var checked_plan = plan_proof.payload.value().copy()
+    if checked_plan.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]() and checked_plan.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
         return TensorStatus.DEVICE_MISMATCH
     # This lowering materializes one host output, never a device tensor.
     if checked_plan.output_device != 0:
@@ -301,7 +302,7 @@ def _hybrid_binary_host_fp32[
     # CPU assist uses GPU-first only. Every access uses explicit offsets.
     var cpu_first = checked_plan.cpu_begin == 0 and checked_plan.cpu_end == checked_plan.gpu_begin and checked_plan.gpu_end == checked_plan.total_items
     var gpu_first = checked_plan.gpu_begin == 0 and checked_plan.gpu_end == checked_plan.cpu_begin and checked_plan.cpu_end == checked_plan.total_items
-    if checked_plan.placement == ExecutionPlacement.HYBRID_CPU_ASSIST:
+    if checked_plan.placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
         if not gpu_first:
             return TensorStatus.INVALID_LAYOUT
     elif not cpu_first and not gpu_first:
@@ -633,14 +634,14 @@ def _hybrid_binary_host_fp32[
 # exact in-place ranges stream from inputs without full-size host temporaries.
 def _pipeline_binary_host_fp32[
     capacity: Int, operation: Int,
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext,
     precompiled_binary: DeviceExternalFunction,
     plan: ExecutionPlan,
-    left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) raises -> TensorStatus:
     comptime assert capacity > 0, "pipeline capacity must be positive"
     comptime assert capacity <= Int.MAX // 2, "two-window capacity overflows Int"
@@ -648,8 +649,8 @@ def _pipeline_binary_host_fp32[
     var plan_proof = plan.checked_snapshot()
     if not plan_proof.is_ok():
         return plan_proof.status
-    var checked_plan = plan_proof.payload.value()
-    if checked_plan.placement != ExecutionPlacement.HYBRID_PIPELINE:
+    var checked_plan = plan_proof.payload.value().copy()
+    if checked_plan.placement != materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         return TensorStatus.DEVICE_MISMATCH
     if checked_plan.total_items != len(left) or len(left) != len(right) or len(result) != len(left):
         return TensorStatus.SIZE_MISMATCH
@@ -766,7 +767,7 @@ def _pipeline_binary_host_fp32[
                 ctx.stream().synchronize()
                 download_ctx.stream().synchronize()
                 return window.status
-            var region = window.payload.value()
+            var region = window.payload.value().copy()
             if region.elements != capacity or region.tail:
                 upload_ctx.stream().synchronize()
                 ctx.stream().synchronize()
@@ -853,7 +854,7 @@ def _pipeline_binary_host_fp32[
             )
             if not tail_window.is_ok():
                 return tail_window.status
-            var tail_region = tail_window.payload.value()
+            var tail_region = tail_window.payload.value().copy()
             if (not tail_region.tail or tail_region.slot != 2
                 or tail_region.elements != tail_count):
                 return TensorStatus.INVALID_LAYOUT
@@ -928,21 +929,21 @@ def _pipeline_binary_host_fp32[
 # This is usable on devices with no MAX GPU device/driver at all.
 def execute_cpu_binary_host_fp32[
     operation: Int,
-    a: Origin,
-    b: Origin,
+    a: Origin[mut=False],
+    b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     plan: ExecutionPlan,
-    left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     comptime assert operation >= 0 and operation <= 5, "FP32 opcode must be 0..5"
     var plan_proof = plan.checked_snapshot()
     if not plan_proof.is_ok():
         return plan_proof.status
-    var checked_plan = plan_proof.payload.value()
-    if checked_plan.placement != ExecutionPlacement.CPU_ONLY or checked_plan.output_device != 0:
+    var checked_plan = plan_proof.payload.value().copy()
+    if checked_plan.placement != materialize[ExecutionPlacement.CPU_ONLY]() or checked_plan.output_device != 0:
         return TensorStatus.DEVICE_MISMATCH
     var count = checked_plan.total_items
     if count != len(left) or count != len(right) or count != len(result):
@@ -1015,44 +1016,44 @@ def execute_cpu_binary_host_fp32[
 def _unsafe_execute_host_binary_fp32[
     static_gpu_capacity: Int,
     operation: Int,
-    a: Origin,
-    b: Origin,
+    a: Origin[mut=False],
+    b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext,
     precompiled_binary: DeviceExternalFunction,
     plan: ExecutionPlan,
-    left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) raises -> TensorStatus:
     comptime assert static_gpu_capacity > 0, "GPU staging capacity must be positive"
     comptime assert operation >= 0 and operation <= 5, "FP32 opcode must be 0..5"
     var plan_proof = plan.checked_host_binary_snapshot()
     if not plan_proof.is_ok():
         return plan_proof.status
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     var count = checked_plan.total_items
     if count != len(left) or count != len(right) or count != len(result):
         return TensorStatus.SIZE_MISMATCH
     if checked_plan.output_device != 0:
         return TensorStatus.DEVICE_MISMATCH
-    if checked_plan.placement != ExecutionPlacement.CPU_ONLY and checked_plan.placement != ExecutionPlacement.GPU_ONLY and checked_plan.placement != ExecutionPlacement.HYBRID_SPLIT and checked_plan.placement != ExecutionPlacement.HYBRID_CPU_ASSIST and checked_plan.placement != ExecutionPlacement.HYBRID_PIPELINE:
+    if checked_plan.placement != materialize[ExecutionPlacement.CPU_ONLY]() and checked_plan.placement != materialize[ExecutionPlacement.GPU_ONLY]() and checked_plan.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]() and checked_plan.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]() and checked_plan.placement != materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         return TensorStatus.UNSUPPORTED
     if count == 0:
         return TensorStatus.OK
-    if checked_plan.placement == ExecutionPlacement.CPU_ONLY:
+    if checked_plan.placement == materialize[ExecutionPlacement.CPU_ONLY]():
         return execute_cpu_binary_host_fp32[operation](checked_plan, left, right, result)
-    if checked_plan.placement == ExecutionPlacement.HYBRID_PIPELINE:
+    if checked_plan.placement == materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         return _pipeline_binary_host_fp32[static_gpu_capacity, operation](
             ctx, precompiled_binary, checked_plan, left, right, result
         )
-    if checked_plan.placement == ExecutionPlacement.HYBRID_SPLIT or checked_plan.placement == ExecutionPlacement.HYBRID_CPU_ASSIST:
+    if checked_plan.placement == materialize[ExecutionPlacement.HYBRID_SPLIT]() or checked_plan.placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
         # Both mappings use a checked host-result stage DAG and an event join.
         return _hybrid_binary_host_fp32[static_gpu_capacity, operation](
             ctx, precompiled_binary, checked_plan, left, right, result
         )
-    if checked_plan.placement != ExecutionPlacement.GPU_ONLY:
+    if checked_plan.placement != materialize[ExecutionPlacement.GPU_ONLY]():
         return TensorStatus.UNSUPPORTED
     if count > Int.MAX // 12:
         return TensorStatus.OVERFLOW
@@ -1152,11 +1153,11 @@ def _unsafe_execute_host_binary_fp32[
 
 # Backward-compatible host-add entry points. CPU-only requires no device.
 def execute_cpu_add_host_fp32[
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_cpu_binary_host_fp32[0](plan, left, right, result)
 
@@ -1170,23 +1171,23 @@ def execute_cpu_add_host_fp32[
 # This is metadata validation, not cryptographic native-symbol authentication.
 def execute_host_binary_fp32[
     static_gpu_capacity: Int, operation: Int,
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_binary: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     comptime assert static_gpu_capacity > 0, "GPU staging capacity must be positive"
     comptime assert operation >= 0 and operation <= 5, "FP32 opcode must be 0..5"
     var proof = plan.checked_host_binary_snapshot()
     if not proof.is_ok():
         return proof.status
-    var selected = proof.payload.value()
+    var selected = proof.payload.value().copy()
     if selected.total_items != len(left) or selected.total_items != len(right) or selected.total_items != len(result):
         return TensorStatus.SIZE_MISMATCH
-    if selected.placement == ExecutionPlacement.CPU_ONLY:
+    if selected.placement == materialize[ExecutionPlacement.CPU_ONLY]():
         # No GPU, stream, or device artifact is accessed by this path.
         return execute_cpu_binary_host_fp32[operation](selected, left, right, result)
     var binding = identity.validate_for(operation, selected.aot_variant, target_arch)
@@ -1213,12 +1214,12 @@ def execute_host_binary_fp32[
 # The normal public call is execute_host_binary_fp32 with an artifact identity.
 def unsafe_execute_host_binary_fp32[
     static_gpu_capacity: Int, operation: Int,
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_binary: DeviceExternalFunction,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) raises -> TensorStatus:
     return _unsafe_execute_host_binary_fp32[static_gpu_capacity, operation](
         ctx, precompiled_binary, plan, left, right, result,
@@ -1228,20 +1229,20 @@ def unsafe_execute_host_binary_fp32[
 # Source-level named spellings all use the checked public entry point.
 # Different FP32 operations share ONE AOT dispatch/lowering implementation.
 def hybrid_add_host_fp32[
-    static_gpu_capacity: Int, a: Origin, b: Origin,
+    static_gpu_capacity: Int, a: Origin[mut=False], b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_add: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     var proof = plan.checked_host_binary_snapshot()
     if not proof.is_ok():
         return proof.status
-    var selected = proof.payload.value()
-    if selected.placement != ExecutionPlacement.HYBRID_SPLIT and selected.placement != ExecutionPlacement.HYBRID_CPU_ASSIST:
+    var selected = proof.payload.value().copy()
+    if selected.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]() and selected.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
         return TensorStatus.DEVICE_MISMATCH
     return execute_host_binary_fp32[static_gpu_capacity, 0](
         ctx, precompiled_add, identity, target_arch, selected, left, right, result,
@@ -1249,14 +1250,14 @@ def hybrid_add_host_fp32[
 
 
 def execute_host_add_fp32[
-    static_gpu_capacity: Int, a: Origin, b: Origin,
+    static_gpu_capacity: Int, a: Origin[mut=False], b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_add: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_host_binary_fp32[static_gpu_capacity, 0](
         ctx, precompiled_add, identity, target_arch, plan, left, right, result,
@@ -1264,24 +1265,24 @@ def execute_host_add_fp32[
 
 
 def execute_cpu_sub_host_fp32[
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_cpu_binary_host_fp32[1](plan, left, right, result)
 
 
 def execute_host_sub_fp32[
-    static_gpu_capacity: Int, a: Origin, b: Origin,
+    static_gpu_capacity: Int, a: Origin[mut=False], b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_sub: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_host_binary_fp32[static_gpu_capacity, 1](
         ctx, precompiled_sub, identity, target_arch, plan, left, right, result,
@@ -1289,24 +1290,24 @@ def execute_host_sub_fp32[
 
 
 def execute_cpu_mul_host_fp32[
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_cpu_binary_host_fp32[2](plan, left, right, result)
 
 
 def execute_host_mul_fp32[
-    static_gpu_capacity: Int, a: Origin, b: Origin,
+    static_gpu_capacity: Int, a: Origin[mut=False], b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_mul: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_host_binary_fp32[static_gpu_capacity, 2](
         ctx, precompiled_mul, identity, target_arch, plan, left, right, result,
@@ -1314,24 +1315,24 @@ def execute_host_mul_fp32[
 
 
 def execute_cpu_div_host_fp32[
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_cpu_binary_host_fp32[3](plan, left, right, result)
 
 
 def execute_host_div_fp32[
-    static_gpu_capacity: Int, a: Origin, b: Origin,
+    static_gpu_capacity: Int, a: Origin[mut=False], b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_div: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_host_binary_fp32[static_gpu_capacity, 3](
         ctx, precompiled_div, identity, target_arch, plan, left, right, result,
@@ -1339,24 +1340,24 @@ def execute_host_div_fp32[
 
 
 def execute_cpu_maximum_host_fp32[
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_cpu_binary_host_fp32[4](plan, left, right, result)
 
 
 def execute_host_maximum_fp32[
-    static_gpu_capacity: Int, a: Origin, b: Origin,
+    static_gpu_capacity: Int, a: Origin[mut=False], b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_maximum: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_host_binary_fp32[static_gpu_capacity, 4](
         ctx, precompiled_maximum, identity, target_arch, plan, left, right, result,
@@ -1364,24 +1365,24 @@ def execute_host_maximum_fp32[
 
 
 def execute_cpu_minimum_host_fp32[
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_cpu_binary_host_fp32[5](plan, left, right, result)
 
 
 def execute_host_minimum_fp32[
-    static_gpu_capacity: Int, a: Origin, b: Origin,
+    static_gpu_capacity: Int, a: Origin[mut=False], b: Origin[mut=False],
     out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_minimum: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_host_binary_fp32[static_gpu_capacity, 5](
         ctx, precompiled_minimum, identity, target_arch, plan, left, right, result,
@@ -1392,13 +1393,13 @@ def execute_host_minimum_fp32[
 # same execute_host_binary_fp32() status-only boundary above.
 def execute_bound_host_binary_fp32[
     static_gpu_capacity: Int, operation: Int,
-    a: Origin, b: Origin, out_origin: Origin[mut=True],
+    a: Origin[mut=False], b: Origin[mut=False], out_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, precompiled_binary: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, left: Span[False, Float32, a],
-    right: Span[False, Float32, b],
-    mut result: Span[True, Float32, out_origin],
+    plan: ExecutionPlan, left: Span[mut=False, Float32, a],
+    right: Span[mut=False, Float32, b],
+    mut result: Span[mut=True, Float32, out_origin],
 ) -> TensorStatus:
     return execute_host_binary_fp32[static_gpu_capacity, operation](
         ctx, precompiled_binary, identity, target_arch, plan,
@@ -1494,12 +1495,12 @@ struct _HybridUnaryWindowOwners(Movable):
 
 def unsafe_execute_host_unary_fp32[
     operation: Int, static_gpu_capacity: Int,
-    source_origin: Origin, result_origin: Origin[mut=True],
+    source_origin: Origin[mut=False], result_origin: Origin[mut=True],
 ](
     ctx: DeviceContext, native_unary: DeviceExternalFunction,
     identity: UnaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, source: Span[False, Float32, source_origin],
-    mut result: Span[True, Float32, result_origin],
+    plan: ExecutionPlan, source: Span[mut=False, Float32, source_origin],
+    mut result: Span[mut=True, Float32, result_origin],
 ) -> TensorStatus:
     # The checked boundary owns all shape/transfer/partition proofs, and
     # intentionally refuses non-disjoint source/result aliases for native
@@ -1509,7 +1510,7 @@ def unsafe_execute_host_unary_fp32[
     var plan_proof = plan.checked_host_unary_snapshot()
     if not plan_proof.is_ok():
         return plan_proof.status
-    var selected = plan_proof.payload.value()
+    var selected = plan_proof.payload.value().copy()
     # Bind ALL placements to the same AOT unary opcode. In particular, a
     # forged CPU_ONLY plan with variant 27 must not be executed as NEG (20).
     if selected.aot_variant != 20 + operation:
@@ -1519,7 +1520,7 @@ def unsafe_execute_host_unary_fp32[
         return TensorStatus.SIZE_MISMATCH
     if count <= 0:
         return TensorStatus.OK
-    if selected.placement == ExecutionPlacement.CPU_ONLY:
+    if selected.placement == materialize[ExecutionPlacement.CPU_ONLY]():
         # The scalar/SIMD CPU unary kernel loads each lane before storing
         # that lane, so exact element-for-element in-place operation is safe.
         # Shifted/unknown overlaps are not safe without an input snapshot.
@@ -1533,9 +1534,9 @@ def unsafe_execute_host_unary_fp32[
         return TensorStatus.UNSUPPORTED
     if not host_output_disjoint_from_input(result, source):
         return TensorStatus.ALIAS_UNKNOWN
-    if (selected.placement != ExecutionPlacement.GPU_ONLY
-        and selected.placement != ExecutionPlacement.HYBRID_SPLIT
-        and selected.placement != ExecutionPlacement.HYBRID_CPU_ASSIST):
+    if (selected.placement != materialize[ExecutionPlacement.GPU_ONLY]()
+        and selected.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]()
+        and selected.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
         return TensorStatus.UNSUPPORTED
     if target_arch <= 0 or identity.threads_per_block != 256:
         return TensorStatus.DEVICE_MISMATCH
@@ -1547,7 +1548,7 @@ def unsafe_execute_host_unary_fp32[
     # The CPU and GPU output regions are disjoint by ExecutionPlan.checked().
     # A GPU-only plan has zero CPU elements. The first GPU chunk is queued
     # BEFORE synchronous CPU work, yielding actual host/device concurrency.
-    var cpu_pending = selected.placement != ExecutionPlacement.GPU_ONLY
+    var cpu_pending = selected.placement != materialize[ExecutionPlacement.GPU_ONLY]()
     var at = selected.gpu_begin
     while at < selected.gpu_end:
         var chunk = min(static_gpu_capacity, selected.gpu_end - at)

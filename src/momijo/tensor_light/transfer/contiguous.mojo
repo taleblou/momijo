@@ -114,7 +114,7 @@ def reshape_copy[src_rank: Int, out_rank: Int](
 
 def flatten_copy[rank: Int, start_dim: Int, end_dim: Int](
     ref source: Tensor[rank, HostStorage],
-) -> TensorResult[Tensor[rank - (end_dim - start_dim), HostStorage]]:
+) -> TensorResult[Tensor[rank - (end_dim - start_dim), HostStorage]] where rank >= 1:
     return source.flatten_copy[start_dim, end_dim]()
 
 

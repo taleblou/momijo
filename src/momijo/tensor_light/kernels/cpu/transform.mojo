@@ -100,10 +100,10 @@ from ...parallel.parallel_for import CpuWorkPolicy, recommend_worker_count, exec
 
 
 def cpu_transpose_copy2_strided[
-    source_origin: Origin, destination_origin: Origin[mut=True],
+    source_origin: Origin[mut=False], destination_origin: Origin[mut=True],
 ](
-    source: Span[False, Float32, source_origin],
-    destination: Span[True, Float32, destination_origin],
+    source: Span[mut=False, Float32, source_origin],
+    destination: Span[mut=True, Float32, destination_origin],
     rows: Int, columns: Int, offset: Int, row_stride: Int, column_stride: Int,
 ) -> TensorStatus:
     # Raw Span callers are not allowed to bypass the Tensor facade's

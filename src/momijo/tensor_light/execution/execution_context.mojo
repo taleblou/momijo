@@ -119,7 +119,7 @@ struct GpuExecutionLane(Movable):
     def __init__(out self, var context: DeviceContext):
         self.context = context
 
-    def compute_stream(ref self) -> DeviceStream:
+    def compute_stream(ref self) raises -> DeviceStream:
         return self.context.stream()
 
     def create_transfer_stream(ref self, priority: Int = 0) raises -> DeviceStream:
@@ -144,15 +144,18 @@ struct ExecutionContext(Movable):
         math_mode: Fp32MathMode = Fp32MathMode.STRICT_FP32,
         accuracy_mode: ReductionAccuracyMode = ReductionAccuracyMode.DETERMINISTIC_PAIRWISE,
     ):
-        self.cpu_lane = cpu_lane
-        self.gpu_lane = gpu_lane
-        self.preference = preference
+        self.cpu_lane = cpu_lane.copy()
+        if gpu_lane:
+            self.gpu_lane = GpuExecutionLane(gpu_lane.value().context)
+        else:
+            self.gpu_lane = None
+        self.preference = preference.copy()
         self.fp32_mode = math_mode
-        self.reduction_accuracy = accuracy_mode
+        self.reduction_accuracy = accuracy_mode.copy()
 
     @staticmethod
     def cpu_only() -> Self:
-        return Self(CpuExecutionLane(), None, ExecutionPreference.CPU)
+        return Self(CpuExecutionLane(), None, materialize[ExecutionPreference.CPU]())
 
     def has_accelerator(self) -> Bool:
         return Bool(self.gpu_lane)
@@ -161,7 +164,7 @@ struct ExecutionContext(Movable):
         return self.fp32_mode
 
     def reduction_mode(self) -> ReductionAccuracyMode:
-        return self.reduction_accuracy
+        return self.reduction_accuracy.copy()
 
     def supports_hybrid(self) -> Bool:
         # Indicates only that both execution lanes were supplied and AUTO is
@@ -240,7 +243,7 @@ struct ExecutionContext(Movable):
         return Self(
             CpuExecutionLane(),
             Optional[GpuExecutionLane](GpuExecutionLane(gpu_context)),
-            ExecutionPreference.GPU, math_mode, accuracy_mode,
+            materialize[ExecutionPreference.GPU](), math_mode, accuracy_mode,
         )
 
     @staticmethod
@@ -254,7 +257,7 @@ struct ExecutionContext(Movable):
         return Self(
             CpuExecutionLane(cpu_grain),
             Optional[GpuExecutionLane](GpuExecutionLane(gpu_context)),
-            ExecutionPreference.AUTO, math_mode, accuracy_mode,
+            materialize[ExecutionPreference.AUTO](), math_mode, accuracy_mode,
         )
 
 
@@ -264,7 +267,7 @@ def make_cpu_context(
     accuracy_mode: ReductionAccuracyMode = ReductionAccuracyMode.DETERMINISTIC_PAIRWISE,
 ) -> ExecutionContext:
     return ExecutionContext(
-        CpuExecutionLane(cpu_grain), None, ExecutionPreference.CPU,
+        CpuExecutionLane(cpu_grain), None, materialize[ExecutionPreference.CPU](),
         math_mode, accuracy_mode,
     )
 

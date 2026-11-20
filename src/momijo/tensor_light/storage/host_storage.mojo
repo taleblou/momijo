@@ -101,7 +101,7 @@ from .storage import TensorStorage, MutableTensorStorage, HostSpanStorage
 # All callers validate bounds/writeability before invoking this unchecked loop.
 @inline(.always)
 def _fill_fp32_contiguous[width: Int, o: Origin[mut=True]](
-    dest: Span[True, Float32, o], value: Float32
+    dest: Span[Float32, o], value: Float32
 ):
     comptime assert width > 0, "Float32 SIMD width must be positive"
     var n = len(dest)
@@ -117,7 +117,10 @@ struct HostStorage(Movable, HostSpanStorage):
     var owned: HostAllocation
 
     def __init__(out self, var owned: HostAllocation):
-        self.owned = owned
+        self.owned = owned^
+
+    def _take_allocation(deinit self) -> HostAllocation:
+        return self.owned^
 
     @staticmethod
     def full(count: Int, value: Float32) -> TensorResult[Self]:
@@ -128,7 +131,7 @@ struct HostStorage(Movable, HostSpanStorage):
         var status = result.fill_host(value)
         if status != TensorStatus.OK:
             return TensorResult[Self](status)
-        return TensorResult[Self](result)
+        return TensorResult[Self](result^)
 
     @staticmethod
     def zeros(count: Int) -> TensorResult[Self]:
@@ -180,7 +183,7 @@ struct HostStorage(Movable, HostSpanStorage):
         return self.owned._mark_complete_overwrite()
 
     def _copy_from_disjoint_span_unchecked[origin: Origin](
-        mut self, source: Span[False, Float32, origin]
+        mut self, source: Span[Float32, origin]
     ) -> TensorStatus:
         # The caller establishes source/destination disjointness (a fresh
         # owned allocation or a separately proven address range). Recheck
@@ -204,13 +207,16 @@ struct HostStorage(Movable, HostSpanStorage):
 
     # Internal fast-path precondition: call capacity()/validated_snapshot()
     # before borrowing; the returned Span cannot express fallible validation.
-    def borrow_span(ref self) -> Span[False, Float32, origin_of(self)]:
-        return Span[False, Float32, origin_of(self)](
-            unsafe_ptr=self.owned.memory.unsafe_ptr(), length=self.owned.logical_count
+    def borrow_span[origin: Origin[mut=False]](ref[origin] self) -> Span[Float32, origin]:
+        # The owner borrow also keeps its managed allocation alive.
+        return Span[Float32, origin](
+            unsafe_ptr=self.owned.memory.unsafe_ptr().unsafe_origin_cast[origin](),
+            length=self.owned.logical_count,
         )
 
     # Internal fast-path precondition: metadata and exclusive mapping checked.
-    def borrow_mut_span(mut self) -> Span[True, Float32, origin_of(self)]:
-        return Span[True, Float32, origin_of(self)](
-            unsafe_ptr=self.owned.memory.unsafe_ptr(), length=self.owned.logical_count
+    def borrow_mut_span[origin: Origin[mut=True]](ref[origin] self) -> Span[Float32, origin]:
+        return Span[Float32, origin](
+            unsafe_ptr=self.owned.memory.unsafe_ptr().unsafe_origin_cast[origin](),
+            length=self.owned.logical_count,
         )

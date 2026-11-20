@@ -261,7 +261,7 @@ def _read_has_ordered_producer[max_stages: Int](
         for earlier in range(current_index):
             if reachable_predecessors & (Int(1) << earlier) == 0:
                 continue
-            var written = stages[earlier].write
+            var written = stages[earlier].write.copy()
             if not written.active():
                 continue
             if written.space != access.space or written.buffer_id != access.buffer_id:
@@ -291,7 +291,7 @@ def equal_access_lengths(a: ExecutionAccess, b: ExecutionAccess) -> Bool:
 
 def valid_stage_signature(stage: ExecutionStage) -> Bool:
     # Bind each stage to the expected target mapping before launch.
-    if stage.kind == ExecutionStageKind.CPU_PREPARE:
+    if stage.kind == materialize[ExecutionStageKind.CPU_PREPARE]():
         # In the fixed host-binary ABI the only initially readable owners
         # are the two host inputs (0, 1). Scratch allocations use IDs >= 3.
         return (
@@ -301,14 +301,14 @@ def valid_stage_signature(stage: ExecutionStage) -> Bool:
             and stage.write.space == 2 and stage.write.buffer_id >= 3
             and equal_access_lengths(stage.read_a, stage.write)
         )
-    if stage.kind == ExecutionStageKind.H2D:
+    if stage.kind == materialize[ExecutionStageKind.H2D]():
         return (
             stage.lane == 2 and stage.read_a.space == 2
             and stage.read_a.buffer_id >= 3 and not stage.read_b.active()
             and stage.write.space == 1 and stage.write.buffer_id >= 3
             and equal_access_lengths(stage.read_a, stage.write)
         )
-    if stage.kind == ExecutionStageKind.GPU_KERNEL:
+    if stage.kind == materialize[ExecutionStageKind.GPU_KERNEL]():
         # The current checked schedule models a binary elementwise FP32
         # kernel. Matmul/reduction need a separately typed operation contract.
         return (
@@ -318,14 +318,14 @@ def valid_stage_signature(stage: ExecutionStage) -> Bool:
             and equal_access_lengths(stage.read_a, stage.write)
             and equal_access_lengths(stage.read_b, stage.write)
         )
-    if stage.kind == ExecutionStageKind.D2H:
+    if stage.kind == materialize[ExecutionStageKind.D2H]():
         return (
             stage.lane == 2 and stage.read_a.space == 1
             and stage.read_a.buffer_id >= 3 and not stage.read_b.active()
             and stage.write.space == 2 and stage.write.buffer_id >= 3
             and equal_access_lengths(stage.read_a, stage.write)
         )
-    if stage.kind == ExecutionStageKind.CPU_COMPUTE:
+    if stage.kind == materialize[ExecutionStageKind.CPU_COMPUTE]():
         # A checked CPU stage may read initial host inputs (0, 1) or
         # snapshotted scratch (IDs >= 3), but it can only write OUTPUT 2.
         # Otherwise a forged schedule could overwrite a live host input.
@@ -345,7 +345,7 @@ def valid_stage_signature(stage: ExecutionStage) -> Bool:
             and equal_access_lengths(stage.read_a, stage.write)
             and equal_access_lengths(stage.read_b, stage.write)
         )
-    if stage.kind == ExecutionStageKind.HOST_JOIN:
+    if stage.kind == materialize[ExecutionStageKind.HOST_JOIN]():
         return (
             stage.lane == 3 and stage.read_a.space == 2
             and stage.read_a.buffer_id >= 3 and not stage.read_b.active()
@@ -361,7 +361,7 @@ struct CheckedStageSchedule[max_stages: Int](Movable):
     var total_elements: Int
 
     def __init__(out self, var stages: Array[ExecutionStage, Self.max_stages], count: Int, total_elements: Int):
-        self.stages = stages
+        self.stages = stages^
         self.count = count
         self.total_elements = total_elements
 
@@ -380,7 +380,7 @@ struct CheckedStageSchedule[max_stages: Int](Movable):
             return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
         var transitive = Array[Int, Self.max_stages](fill=0)
         for i in range(count):
-            var node = stages[i]
+            var node = stages[i].copy()
             if node.identifier != i or node.kind.code < 0 or node.kind.code > 5:
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
             # Validate every endpoint BEFORE any signature helper subtracts
@@ -423,7 +423,7 @@ struct CheckedStageSchedule[max_stages: Int](Movable):
                 if stage_access_conflict(node, stages[j]):
                     if reachable & (Int(1) << j) == 0:
                         return TensorResult[Self](TensorStatus.OVERLAPPING)
-        return TensorResult[Self](Self(stages, count, total_elements))
+        return TensorResult[Self](Self(stages^, count, total_elements))
 
     def checked_host_output_coverage(self, expected_begin: Int, expected_end: Int) -> TensorStatus:
         # DAG hazards prove ordering, not that all requested output elements
@@ -435,16 +435,16 @@ struct CheckedStageSchedule[max_stages: Int](Movable):
         var rebuilt = Self.checked(self.stages.copy(), self.count, self.total_elements)
         if not rebuilt.is_ok():
             return rebuilt.status
-        var fixed = rebuilt.payload.value()
+        ref fixed = rebuilt.payload.value()
         if expected_begin < 0 or expected_end < expected_begin or expected_end > fixed.total_elements:
             return TensorStatus.OUT_OF_BOUNDS
         var producer_count = 0
         for i in range(fixed.count):
-            var node = fixed.stages[i]
-            var written = node.write
+            var node = fixed.stages[i].copy()
+            var written = node.write.copy()
             if written.space == 0 and written.buffer_id == 2:
-                if (node.kind != ExecutionStageKind.CPU_COMPUTE
-                    and node.kind != ExecutionStageKind.HOST_JOIN):
+                if (node.kind != materialize[ExecutionStageKind.CPU_COMPUTE]()
+                    and node.kind != materialize[ExecutionStageKind.HOST_JOIN]()):
                     return TensorStatus.INVALID_LAYOUT
                 if written.begin < expected_begin or written.end > expected_end:
                     return TensorStatus.OUT_OF_BOUNDS
@@ -463,7 +463,7 @@ struct CheckedStageSchedule[max_stages: Int](Movable):
             var successor = cursor
             var matches = 0
             for i in range(fixed.count):
-                var written = fixed.stages[i].write
+                var written = fixed.stages[i].write.copy()
                 if written.space == 0 and written.buffer_id == 2 and written.begin == cursor:
                     matches += 1
                     successor = written.end
@@ -497,7 +497,7 @@ def _access_in_buffer_bounds[n: Int](
     if access.space > 2 or access.buffer_id < 0 or access.begin < 0 or access.end <= access.begin:
         return TensorStatus.INVALID_LAYOUT
     for i in range(n):
-        var entry = bounds[i]
+        var entry = bounds[i].copy()
         if entry.space == access.space and entry.buffer_id == access.buffer_id:
             if entry.extent < 0 or access.begin < 0 or access.end > entry.extent:
                 return TensorStatus.OUT_OF_BOUNDS
@@ -519,7 +519,7 @@ struct BoundStageSchedule[stage_capacity: Int, buffer_capacity: Int](Movable):
         out self, var schedule: CheckedStageSchedule[Self.stage_capacity],
         bounds: Array[ExecutionBufferBounds, Self.buffer_capacity],
     ):
-        self._schedule = schedule
+        self._schedule = schedule^
         self._bounds = bounds.copy()
 
     def checked_snapshot(self) -> TensorResult[Self]:
@@ -550,7 +550,7 @@ struct BoundStageSchedule[stage_capacity: Int, buffer_capacity: Int](Movable):
         var proof = self.checked_snapshot()
         if not proof.is_ok():
             return proof.status
-        var fixed = proof.payload.value()
+        ref fixed = proof.payload.value()
         if fixed._schedule.total_elements != required_elements:
             return TensorStatus.SIZE_MISMATCH
         return fixed._schedule.checked_host_output_coverage(expected_begin, expected_end)
@@ -580,7 +580,7 @@ def bind_schedule_buffers_checked[stages: Int, buffers: Int](
     var safe_schedule = rebuilt.payload.take()
     # Duplicate buffer identities could create conflicting capacity proofs.
     for i in range(buffers):
-        var a = bounds[i]
+        var a = bounds[i].copy()
         if a.extent < 0:
             return TensorResult[BoundStageSchedule[stages, buffers]](TensorStatus.INVALID_LAYOUT)
         if a.extent > Int.MAX // 4:
@@ -602,14 +602,14 @@ def bind_schedule_buffers_checked[stages: Int, buffers: Int](
         elif a.buffer_id < 3:
             return TensorResult[BoundStageSchedule[stages, buffers]](TensorStatus.INVALID_LAYOUT)
         for j in range(i):
-            var b = bounds[j]
+            var b = bounds[j].copy()
             # Buffer IDs are allocation identities across ALL memory spaces,
             # not separate numbering namespaces. Reusing one identity for two
             # domains makes disjointness and ownership proofs ambiguous.
             if a.buffer_id == b.buffer_id and a.buffer_id >= 0:
                 return TensorResult[BoundStageSchedule[stages, buffers]](TensorStatus.INVALID_LAYOUT)
     for i in range(safe_schedule.count):
-        var stage = safe_schedule.stages[i]
+        var stage = safe_schedule.stages[i].copy()
         var read_a = _access_in_buffer_bounds(stage.read_a, bounds)
         if read_a != TensorStatus.OK:
             return TensorResult[BoundStageSchedule[stages, buffers]](read_a)
@@ -620,7 +620,7 @@ def bind_schedule_buffers_checked[stages: Int, buffers: Int](
         if write != TensorStatus.OK:
             return TensorResult[BoundStageSchedule[stages, buffers]](write)
     return TensorResult[BoundStageSchedule[stages, buffers]](
-        BoundStageSchedule[stages, buffers](safe_schedule, bounds)
+        BoundStageSchedule[stages, buffers](safe_schedule^, bounds)
     )
 
 

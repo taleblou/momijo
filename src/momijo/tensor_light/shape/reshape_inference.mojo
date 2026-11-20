@@ -126,10 +126,10 @@ def infer_reshape_shape[rank: Int](source_numel: Int, proposed: StaticRankArray[
             return TensorResult[TensorShape[rank]](TensorStatus.INVALID_SHAPE)
         var empty_shape = TensorShape[rank].checked(dims)
         if not empty_shape.is_ok():
-            return empty_shape
+            return empty_shape^
         if source_numel != 0:
             return TensorResult[TensorShape[rank]](TensorStatus.SIZE_MISMATCH)
-        return empty_shape
+        return empty_shape^
     if inferred_axis >= 0 and source_numel == 0:
         # There are no explicit zero factors and exactly one inferred axis.
         # Its only possible value is zero. Avoid multiplying potentially huge
@@ -154,10 +154,10 @@ def infer_reshape_shape[rank: Int](source_numel: Int, proposed: StaticRankArray[
         dims.set(inferred_axis, source_numel // known)
     var final_shape = TensorShape[rank].checked(dims)
     if not final_shape.is_ok():
-        return final_shape
+        return final_shape^
     if final_shape.payload.value().numel() != source_numel:
         return TensorResult[TensorShape[rank]](TensorStatus.SIZE_MISMATCH)
-    return final_shape
+    return final_shape^
 
 
 def validate_same_numel[source_rank: Int, target_rank: Int](

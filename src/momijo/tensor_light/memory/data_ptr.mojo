@@ -101,10 +101,10 @@ from ..memory.alignment import is_valid_alignment
 from ..internal.checked_math import checked_nbytes
 
 struct HostDataPtr[origin: Origin](Copyable):
-    var span: Span[False, Float32, Self.origin]
+    var span: Span[mut=False, Float32, Self.origin]
     var alignment: Int
 
-    def __init__(out self, span: Span[False, Float32, Self.origin], alignment: Int):
+    def __init__(out self, span: Span[mut=False, Float32, Self.origin], alignment: Int):
         self.span = span
         self.alignment = alignment
 
@@ -119,7 +119,7 @@ struct HostDataPtr[origin: Origin](Copyable):
         return checked_nbytes(len(self.span))
 
     @staticmethod
-    def from_span_checked(span: Span[False, Float32, Self.origin], alignment: Int) -> TensorResult[Self]:
+    def from_span_checked(span: Span[mut=False, Float32, Self.origin], alignment: Int) -> TensorResult[Self]:
         # A power-of-two integer is NOT an alignment proof for external data.
         # The base address must actually satisfy the advertised alignment;
         # otherwise an aligned AOT SIMD load can have undefined behavior.

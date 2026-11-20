@@ -94,7 +94,8 @@
 # Explicit launch-geometry policy shared by all precompiled GPU variants.
 
 from ..internal.status import TensorResult, TensorStatus
-from max.gpu.host import DeviceContext, DeviceBuffer, DeviceExternalFunction
+from max.gpu.host import DeviceContext, DeviceBuffer
+from max.gpu.host.device_context import DeviceExternalFunction
 from ..execution.execution_plan import ExecutionPlan, ExecutionPlacement
 from ..dispatch.specialization import BinaryAOTArtifactIdentity, GemmAOTArtifactIdentity, UnaryAOTArtifactIdentity, ReduceRowsAOTArtifactIdentity, ScanRowsAOTArtifactIdentity
 from ..transfer.device_transfer import device_fp32_regions_disjoint
@@ -163,7 +164,7 @@ def run_owned_bound_gpu_binary_fp32[operation: Int](
     identity: BinaryAOTArtifactIdentity,
     target_arch: Int,
     selected: ExecutionPlan,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     a: DeviceBuffer[DType.float32],
     b: DeviceBuffer[DType.float32],
 ) -> TensorStatus:
@@ -173,15 +174,15 @@ def run_owned_bound_gpu_binary_fp32[operation: Int](
     var native = selected.checked_native_device_snapshot()
     if not native.is_ok():
         return native.status
-    var plan = native.payload.value()
+    var plan = native.payload.value().copy()
     var count = plan.total_items
     if count < 0 or count > Int.MAX // 4:
         return TensorStatus.OVERFLOW
-    if len(out) < count or len(a) < count or len(b) < count:
+    if len(output) < count or len(a) < count or len(b) < count:
         return TensorStatus.SIZE_MISMATCH
     # The flat native AOT output must cover the complete physical owner.
     # An arbitrary subregion instead requires the checked strided writer.
-    if count > 0 and len(out) != count:
+    if count > 0 and len(output) != count:
         return TensorStatus.NOT_REPRESENTABLE
     if count == 0:
         # Empty tensors have no native launch, so no executable binding is needed.
@@ -194,9 +195,9 @@ def run_owned_bound_gpu_binary_fp32[operation: Int](
         return TensorStatus.UNSUPPORTED
     # This AOT binary ABI is out-of-place. Distinct DeviceBuffer wrappers do
     # not imply distinct allocations, including for non-owning sub-buffers.
-    if not device_fp32_regions_disjoint(out, count, a, count):
+    if not device_fp32_regions_disjoint(output, count, a, count):
         return TensorStatus.ALIAS_UNKNOWN
-    if not device_fp32_regions_disjoint(out, count, b, count):
+    if not device_fp32_regions_disjoint(output, count, b, count):
         return TensorStatus.ALIAS_UNKNOWN
     try:
         var geometry = gpu_grid_1d(count, 256)
@@ -204,7 +205,7 @@ def run_owned_bound_gpu_binary_fp32[operation: Int](
             return geometry.status
         var blocks = geometry.payload.value().grid_blocks
         ctx.enqueue_function(
-            artifact, out, a, b, count, grid_dim=blocks, block_dim=256,
+            artifact, output, a, b, count, grid_dim=blocks, block_dim=256,
         )
         var completed = ctx.create_event()
         ctx.stream().record_event(completed)
@@ -234,7 +235,7 @@ def run_owned_bound_gpu_gemm_fp32(
     target_arch: Int,
     math_mode: Int,
     selected: ExecutionPlan,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     a: DeviceBuffer[DType.float32],
     b: DeviceBuffer[DType.float32],
     m: Int, k: Int, n: Int,
@@ -242,7 +243,7 @@ def run_owned_bound_gpu_gemm_fp32(
     var native = selected.checked_native_device_snapshot()
     if not native.is_ok():
         return native.status
-    var plan = native.payload.value()
+    var plan = native.payload.value().copy()
     # Shape-zero and K=0 require no GEMM artifact, but they must not turn
     # invalid hardware/math metadata into an apparently valid invocation.
     if target_arch <= 0:
@@ -262,19 +263,19 @@ def run_owned_bound_gpu_gemm_fp32(
         return TensorStatus.OVERFLOW
     if plan.total_items != c_count:
         return TensorStatus.SIZE_MISMATCH
-    if len(out) < c_count or len(a) < a_count or len(b) < b_count:
+    if len(output) < c_count or len(a) < a_count or len(b) < b_count:
         return TensorStatus.SIZE_MISMATCH
-    if c_count > 0 and len(out) != c_count:
+    if c_count > 0 and len(output) != c_count:
         return TensorStatus.NOT_REPRESENTABLE
     # GEMM with K=0 has a mathematically defined result: C = zeros(M,N).
     # Never call an AOT GEMM artifact whose K=0 ABI is not authenticated.
     # MAX's whole-buffer fill is only legal if physical C has exactly the
     # validated logical extent (including no trailing unrelated data).
     if c_count > 0 and k == 0:
-        if len(out) != c_count:
+        if len(output) != c_count:
             return TensorStatus.NOT_REPRESENTABLE
         try:
-            out.enqueue_fill(Float32(0.0))
+            output.enqueue_fill(Float32(0.0))
             var filled_event = ctx.create_event()
             ctx.stream().record_event(filled_event)
             filled_event.synchronize()
@@ -296,9 +297,9 @@ def run_owned_bound_gpu_gemm_fp32(
     if (identity.flavor != GemmAOTArtifactIdentity.STRICT_SIMT
         and identity.flavor != GemmAOTArtifactIdentity.TF32_MMA):
         return TensorStatus.UNSUPPORTED
-    if not device_fp32_regions_disjoint(out, c_count, a, a_count):
+    if not device_fp32_regions_disjoint(output, c_count, a, a_count):
         return TensorStatus.ALIAS_UNKNOWN
-    if not device_fp32_regions_disjoint(out, c_count, b, b_count):
+    if not device_fp32_regions_disjoint(output, c_count, b, b_count):
         return TensorStatus.ALIAS_UNKNOWN
     try:
         if c_count > 0:
@@ -321,7 +322,7 @@ def run_owned_bound_gpu_gemm_fp32(
                     return geometry.status
                 blocks = geometry.payload.value().grid_blocks
             ctx.enqueue_function(
-                artifact, out, a, b, m, k, n, grid_dim=blocks, block_dim=256,
+                artifact, output, a, b, m, k, n, grid_dim=blocks, block_dim=256,
             )
         var event = ctx.create_event()
         ctx.stream().record_event(event)
@@ -341,7 +342,7 @@ def run_owned_bound_gpu_unary_fp32[operation: Int](
     ctx: DeviceContext, artifact: DeviceExternalFunction,
     identity: UnaryAOTArtifactIdentity, target_arch: Int,
     selected: ExecutionPlan,
-    out: DeviceBuffer[DType.float32], source: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32], source: DeviceBuffer[DType.float32],
 ) -> TensorStatus:
     comptime assert operation >= 0 and operation <= 8, "invalid unary opcode"
     if target_arch <= 0:
@@ -349,13 +350,13 @@ def run_owned_bound_gpu_unary_fp32[operation: Int](
     var native = selected.checked_native_device_snapshot()
     if not native.is_ok():
         return native.status
-    var plan = native.payload.value()
+    var plan = native.payload.value().copy()
     var count = plan.total_items
     if count < 0 or count > Int.MAX // 4:
         return TensorStatus.OVERFLOW
-    if len(out) < count or len(source) < count:
+    if len(output) < count or len(source) < count:
         return TensorStatus.SIZE_MISMATCH
-    if count > 0 and len(out) != count:
+    if count > 0 and len(output) != count:
         return TensorStatus.NOT_REPRESENTABLE
     if count == 0:
         # No kernel or artifact needed for an empty GPU-native operation.
@@ -363,7 +364,7 @@ def run_owned_bound_gpu_unary_fp32[operation: Int](
     var bound = identity.validate_for(operation, plan.aot_variant, target_arch)
     if bound != TensorStatus.OK:
         return bound
-    if not device_fp32_regions_disjoint(out, count, source, count):
+    if not device_fp32_regions_disjoint(output, count, source, count):
         return TensorStatus.ALIAS_UNKNOWN
     try:
         var geometry = gpu_grid_1d(count, 256)
@@ -371,7 +372,7 @@ def run_owned_bound_gpu_unary_fp32[operation: Int](
             return geometry.status
         var blocks = geometry.payload.value().grid_blocks
         ctx.enqueue_function(
-            artifact, out, source, count, grid_dim=blocks, block_dim=256,
+            artifact, output, source, count, grid_dim=blocks, block_dim=256,
         )
         var event = ctx.create_event()
         ctx.stream().record_event(event)
@@ -395,7 +396,7 @@ def run_owned_bound_gpu_reduce_rows_fp32[operation: Int](
     identity: ReduceRowsAOTArtifactIdentity,
     target_arch: Int,
     selected: ExecutionPlan,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     source: DeviceBuffer[DType.float32],
     rows: Int,
     cols: Int,
@@ -403,7 +404,7 @@ def run_owned_bound_gpu_reduce_rows_fp32[operation: Int](
     var native = selected.checked_native_device_snapshot()
     if not native.is_ok():
         return native.status
-    var plan = native.payload.value()
+    var plan = native.payload.value().copy()
     comptime if operation < 0 or operation > 4:
         return TensorStatus.UNSUPPORTED
     if target_arch <= 0:
@@ -425,11 +426,11 @@ def run_owned_bound_gpu_reduce_rows_fp32[operation: Int](
     # For a reduction, logical plan work is OUTPUT rows, not input elements.
     if plan.total_items != rows:
         return TensorStatus.SIZE_MISMATCH
-    if len(out) < rows or len(source) < source_count:
+    if len(output) < rows or len(source) < source_count:
         return TensorStatus.SIZE_MISMATCH
     # Positive outputs must occupy the entire device allocation. An empty
     # Tensor may legitimately have a physical one-element allocation pad.
-    if rows > 0 and len(out) != rows:
+    if rows > 0 and len(output) != rows:
         return TensorStatus.NOT_REPRESENTABLE
     if rows == 0:
         # No output elements or native work; bypass unused AOT artifact.
@@ -441,9 +442,9 @@ def run_owned_bound_gpu_reduce_rows_fp32[operation: Int](
     if cols == 0:
         try:
             comptime if operation == 0:
-                out.enqueue_fill(Float32(0.0))
+                output.enqueue_fill(Float32(0.0))
             else:
-                out.enqueue_fill(Float32(1.0))
+                output.enqueue_fill(Float32(1.0))
             var identity_fill_done = ctx.create_event()
             ctx.stream().record_event(identity_fill_done)
             identity_fill_done.synchronize()
@@ -459,7 +460,7 @@ def run_owned_bound_gpu_reduce_rows_fp32[operation: Int](
         return binding
     # A row reduction is out-of-place. Even a zero-column reduction writes
     # rows output values; a nonzero input must not share those addresses.
-    if not device_fp32_regions_disjoint(out, rows, source, source_count):
+    if not device_fp32_regions_disjoint(output, rows, source, source_count):
         return TensorStatus.ALIAS_UNKNOWN
     try:
         var geometry = gpu_grid_1d(rows, 256)
@@ -467,7 +468,7 @@ def run_owned_bound_gpu_reduce_rows_fp32[operation: Int](
             return geometry.status
         var blocks = geometry.payload.value().grid_blocks
         ctx.enqueue_function(
-            artifact, out, source, rows, cols,
+            artifact, output, source, rows, cols,
             grid_dim=blocks, block_dim=256,
         )
         var completion = ctx.create_event()
@@ -492,14 +493,14 @@ def run_owned_bound_gpu_sum_rows_fp32(
     identity: ReduceRowsAOTArtifactIdentity,
     target_arch: Int,
     selected: ExecutionPlan,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     source: DeviceBuffer[DType.float32],
     rows: Int,
     cols: Int,
 ) -> TensorStatus:
     return run_owned_bound_gpu_reduce_rows_fp32[0](
         ctx, artifact, identity, target_arch, selected,
-        out, source, rows, cols,
+        output, source, rows, cols,
     )
 
 # Bound synchronous native AOT row-wise scan, each output Float32 written
@@ -513,7 +514,7 @@ def run_owned_bound_gpu_scan_rows_fp32[operation: Int](
     identity: ScanRowsAOTArtifactIdentity,
     target_arch: Int,
     selected: ExecutionPlan,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     source: DeviceBuffer[DType.float32],
     rows: Int,
     cols: Int,
@@ -525,7 +526,7 @@ def run_owned_bound_gpu_scan_rows_fp32[operation: Int](
     var checked = selected.checked_native_device_snapshot()
     if not checked.is_ok():
         return checked.status
-    var plan = checked.payload.value()
+    var plan = checked.payload.value().copy()
     if rows < 0 or cols < 0:
         return TensorStatus.INVALID_SHAPE
     if rows > 0 and cols > Int.MAX // rows:
@@ -536,9 +537,9 @@ def run_owned_bound_gpu_scan_rows_fp32[operation: Int](
     # A scan writes the entire input-sized output, unlike a row reduction.
     if plan.total_items != count:
         return TensorStatus.SIZE_MISMATCH
-    if len(out) < count or len(source) < count:
+    if len(output) < count or len(source) < count:
         return TensorStatus.SIZE_MISMATCH
-    if count > 0 and len(out) != count:
+    if count > 0 and len(output) != count:
         return TensorStatus.NOT_REPRESENTABLE
     if count == 0:
         # An empty scan does not depend on any prelinked GPU artifact.
@@ -546,7 +547,7 @@ def run_owned_bound_gpu_scan_rows_fp32[operation: Int](
     var bound = identity.validate_for_op(operation, plan.aot_variant, target_arch)
     if bound != TensorStatus.OK:
         return bound
-    if not device_fp32_regions_disjoint(out, count, source, count):
+    if not device_fp32_regions_disjoint(output, count, source, count):
         return TensorStatus.ALIAS_UNKNOWN
     var shape = gpu_grid_1d(rows, 256)
     if not shape.is_ok():
@@ -554,7 +555,7 @@ def run_owned_bound_gpu_scan_rows_fp32[operation: Int](
     try:
         var blocks = shape.payload.value().grid_blocks
         ctx.enqueue_function(
-            artifact, out, source, rows, cols,
+            artifact, output, source, rows, cols,
             grid_dim=blocks, block_dim=256,
         )
         var completion = ctx.create_event()
@@ -585,7 +586,7 @@ def run_owned_gpu_binary_strided_fp32[
     ctx: DeviceContext,
     selected: ExecutionPlan,
     development_allow_runtime_compilation: Bool,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     left: DeviceBuffer[DType.float32],
     right: DeviceBuffer[DType.float32],
     out_layout: TensorLayout[output_rank],
@@ -601,7 +602,7 @@ def run_owned_gpu_binary_strided_fp32[
     var proof = selected.checked_native_device_snapshot()
     if not proof.is_ok():
         return proof.status
-    var plan = proof.payload.value()
+    var plan = proof.payload.value().copy()
     if plan.aot_variant != 0:
         return TensorStatus.UNSUPPORTED
     # UASDEA RELEASE SAFETY: ctx.enqueue_function[kernel] may compile on
@@ -609,7 +610,7 @@ def run_owned_gpu_binary_strided_fp32[
     # this source fallback. Disable implicit JIT unless explicitly opted in.
     if not development_allow_runtime_compilation:
         return TensorStatus.UNSUPPORTED
-    var out_proof = out_layout.validated_snapshot(len(out))
+    var out_proof = out_layout.validated_snapshot(len(output))
     if not out_proof.is_ok():
         return out_proof.status
     var left_proof = left_layout.validated_snapshot(len(left))
@@ -666,9 +667,9 @@ def run_owned_gpu_binary_strided_fp32[
     # DeviceBuffer views can overlap even when the Mojo objects differ.
     # Prove disjointness conservatively against the WHOLE owner allocations,
     # not merely equal logical element counts, before launching in parallel.
-    if not device_fp32_regions_disjoint(out, len(out), left, len(left)):
+    if not device_fp32_regions_disjoint(output, len(output), left, len(left)):
         return TensorStatus.ALIAS_UNKNOWN
-    if not device_fp32_regions_disjoint(out, len(out), right, len(right)):
+    if not device_fp32_regions_disjoint(output, len(output), right, len(right)):
         return TensorStatus.ALIAS_UNKNOWN
     var grid = gpu_grid_1d(count, 256)
     if not grid.is_ok():
@@ -683,7 +684,7 @@ def run_owned_gpu_binary_strided_fp32[
             ctx.enqueue_function[
                 gpu_binary_strided_fp32[operation, output_rank, True]
             ](
-                out, left, right, extents, dest_steps, a_steps, b_steps,
+                output, left, right, extents, dest_steps, a_steps, b_steps,
                 Int64(dest.offset), Int64(a.offset), Int64(b.offset), Int64(count),
                 grid_dim=grid.payload.value().grid_blocks, block_dim=256,
             )
@@ -691,7 +692,7 @@ def run_owned_gpu_binary_strided_fp32[
             ctx.enqueue_function[
                 gpu_binary_strided_fp32[operation, output_rank, False]
             ](
-                out, left, right, extents, dest_steps, a_steps, b_steps,
+                output, left, right, extents, dest_steps, a_steps, b_steps,
                 Int64(dest.offset), Int64(a.offset), Int64(b.offset), Int64(count),
                 grid_dim=grid.payload.value().grid_blocks, block_dim=256,
             )
@@ -713,7 +714,7 @@ def run_owned_gpu_unary_strided_fp32[rank: Int, operation: Int](
     ctx: DeviceContext,
     selected: ExecutionPlan,
     development_allow_runtime_compilation: Bool,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     source: DeviceBuffer[DType.float32],
     out_layout: TensorLayout[rank],
     source_layout: TensorLayout[rank],
@@ -723,7 +724,7 @@ def run_owned_gpu_unary_strided_fp32[rank: Int, operation: Int](
     var proof = selected.checked_native_device_snapshot()
     if not proof.is_ok():
         return proof.status
-    var plan = proof.payload.value()
+    var plan = proof.payload.value().copy()
     if plan.aot_variant != 0:
         return TensorStatus.UNSUPPORTED
     # UASDEA RELEASE SAFETY: ctx.enqueue_function[kernel] may compile on
@@ -731,7 +732,7 @@ def run_owned_gpu_unary_strided_fp32[rank: Int, operation: Int](
     # this source fallback. Disable implicit JIT unless explicitly opted in.
     if not development_allow_runtime_compilation:
         return TensorStatus.UNSUPPORTED
-    var out_proof = out_layout.validated_snapshot(len(out))
+    var out_proof = out_layout.validated_snapshot(len(output))
     if not out_proof.is_ok():
         return out_proof.status
     var src_proof = source_layout.validated_snapshot(len(source))
@@ -755,7 +756,7 @@ def run_owned_gpu_unary_strided_fp32[rank: Int, operation: Int](
         src_steps[axis] = Int64(src.strides.get(axis))
     if count == 0:
         return TensorStatus.OK
-    if not device_fp32_regions_disjoint(out, len(out), source, len(source)):
+    if not device_fp32_regions_disjoint(output, len(output), source, len(source)):
         return TensorStatus.ALIAS_UNKNOWN
     var grid = gpu_grid_1d(count, 256)
     if not grid.is_ok():
@@ -765,7 +766,7 @@ def run_owned_gpu_unary_strided_fp32[rank: Int, operation: Int](
             ctx.enqueue_function[
                 gpu_unary_strided_fp32[operation, rank, True]
             ](
-                out, source, extents, dest_steps, src_steps,
+                output, source, extents, dest_steps, src_steps,
                 Int64(dest.offset), Int64(src.offset), Int64(count),
                 grid_dim=grid.payload.value().grid_blocks, block_dim=256,
             )
@@ -773,7 +774,7 @@ def run_owned_gpu_unary_strided_fp32[rank: Int, operation: Int](
             ctx.enqueue_function[
                 gpu_unary_strided_fp32[operation, rank, False]
             ](
-                out, source, extents, dest_steps, src_steps,
+                output, source, extents, dest_steps, src_steps,
                 Int64(dest.offset), Int64(src.offset), Int64(count),
                 grid_dim=grid.payload.value().grid_blocks, block_dim=256,
             )
@@ -797,7 +798,7 @@ def run_owned_gpu_reduce_axis_strided_fp32[rank: Int, axis: Int, operation: Int]
     ctx: DeviceContext,
     selected: ExecutionPlan,
     development_allow_runtime_compilation: Bool,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     source: DeviceBuffer[DType.float32],
     out_layout: TensorLayout[rank],
     source_layout: TensorLayout[rank],
@@ -808,7 +809,7 @@ def run_owned_gpu_reduce_axis_strided_fp32[rank: Int, axis: Int, operation: Int]
     var proof = selected.checked_native_device_snapshot()
     if not proof.is_ok():
         return proof.status
-    var plan = proof.payload.value()
+    var plan = proof.payload.value().copy()
     if plan.aot_variant != 0:
         return TensorStatus.UNSUPPORTED
     # UASDEA RELEASE SAFETY: ctx.enqueue_function[kernel] may compile on
@@ -816,7 +817,7 @@ def run_owned_gpu_reduce_axis_strided_fp32[rank: Int, axis: Int, operation: Int]
     # this source fallback. Disable implicit JIT unless explicitly opted in.
     if not development_allow_runtime_compilation:
         return TensorStatus.UNSUPPORTED
-    var out_proof = out_layout.validated_snapshot(len(out))
+    var out_proof = out_layout.validated_snapshot(len(output))
     if not out_proof.is_ok():
         return out_proof.status
     var source_proof = source_layout.validated_snapshot(len(source))
@@ -847,7 +848,7 @@ def run_owned_gpu_reduce_axis_strided_fp32[rank: Int, axis: Int, operation: Int]
         source_steps[i] = Int64(src.strides.get(i))
     if count == 0:
         return TensorStatus.OK
-    if not device_fp32_regions_disjoint(out, len(out), source, len(source)):
+    if not device_fp32_regions_disjoint(output, len(output), source, len(source)):
         return TensorStatus.ALIAS_UNKNOWN
     var grid = gpu_grid_1d(count, 256)
     if not grid.is_ok():
@@ -856,7 +857,7 @@ def run_owned_gpu_reduce_axis_strided_fp32[rank: Int, axis: Int, operation: Int]
         ctx.enqueue_function[
             gpu_reduce_axis_strided_fp32[operation, rank, axis]
         ](
-            out, source, dimensions, output_steps, source_steps,
+            output, source, dimensions, output_steps, source_steps,
             Int64(dest.offset), Int64(src.offset), Int64(count), Int64(reduction_size),
             grid_dim=grid.payload.value().grid_blocks, block_dim=256,
         )
@@ -877,7 +878,7 @@ def run_owned_gpu_scan_axis_strided_fp32[rank: Int, axis: Int, operation: Int](
     ctx: DeviceContext,
     selected: ExecutionPlan,
     development_allow_runtime_compilation: Bool,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     source: DeviceBuffer[DType.float32],
     out_layout: TensorLayout[rank],
     source_layout: TensorLayout[rank],
@@ -888,7 +889,7 @@ def run_owned_gpu_scan_axis_strided_fp32[rank: Int, axis: Int, operation: Int](
     var proof = selected.checked_native_device_snapshot()
     if not proof.is_ok():
         return proof.status
-    var plan = proof.payload.value()
+    var plan = proof.payload.value().copy()
     if plan.aot_variant != 0:
         return TensorStatus.UNSUPPORTED
     # UASDEA RELEASE SAFETY: ctx.enqueue_function[kernel] may compile on
@@ -896,7 +897,7 @@ def run_owned_gpu_scan_axis_strided_fp32[rank: Int, axis: Int, operation: Int](
     # this source fallback. Disable implicit JIT unless explicitly opted in.
     if not development_allow_runtime_compilation:
         return TensorStatus.UNSUPPORTED
-    var out_proof = out_layout.validated_snapshot(len(out))
+    var out_proof = out_layout.validated_snapshot(len(output))
     if not out_proof.is_ok():
         return out_proof.status
     var src_proof = source_layout.validated_snapshot(len(source))
@@ -924,7 +925,7 @@ def run_owned_gpu_scan_axis_strided_fp32[rank: Int, axis: Int, operation: Int](
         dimensions[i] = Int64(dest.shape.dims.get(i))
         output_steps[i] = Int64(dest.strides.get(i))
         source_steps[i] = Int64(src.strides.get(i))
-    if not device_fp32_regions_disjoint(out, len(out), source, len(source)):
+    if not device_fp32_regions_disjoint(output, len(output), source, len(source)):
         return TensorStatus.ALIAS_UNKNOWN
     var grid = gpu_grid_1d(rows, 256)
     if not grid.is_ok():
@@ -933,7 +934,7 @@ def run_owned_gpu_scan_axis_strided_fp32[rank: Int, axis: Int, operation: Int](
         ctx.enqueue_function[
             gpu_scan_axis_strided_fp32[operation, rank, axis]
         ](
-            out, source, dimensions, output_steps, source_steps,
+            output, source, dimensions, output_steps, source_steps,
             Int64(dest.offset), Int64(src.offset), Int64(rows), Int64(extent),
             grid_dim=grid.payload.value().grid_blocks, block_dim=256,
         )
@@ -958,7 +959,7 @@ def run_owned_gpu_reduce_axes_strided_fp32[rank: Int, operation: Int](
     ctx: DeviceContext,
     selected: ExecutionPlan,
     development_allow_runtime_compilation: Bool,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     source: DeviceBuffer[DType.float32],
     out_layout: TensorLayout[rank],
     source_layout: TensorLayout[rank],
@@ -972,10 +973,10 @@ def run_owned_gpu_reduce_axes_strided_fp32[rank: Int, operation: Int](
     var proof = selected.checked_native_device_snapshot()
     if not proof.is_ok():
         return proof.status
-    var plan = proof.payload.value()
+    var plan = proof.payload.value().copy()
     if plan.aot_variant != 0:
         return TensorStatus.UNSUPPORTED
-    var out_proof = out_layout.validated_snapshot(len(out))
+    var out_proof = out_layout.validated_snapshot(len(output))
     if not out_proof.is_ok():
         return out_proof.status
     var source_proof = source_layout.validated_snapshot(len(source))
@@ -1026,7 +1027,7 @@ def run_owned_gpu_reduce_axes_strided_fp32[rank: Int, operation: Int](
             return TensorStatus.SHAPE_MISMATCH
     elif src.shape.numel() != 0:
         return TensorStatus.SHAPE_MISMATCH
-    if not device_fp32_regions_disjoint(out, len(out), source, len(source)):
+    if not device_fp32_regions_disjoint(output, len(output), source, len(source)):
         return TensorStatus.ALIAS_UNKNOWN
     var source_dims = SIMD[DType.int64, 8](1)
     var output_dims = SIMD[DType.int64, 8](1)
@@ -1046,7 +1047,7 @@ def run_owned_gpu_reduce_axes_strided_fp32[rank: Int, operation: Int](
         return TensorStatus.UNSUPPORTED
     try:
         ctx.enqueue_function[gpu_reduce_axes_strided_fp32[operation, rank]](
-            out, source, source_dims, output_dims,
+            output, source, source_dims, output_dims,
             output_steps, source_steps,
             Int64(dest.offset), Int64(src.offset),
             Int64(output_count), Int64(reduction_count), Int64(axes_mask),

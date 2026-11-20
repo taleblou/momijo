@@ -100,7 +100,7 @@ from ..internal.checked_math import checked_mul_nonnegative, checked_nbytes
 from .shape_storage import StaticRankArray
 from .axis import normalize_axis_pair
 
-struct TensorShape[rank: Int](Copyable):
+struct TensorShape[rank: Int](ImplicitlyCopyable):
     var dims: StaticRankArray[Self.rank]
     var elements: Int
 
@@ -314,7 +314,7 @@ def dim_unchecked[rank: Int](shape: TensorShape[rank], axis: Int) -> Int:
 def permute_shape[rank: Int](shape: TensorShape[rank], axes: StaticRankArray[rank]) -> TensorResult[TensorShape[rank]]:
     var canonical = TensorShape[rank].checked(shape.dims)
     if not canonical.is_ok():
-        return canonical
+        return canonical^
     if canonical.payload.value().numel() != shape.numel():
         return TensorResult[TensorShape[rank]](TensorStatus.INVALID_SHAPE)
     var used = Array[Bool, 8](fill=False)
@@ -336,7 +336,7 @@ def transpose_shape[rank: Int](shape: TensorShape[rank], first: Int, second: Int
         return TensorResult[TensorShape[rank]](axes.status)
     var canonical = TensorShape[rank].checked(shape.dims)
     if not canonical.is_ok():
-        return canonical
+        return canonical^
     if canonical.payload.value().numel() != shape.numel():
         return TensorResult[TensorShape[rank]](TensorStatus.INVALID_SHAPE)
     var dims = shape.dims.copy()

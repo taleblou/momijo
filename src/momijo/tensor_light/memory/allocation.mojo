@@ -112,7 +112,7 @@ struct HostAllocation(Movable):
     var initialized_elements: Int
 
     def __init__(out self, var memory: ManagedAllocation[Float32], logical_count: Int, physical_count: Int):
-        self.memory = memory
+        self.memory = memory^
         self.logical_count = logical_count
         self.physical_count = physical_count
         # Zero logical elements have no readable payload. Physical padding
@@ -203,7 +203,7 @@ def _allocate_host_fp32_uninitialized(count: Int) -> TensorResult[HostAllocation
         return TensorResult[HostAllocation](TensorStatus.OVERFLOW)
     var physical = max(count, 1)
     var allocation = alloc(Layout[Float32].aligned[64](count=physical)).into_managed()
-    return TensorResult[HostAllocation](HostAllocation(allocation, count, physical))
+    return TensorResult[HostAllocation](HostAllocation(allocation^, count, physical))
 
 
 def allocate_host_fp32(count: Int) -> TensorResult[HostAllocation]:
@@ -213,7 +213,7 @@ def allocate_host_fp32(count: Int) -> TensorResult[HostAllocation]:
     # complete-overwrite allocation, with no redundant zeroing pass.
     var acquired = _allocate_host_fp32_uninitialized(count)
     if not acquired.is_ok():
-        return acquired
+        return acquired^
     var result = acquired.payload.take()
     var ptr = result.memory.unsafe_ptr()
     comptime width = simd_width_of[DType.float32]()
@@ -228,4 +228,4 @@ def allocate_host_fp32(count: Int) -> TensorResult[HostAllocation]:
     var finalized = result._mark_complete_overwrite()
     if finalized != TensorStatus.OK:
         return TensorResult[HostAllocation](finalized)
-    return TensorResult[HostAllocation](result)
+    return TensorResult[HostAllocation](result^)

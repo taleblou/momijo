@@ -102,12 +102,12 @@ from ...alias.overlap import host_output_disjoint_from_input, host_output_disjoi
 
 
 def cpu_gather_kernel[
-    rank: Int, src_origin: Origin, dst_origin: Origin[mut=True], index_origin: Origin,
+    rank: Int, src_origin: Origin[mut=False], dst_origin: Origin[mut=True], index_origin: Origin[mut=False],
 ](
-    source: Span[False, Float32, src_origin],
-    destination: Span[True, Float32, dst_origin],
+    source: Span[mut=False, Float32, src_origin],
+    destination: Span[mut=True, Float32, dst_origin],
     mapping: TensorLayout[rank], output_shape: TensorShape[rank],
-    selected_axis: Int, indices: Span[False, Int, index_origin],
+    selected_axis: Int, indices: Span[mut=False, Int, index_origin],
 ) -> TensorStatus:
     # A named CPU kernel is a callable boundary, not permission to trust a
     # caller's raw axis, mutable layout caches, lengths or index values.
@@ -187,12 +187,12 @@ def cpu_gather_kernel[
 
 
 def cpu_scatter_kernel[
-    rank: Int, src_origin: Origin, dst_origin: Origin[mut=True], index_origin: Origin,
+    rank: Int, src_origin: Origin[mut=False], dst_origin: Origin[mut=True], index_origin: Origin[mut=False],
 ](
-    source: Span[False, Float32, src_origin],
-    destination: Span[True, Float32, dst_origin],
+    source: Span[mut=False, Float32, src_origin],
+    destination: Span[mut=True, Float32, dst_origin],
     source_layout: TensorLayout[rank], destination_layout: TensorLayout[rank],
-    selected_axis: Int, indices: Span[False, Int, index_origin],
+    selected_axis: Int, indices: Span[mut=False, Int, index_origin],
     strictly_monotonic_indices: Bool = False,
 ) -> TensorStatus:
     # A raw hint about monotonicity is not a write-disjointness proof.

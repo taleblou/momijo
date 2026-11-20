@@ -98,7 +98,7 @@ struct OwnedStorageImpl(Movable, MutableTensorStorage):
     var owned: HostAllocation
 
     def __init__(out self, var owned: HostAllocation):
-        self.owned = owned
+        self.owned = owned^
 
     @staticmethod
     def zeros(count: Int) -> TensorResult[Self]:
@@ -109,7 +109,7 @@ struct OwnedStorageImpl(Movable, MutableTensorStorage):
         var initialized = storage.fill_host(0.0)
         if initialized != TensorStatus.OK:
             return TensorResult[Self](initialized)
-        return TensorResult[Self](storage)
+        return TensorResult[Self](storage^)
 
     def capacity(self) -> Int:
         if self.owned.validate_metadata() != TensorStatus.OK:

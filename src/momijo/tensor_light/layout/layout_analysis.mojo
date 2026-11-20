@@ -407,9 +407,10 @@ def _reshape_view_layout_checked[
     if original.shape.numel() != desired.numel():
         return TensorResult[TensorLayout[dst_rank]](TensorStatus.SIZE_MISMATCH)
     comptime if src_rank == dst_rank:
-        if original.shape.same_extents(desired):
+        if original.shape.same_extents(rebind[TensorShape[src_rank]](desired)):
             return TensorLayout[dst_rank].checked(
-                target.payload.value(), original.strides, original.offset, capacity
+                target.payload.value(), rebind[StaticRankArray[dst_rank]](original.strides),
+                original.offset, capacity
             )
 
     # With zero/one logical element, the single reachable address (if any)

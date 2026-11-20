@@ -126,7 +126,7 @@ struct ExecutionPlan(Copyable):
     var output_device: Int
 
     def __init__(out self, placement: ExecutionPlacement, total_items: Int, cpu_begin: Int, cpu_end: Int, gpu_begin: Int, gpu_end: Int, transfer_bytes: Int, aot_variant: Int, dependency_count: Int, output_device: Int):
-        self.placement = placement
+        self.placement = placement.copy()
         self.total_items = total_items
         self.cpu_begin = cpu_begin
         self.cpu_end = cpu_end
@@ -138,7 +138,7 @@ struct ExecutionPlan(Copyable):
         self.output_device = output_device
 
     def __init__(out self, *, copy: Self):
-        self.placement = copy.placement
+        self.placement = copy.placement.copy()
         self.total_items = copy.total_items
         self.cpu_begin = copy.cpu_begin
         self.cpu_end = copy.cpu_end
@@ -168,14 +168,14 @@ struct ExecutionPlan(Copyable):
             return TensorResult[Self](TensorStatus.OUT_OF_BOUNDS)
         if gpu_begin < 0 or gpu_end < gpu_begin or gpu_end > count:
             return TensorResult[Self](TensorStatus.OUT_OF_BOUNDS)
-        if placement == ExecutionPlacement.CPU_ONLY:
+        if placement == materialize[ExecutionPlacement.CPU_ONLY]():
             if cpu_begin != 0 or cpu_end != count or gpu_begin != 0 or gpu_end != 0:
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
             # An ordinary CPU-only lowering cannot produce device-resident
             # output or schedule an implicit accelerator transfer.
             if transfer_bytes != 0 or output_device != 0 or dependency_count != 0:
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
-        elif placement == ExecutionPlacement.GPU_ONLY:
+        elif placement == materialize[ExecutionPlacement.GPU_ONLY]():
             # Empty GPU-resident tensor metadata requires no kernel enqueue,
             # transfer, or artificial completion event. The execution path
             # must skip native launch when total_items == 0.
@@ -191,7 +191,7 @@ struct ExecutionPlan(Copyable):
             # Device-resident outputs do not require that transfer.
             if count > 0 and output_device == 0 and (count > Int.MAX // 4 or transfer_bytes < count * 4):
                 return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-        elif placement == ExecutionPlacement.HYBRID_SPLIT or placement == ExecutionPlacement.HYBRID_CPU_ASSIST:
+        elif placement == materialize[ExecutionPlacement.HYBRID_SPLIT]() or placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
             # Host-result split mappings share one strict row/item partition,
             # disjoint output intervals and an event-joined GPU segment.
             # The common 8-byte/item bound is a conservative FLOOR for a
@@ -220,14 +220,14 @@ struct ExecutionPlan(Copyable):
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
             var cpu_first = cpu_begin == 0 and cpu_end == gpu_begin and gpu_end == count
             var gpu_first = gpu_begin == 0 and gpu_end == cpu_begin and cpu_end == count
-            if placement == ExecutionPlacement.HYBRID_CPU_ASSIST:
+            if placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
                 # CPU assist is strictly a CPU tail paired with a GPU bulk
                 # prefix. Larger CPU partitions belong to HYBRID_SPLIT.
                 if not gpu_first or cpu_end - cpu_begin > gpu_end - gpu_begin:
                     return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
             elif not cpu_first and not gpu_first:
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
-        elif placement == ExecutionPlacement.HYBRID_PIPELINE:
+        elif placement == materialize[ExecutionPlacement.HYBRID_PIPELINE]():
             # Narrow, host-result, fixed-capacity FP32 binary double-buffered
             # pipeline. Its CPU work is PREPARATION, not disjoint arithmetic:
             # the GPU computes all elements. Buffer reuse is event-fenced.
@@ -266,25 +266,25 @@ struct ExecutionPlan(Copyable):
         # Bind those transfer obligations before the first native allocation.
         var proof = self.checked_snapshot()
         if not proof.is_ok():
-            return proof
-        var selected = proof.payload.value()
+            return proof^
+        var selected = proof.payload.value().copy()
         if selected.output_device != 0:
             return TensorResult[Self](TensorStatus.DEVICE_MISMATCH)
-        if selected.placement == ExecutionPlacement.CPU_ONLY:
-            return proof
+        if selected.placement == materialize[ExecutionPlacement.CPU_ONLY]():
+            return proof^
         if selected.total_items <= 0:
             # Host-result zero work should select the empty CPU path; the
             # GPU-only empty plan is device-result by construction.
             return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
-        if selected.placement == ExecutionPlacement.GPU_ONLY:
+        if selected.placement == materialize[ExecutionPlacement.GPU_ONLY]():
             if selected.total_items > Int.MAX // 12:
                 return TensorResult[Self](TensorStatus.OVERFLOW)
             if selected.transfer_bytes < selected.total_items * 12:
                 return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-            return proof
-        if (selected.placement == ExecutionPlacement.HYBRID_SPLIT
-            or selected.placement == ExecutionPlacement.HYBRID_CPU_ASSIST
-            or selected.placement == ExecutionPlacement.HYBRID_PIPELINE):
+            return proof^
+        if (selected.placement == materialize[ExecutionPlacement.HYBRID_SPLIT]()
+            or selected.placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()
+            or selected.placement == materialize[ExecutionPlacement.HYBRID_PIPELINE]()):
             # A generic plan only proves the 8-byte unary floor. The binary
             # ABI has TWO inputs and one output; enforce its 12-byte budget
             # here, after disjoint work regions and dependencies are proved.
@@ -293,7 +293,7 @@ struct ExecutionPlan(Copyable):
                 return TensorResult[Self](TensorStatus.OVERFLOW)
             if selected.transfer_bytes < gpu_items * 12:
                 return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-            return proof
+            return proof^
         return TensorResult[Self](TensorStatus.UNSUPPORTED)
 
     def checked_host_unary_snapshot(self) -> TensorResult[Self]:
@@ -302,8 +302,8 @@ struct ExecutionPlan(Copyable):
         # This ABI is separate from the binary 12-byte-per-item contract.
         var proof = self.checked_snapshot()
         if not proof.is_ok():
-            return proof
-        var selected = proof.payload.value()
+            return proof^
+        var selected = proof.payload.value().copy()
         if selected.output_device != 0:
             return TensorResult[Self](TensorStatus.DEVICE_MISMATCH)
         # The immutable plan identifies the exact unary opcode family even
@@ -311,22 +311,22 @@ struct ExecutionPlan(Copyable):
         # substitute an operation by passing a different native function.
         if selected.aot_variant < 20 or selected.aot_variant > 28:
             return TensorResult[Self](TensorStatus.UNSUPPORTED)
-        if selected.placement == ExecutionPlacement.CPU_ONLY:
-            return proof
-        if selected.placement == ExecutionPlacement.GPU_ONLY:
+        if selected.placement == materialize[ExecutionPlacement.CPU_ONLY]():
+            return proof^
+        if selected.placement == materialize[ExecutionPlacement.GPU_ONLY]():
             if selected.total_items <= 0 or selected.total_items > Int.MAX // 8:
                 return TensorResult[Self](TensorStatus.OVERFLOW)
             if selected.transfer_bytes < selected.total_items * 8:
                 return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-            return proof
-        if (selected.placement == ExecutionPlacement.HYBRID_SPLIT
-            or selected.placement == ExecutionPlacement.HYBRID_CPU_ASSIST):
+            return proof^
+        if (selected.placement == materialize[ExecutionPlacement.HYBRID_SPLIT]()
+            or selected.placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
             var gpu_items = selected.gpu_end - selected.gpu_begin
             if gpu_items <= 0 or gpu_items > Int.MAX // 8:
                 return TensorResult[Self](TensorStatus.HYBRID_PARTITION_INVALID)
             if selected.transfer_bytes < gpu_items * 8:
                 return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-            return proof
+            return proof^
         # Unary pipeline is not falsely advertised as a binary stage DAG.
         return TensorResult[Self](TensorStatus.UNSUPPORTED)
 
@@ -338,10 +338,10 @@ struct ExecutionPlan(Copyable):
         # (columns+1)*4 bytes H2D+D2H per GPU-owned output row.
         var proof = self.checked_snapshot()
         if not proof.is_ok():
-            return proof
-        var selected = proof.payload.value()
-        if (selected.placement != ExecutionPlacement.HYBRID_SPLIT
-            and selected.placement != ExecutionPlacement.HYBRID_CPU_ASSIST):
+            return proof^
+        var selected = proof.payload.value().copy()
+        if (selected.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]()
+            and selected.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
             return TensorResult[Self](TensorStatus.DEVICE_MISMATCH)
         if selected.output_device != 0 or selected.aot_variant < 30 or selected.aot_variant > 34:
             return TensorResult[Self](TensorStatus.UNSUPPORTED)
@@ -361,7 +361,7 @@ struct ExecutionPlan(Copyable):
         var needed_bytes = gpu_rows * transfer_elements_per_row * 4
         if selected.transfer_bytes < needed_bytes:
             return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-        return proof
+        return proof^
 
     def checked_host_gemm_rows_split_snapshot(
         self, k: Int, n: Int,
@@ -371,10 +371,10 @@ struct ExecutionPlan(Copyable):
         # returns C[gpu_rows,N]. This is NOT the binary 12-byte/item ABI.
         var proof = self.checked_snapshot()
         if not proof.is_ok():
-            return proof
-        var selected = proof.payload.value()
-        if (selected.placement != ExecutionPlacement.HYBRID_SPLIT
-            and selected.placement != ExecutionPlacement.HYBRID_CPU_ASSIST):
+            return proof^
+        var selected = proof.payload.value().copy()
+        if (selected.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]()
+            and selected.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
             return TensorResult[Self](TensorStatus.DEVICE_MISMATCH)
         if selected.output_device != 0 or selected.aot_variant != 14:
             return TensorResult[Self](TensorStatus.UNSUPPORTED)
@@ -404,7 +404,7 @@ struct ExecutionPlan(Copyable):
         var exact_bytes = (combined + download_c) * 4
         if selected.transfer_bytes < exact_bytes:
             return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-        return proof
+        return proof^
 
     def checked_native_device_snapshot(self) -> TensorResult[Self]:
         # One canonical, owner-independent contract for a PRE-RESIDENT GPU
@@ -413,26 +413,26 @@ struct ExecutionPlan(Copyable):
         # The caller must still prove buffer shape, ownership and the AOT ABI.
         var snapshot = self.checked_snapshot()
         if not snapshot.is_ok():
-            return snapshot
-        var fixed = snapshot.payload.value()
-        if fixed.placement != ExecutionPlacement.GPU_ONLY or fixed.output_device != 1:
+            return snapshot^
+        var fixed = snapshot.payload.value().copy()
+        if fixed.placement != materialize[ExecutionPlacement.GPU_ONLY]() or fixed.output_device != 1:
             return TensorResult[Self](TensorStatus.DEVICE_MISMATCH)
         if fixed.transfer_bytes != 0:
             return TensorResult[Self](TensorStatus.UNSUPPORTED)
-        return snapshot
+        return snapshot^
 
     def checked_native_cpu_snapshot(self) -> TensorResult[Self]:
         # A pre-resident CPU-only primitive cannot silently migrate a device
         # buffer or consume an accelerator event. Bind the exact CPU mapping.
         var proof = self.checked_snapshot()
         if not proof.is_ok():
-            return proof
-        var native = proof.payload.value()
-        if native.placement != ExecutionPlacement.CPU_ONLY:
+            return proof^
+        var native = proof.payload.value().copy()
+        if native.placement != materialize[ExecutionPlacement.CPU_ONLY]():
             return TensorResult[Self](TensorStatus.DEVICE_MISMATCH)
         if native.output_device != 0 or native.transfer_bytes != 0:
             return TensorResult[Self](TensorStatus.UNSUPPORTED)
-        return proof
+        return proof^
 
     def validated(self) -> TensorStatus:
         return self.checked_snapshot().status

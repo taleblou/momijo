@@ -107,14 +107,14 @@ struct TensorOptions(Copyable):
     var initialize_to_zero: Bool
 
 def default_host_options() -> TensorOptions:
-    return TensorOptions(-1, MemorySpace.HOST_PAGEABLE, False, 64, False)
+    return TensorOptions(-1, materialize[MemorySpace.HOST_PAGEABLE](), False, 64, False)
 
 def validate_tensor_options(options: TensorOptions) -> TensorStatus:
     if options.requested_alignment < 4 or (options.requested_alignment & (options.requested_alignment - 1)) != 0:
         return TensorStatus.INVALID_ALIGNMENT
     if options.memory_space.code < 0 or options.memory_space.code > 3:
         return TensorStatus.INVALID_LAYOUT
-    if options.memory_space == MemorySpace.HOST_PAGEABLE:
+    if options.memory_space == materialize[MemorySpace.HOST_PAGEABLE]():
         if options.device_ordinal != -1:
             return TensorStatus.DEVICE_MISMATCH
     elif options.device_ordinal < 0:
@@ -125,7 +125,7 @@ def validate_tensor_options(options: TensorOptions) -> TensorStatus:
 def with_order(options: TensorOptions, f_order: Bool) -> TensorOptions:
     var updated = options.copy()
     updated.f_order = f_order
-    return updated
+    return updated^
 
 
 def with_alignment(options: TensorOptions, alignment: Int) -> TensorResult[TensorOptions]:
@@ -134,7 +134,7 @@ def with_alignment(options: TensorOptions, alignment: Int) -> TensorResult[Tenso
     var status = validate_tensor_options(updated)
     if status != TensorStatus.OK:
         return TensorResult[TensorOptions](status)
-    return TensorResult[TensorOptions](updated)
+    return TensorResult[TensorOptions](updated^)
 
 
 def with_device(options: TensorOptions, ordinal: Int) -> TensorResult[TensorOptions]:
@@ -147,28 +147,28 @@ def with_device(options: TensorOptions, ordinal: Int) -> TensorResult[TensorOpti
     var updated = options.copy()
     updated.device_ordinal = ordinal
     if ordinal == -1:
-        updated.memory_space = MemorySpace.HOST_PAGEABLE
+        updated.memory_space = materialize[MemorySpace.HOST_PAGEABLE]()
     else:
-        updated.memory_space = MemorySpace.DEVICE_LOCAL
+        updated.memory_space = materialize[MemorySpace.DEVICE_LOCAL]()
     var status = validate_tensor_options(updated)
     if status != TensorStatus.OK:
         return TensorResult[TensorOptions](status)
-    return TensorResult[TensorOptions](updated)
+    return TensorResult[TensorOptions](updated^)
 
 
 def with_memory_space(options: TensorOptions, memory_space: MemorySpace) -> TensorResult[TensorOptions]:
     var updated = options.copy()
-    updated.memory_space = memory_space
+    updated.memory_space = memory_space.copy()
     var status = validate_tensor_options(updated)
     if status != TensorStatus.OK:
         return TensorResult[TensorOptions](status)
-    return TensorResult[TensorOptions](updated)
+    return TensorResult[TensorOptions](updated^)
 
 
 def with_initialization_policy(options: TensorOptions, initialize_to_zero: Bool) -> TensorOptions:
     var updated = options.copy()
     updated.initialize_to_zero = initialize_to_zero
-    return updated
+    return updated^
 
 def default_tensor_options[rank: Int]() -> TensorOptions:
     comptime assert rank >= 0 and rank <= 8, "tensor rank must be 0..8"
@@ -180,18 +180,18 @@ def with_device(options: TensorOptions, device: Device) -> TensorResult[TensorOp
         if device.ordinal != 0:
             return TensorResult[TensorOptions](TensorStatus.DEVICE_MISMATCH)
         updated.device_ordinal = -1
-        updated.memory_space = MemorySpace.HOST_PAGEABLE
+        updated.memory_space = materialize[MemorySpace.HOST_PAGEABLE]()
     elif device.is_gpu():
         if device.ordinal < 0:
             return TensorResult[TensorOptions](TensorStatus.DEVICE_MISMATCH)
         updated.device_ordinal = device.ordinal
-        updated.memory_space = MemorySpace.DEVICE_LOCAL
+        updated.memory_space = materialize[MemorySpace.DEVICE_LOCAL]()
     else:
         return TensorResult[TensorOptions](TensorStatus.DEVICE_MISMATCH)
     var valid = validate_tensor_options(updated)
     if valid != TensorStatus.OK:
         return TensorResult[TensorOptions](valid)
-    return TensorResult[TensorOptions](updated)
+    return TensorResult[TensorOptions](updated^)
 
 
 def with_order(options: TensorOptions, order: ContiguousOrder) -> TensorResult[TensorOptions]:
@@ -199,4 +199,4 @@ def with_order(options: TensorOptions, order: ContiguousOrder) -> TensorResult[T
         return TensorResult[TensorOptions](TensorStatus.INVALID_LAYOUT)
     var updated = options.copy()
     updated.f_order = order == ContiguousOrder.F
-    return TensorResult[TensorOptions](updated)
+    return TensorResult[TensorOptions](updated^)

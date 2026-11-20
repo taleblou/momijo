@@ -94,10 +94,10 @@
 from std.collections import Span
 
 struct StorageRef[origin: Origin](Copyable):
-    var elements: Span[False, Float32, Self.origin]
+    var elements: Span[mut=False, Float32, Self.origin]
     var known_allocation_id: Int
 
-    def __init__(out self, elements: Span[False, Float32, Self.origin], known_allocation_id: Int = -1):
+    def __init__(out self, elements: Span[mut=False, Float32, Self.origin], known_allocation_id: Int = -1):
         self.elements = elements
         self.known_allocation_id = known_allocation_id
 
@@ -113,9 +113,9 @@ struct StorageRef[origin: Origin](Copyable):
 # can create one from an exclusive checked host owner. It cannot outlive that
 # owner and is move-only, preventing accidental copying of write capabilities.
 struct MutableStorageRef[origin: Origin[mut=True]](Movable):
-    var elements: Span[True, Float32, Self.origin]
+    var elements: Span[mut=True, Float32, Self.origin]
 
-    def __init__(out self, elements: Span[True, Float32, Self.origin]):
+    def __init__(out self, elements: Span[mut=True, Float32, Self.origin]):
         self.elements = elements
 
     def capacity(self) -> Int:

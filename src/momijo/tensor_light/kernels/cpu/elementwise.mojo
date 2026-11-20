@@ -107,10 +107,10 @@ from ...parallel.parallel_for import CpuWorkPolicy, recommend_worker_count, exec
 # Fused and strict routes branch ONCE before the vectorized inner loop.
 @inline(.always)
 def cpu_fma_contiguous[
-    width: Int, o: Origin[mut=True], a: Origin, b: Origin, c: Origin,
+    width: Int, o: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False], c: Origin[mut=False],
 ](
-    out: Span[True, Float32, o], lhs: Span[False, Float32, a],
-    rhs: Span[False, Float32, b], addend: Span[False, Float32, c],
+    output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a],
+    rhs: Span[mut=False, Float32, b], addend: Span[mut=False, Float32, c],
     fused: Bool,
 ) -> TensorStatus:
     comptime assert width > 0, "positive SIMD lane count required"
@@ -118,7 +118,7 @@ def cpu_fma_contiguous[
     # the first unsafe vector load. Exact elementwise aliases are safe because
     # all three operands are read before the corresponding result is written;
     # shifted aliases can overwrite future unread inputs and are rejected.
-    var n = len(out)
+    var n = len(output)
     if n < 0 or len(lhs) < 0 or len(rhs) < 0 or len(addend) < 0:
         return TensorStatus.INVALID_LAYOUT
     if n != len(lhs) or n != len(rhs) or n != len(addend):
@@ -127,12 +127,12 @@ def cpu_fma_contiguous[
         return TensorStatus.OVERFLOW
     if n == 0:
         return TensorStatus.OK
-    var safe_lhs = (host_output_disjoint_from_input(out, lhs)
-                    or host_output_exactly_matches_input(out, lhs))
-    var safe_rhs = (host_output_disjoint_from_input(out, rhs)
-                    or host_output_exactly_matches_input(out, rhs))
-    var safe_addend = (host_output_disjoint_from_input(out, addend)
-                       or host_output_exactly_matches_input(out, addend))
+    var safe_lhs = (host_output_disjoint_from_input(output, lhs)
+                    or host_output_exactly_matches_input(output, lhs))
+    var safe_rhs = (host_output_disjoint_from_input(output, rhs)
+                    or host_output_exactly_matches_input(output, rhs))
+    var safe_addend = (host_output_disjoint_from_input(output, addend)
+                       or host_output_exactly_matches_input(output, addend))
     if not safe_lhs or not safe_rhs or not safe_addend:
         return TensorStatus.ALIAS_UNKNOWN
     # The synchronous AOT parallel branch owns independent output spans.
@@ -141,7 +141,7 @@ def cpu_fma_contiguous[
     var policy = CpuWorkPolicy(262144, 8)
     var workers = recommend_worker_count(n, policy)
     if workers > 1:
-        var dest_ptr = out.unsafe_ptr()
+        var dest_ptr = output.unsafe_ptr()
         var left_ptr = lhs.unsafe_ptr()
         var right_ptr = rhs.unsafe_ptr()
         var addend_ptr = addend.unsafe_ptr()
@@ -182,7 +182,7 @@ def cpu_fma_contiguous[
 
         return execute_parallel_shards(fma_shard, n, policy)
     var end = n - n % width
-    var op = out.unsafe_ptr()
+    var op = output.unsafe_ptr()
     var ap = lhs.unsafe_ptr()
     var bp = rhs.unsafe_ptr()
     var cp = addend.unsafe_ptr()
@@ -194,22 +194,22 @@ def cpu_fma_contiguous[
                 cp.unsafe_load[width=width, alignment=4](i),
             ))
         for i in range(end, n):
-            out[i] = std_fma(lhs[i], rhs[i], addend[i])
+            output[i] = std_fma(lhs[i], rhs[i], addend[i])
     else:
         for i in range(0, end, width):
             op.unsafe_store[alignment=4](i,
                 ap.unsafe_load[width=width, alignment=4](i) * bp.unsafe_load[width=width, alignment=4](i)
                 + cp.unsafe_load[width=width, alignment=4](i))
         for i in range(end, n):
-            out[i] = lhs[i] * rhs[i] + addend[i]
+            output[i] = lhs[i] * rhs[i] + addend[i]
     return TensorStatus.OK
 
 @inline(.always)
-def _cpu_add_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin, b: Origin](out: Span[True, Float32, o], lhs: Span[False, Float32, a], rhs: Span[False, Float32, b]):
+def _cpu_add_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False]](output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b]):
     comptime assert width >= 1, "SIMD width must be positive"
-    var n = len(out)
+    var n = len(output)
     var limit = n - n % width
-    var op = out.unsafe_ptr()
+    var op = output.unsafe_ptr()
     var ap = lhs.unsafe_ptr()
     var bp = rhs.unsafe_ptr()
     for i in range(0, limit, width):
@@ -217,62 +217,62 @@ def _cpu_add_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin, b:
         var right = bp.unsafe_load[width=width, alignment=4](i)
         op.unsafe_store[alignment=4](i, left + right)
     for i in range(limit, n):
-        out[i] = lhs[i] + rhs[i]
+        output[i] = lhs[i] + rhs[i]
 
 @inline(.always)
-def cpu_scale_contiguous[width: Int, o: Origin[mut=True], a: Origin](out: Span[True, Float32, o], lhs: Span[False, Float32, a], scale: Float32) -> TensorStatus:
+def cpu_scale_contiguous[width: Int, o: Origin[mut=True], a: Origin[mut=False]](output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], scale: Float32) -> TensorStatus:
     comptime assert width >= 1, "SIMD width must be positive"
     return cpu_scalar_broadcast_binary_contiguous[2, False, width](
-        out, lhs, scale,
+        output, lhs, scale,
     )
 
 @inline(.always)
-def cpu_shift_contiguous[width: Int, o: Origin[mut=True], a: Origin](out: Span[True, Float32, o], lhs: Span[False, Float32, a], amount: Float32) -> TensorStatus:
+def cpu_shift_contiguous[width: Int, o: Origin[mut=True], a: Origin[mut=False]](output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], amount: Float32) -> TensorStatus:
     comptime assert width >= 1, "SIMD width must be positive"
     return cpu_scalar_broadcast_binary_contiguous[0, False, width](
-        out, lhs, amount,
+        output, lhs, amount,
     )
 
 @inline(.always)
-def _cpu_sub_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin, b: Origin](out: Span[True, Float32, o], lhs: Span[False, Float32, a], rhs: Span[False, Float32, b]):
+def _cpu_sub_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False]](output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b]):
     comptime assert width >= 1, "SIMD width must be positive"
-    var n = len(out)
+    var n = len(output)
     var end = n - n % width
-    var op = out.unsafe_ptr()
+    var op = output.unsafe_ptr()
     var ap = lhs.unsafe_ptr()
     var bp = rhs.unsafe_ptr()
     for i in range(0, end, width):
         op.unsafe_store[alignment=4](i, ap.unsafe_load[width=width, alignment=4](i) - bp.unsafe_load[width=width, alignment=4](i))
     for i in range(end, n):
-        out[i] = lhs[i] - rhs[i]
+        output[i] = lhs[i] - rhs[i]
 
 
 @inline(.always)
-def _cpu_mul_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin, b: Origin](out: Span[True, Float32, o], lhs: Span[False, Float32, a], rhs: Span[False, Float32, b]):
+def _cpu_mul_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False]](output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b]):
     comptime assert width >= 1, "SIMD width must be positive"
-    var n = len(out)
+    var n = len(output)
     var end = n - n % width
-    var op = out.unsafe_ptr()
+    var op = output.unsafe_ptr()
     var ap = lhs.unsafe_ptr()
     var bp = rhs.unsafe_ptr()
     for i in range(0, end, width):
         op.unsafe_store[alignment=4](i, ap.unsafe_load[width=width, alignment=4](i) * bp.unsafe_load[width=width, alignment=4](i))
     for i in range(end, n):
-        out[i] = lhs[i] * rhs[i]
+        output[i] = lhs[i] * rhs[i]
 
 
 @inline(.always)
-def _cpu_div_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin, b: Origin](out: Span[True, Float32, o], lhs: Span[False, Float32, a], rhs: Span[False, Float32, b]):
+def _cpu_div_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False]](output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b]):
     comptime assert width >= 1, "SIMD width must be positive"
-    var n = len(out)
+    var n = len(output)
     var end = n - n % width
-    var op = out.unsafe_ptr()
+    var op = output.unsafe_ptr()
     var ap = lhs.unsafe_ptr()
     var bp = rhs.unsafe_ptr()
     for i in range(0, end, width):
         op.unsafe_store[alignment=4](i, ap.unsafe_load[width=width, alignment=4](i) / bp.unsafe_load[width=width, alignment=4](i))
     for i in range(end, n):
-        out[i] = lhs[i] / rhs[i]
+        output[i] = lhs[i] / rhs[i]
 
 
 # AOT scalar-broadcast fast path for all ranks 0..8. The checked Tensor
@@ -284,17 +284,17 @@ def _cpu_div_contiguous_unchecked[width: Int, o: Origin[mut=True], a: Origin, b:
 @inline(.always)
 def cpu_scalar_broadcast_binary_contiguous[
     operation: Int, scalar_on_left: Bool, width: Int,
-    output_origin: Origin[mut=True], source_origin: Origin,
+    output_origin: Origin[mut=True], source_origin: Origin[mut=False],
 ](
-    out: Span[True, Float32, output_origin],
-    source: Span[False, Float32, source_origin], scalar: Float32,
+    output: Span[mut=True, Float32, output_origin],
+    source: Span[mut=False, Float32, source_origin], scalar: Float32,
 ) -> TensorStatus:
     comptime assert operation >= 0 and operation <= 5, "invalid FP32 binary opcode"
     comptime assert width >= 1, "FP32 SIMD width must be positive"
     # The owner proves a dense input run and independently materializes the
     # scalar. Do not allow a direct helper caller to overread a short source,
     # or to overwrite later unread source values through a shifted alias.
-    var count = len(out)
+    var count = len(output)
     if count < 0 or len(source) < 0:
         return TensorStatus.INVALID_LAYOUT
     if count != len(source):
@@ -303,14 +303,14 @@ def cpu_scalar_broadcast_binary_contiguous[
         return TensorStatus.OVERFLOW
     if count == 0:
         return TensorStatus.OK
-    if (not host_output_disjoint_from_input(out, source)
-        and not host_output_exactly_matches_input(out, source)):
+    if (not host_output_disjoint_from_input(output, source)
+        and not host_output_exactly_matches_input(output, source)):
         return TensorStatus.ALIAS_UNKNOWN
     comptime if operation <= 3:
         var lanes = count - count % width
         var constant = SIMD[DType.float32, width](scalar)
         var sp = source.unsafe_ptr()
-        var dp = out.unsafe_ptr()
+        var dp = output.unsafe_ptr()
         for i in range(0, lanes, width):
             # C-contiguous views may begin at a non-vector-aligned offset.
             # Natural Float32 alignment, not SIMD-wide alignment, is proven.
@@ -338,38 +338,38 @@ def cpu_scalar_broadcast_binary_contiguous[
         for i in range(lanes, count):
             comptime if operation == 0:
                 comptime if scalar_on_left:
-                    out[i] = scalar + source[i]
+                    output[i] = scalar + source[i]
                 else:
-                    out[i] = source[i] + scalar
+                    output[i] = source[i] + scalar
             elif operation == 1:
                 comptime if scalar_on_left:
-                    out[i] = scalar - source[i]
+                    output[i] = scalar - source[i]
                 else:
-                    out[i] = source[i] - scalar
+                    output[i] = source[i] - scalar
             elif operation == 2:
                 comptime if scalar_on_left:
-                    out[i] = scalar * source[i]
+                    output[i] = scalar * source[i]
                 else:
-                    out[i] = source[i] * scalar
+                    output[i] = source[i] * scalar
             else:
                 comptime if scalar_on_left:
-                    out[i] = scalar / source[i]
+                    output[i] = scalar / source[i]
                 else:
-                    out[i] = source[i] / scalar
+                    output[i] = source[i] / scalar
     else:
         # Preserve the canonical NaN and signed-zero policies rather than
         # using a target-dependent SIMD maximum/minimum instruction.
         for i in range(count):
             comptime if operation == 4:
                 comptime if scalar_on_left:
-                    out[i] = fp32_maximum(scalar, source[i])
+                    output[i] = fp32_maximum(scalar, source[i])
                 else:
-                    out[i] = fp32_maximum(source[i], scalar)
+                    output[i] = fp32_maximum(source[i], scalar)
             else:
                 comptime if scalar_on_left:
-                    out[i] = fp32_minimum(scalar, source[i])
+                    output[i] = fp32_minimum(scalar, source[i])
                 else:
-                    out[i] = fp32_minimum(source[i], scalar)
+                    output[i] = fp32_minimum(source[i], scalar)
     return TensorStatus.OK
 
 
@@ -379,54 +379,55 @@ def cpu_scalar_broadcast_binary_contiguous[
 # Standalone checked NEG adapter; native SIMD remains in the checked unary
 # implementation, so it cannot read an undersized borrowed output.
 @inline(.always)
-def cpu_neg_contiguous[width: Int, o: Origin[mut=True], a: Origin](
-    out: Span[True, Float32, o], source: Span[False, Float32, a],
+def cpu_neg_contiguous[width: Int, o: Origin[mut=True], a: Origin[mut=False]](
+    output: Span[mut=True, Float32, o], source: Span[mut=False, Float32, a],
 ) -> TensorStatus:
-    return cpu_unary_contiguous_fp32[0, width](source, out)
+    var writable_output = output
+    return cpu_unary_contiguous_fp32[0, width](source, writable_output)
 
 
 # FP32 scalar-right subtraction. Keep native subtraction rather than rewriting
 # as addition of a negated scalar (signed-zero and strict arithmetic semantics).
 @inline(.always)
-def cpu_sub_scalar_contiguous[width: Int, o: Origin[mut=True], a: Origin](
-    out: Span[True, Float32, o], lhs: Span[False, Float32, a], rhs: Float32
+def cpu_sub_scalar_contiguous[width: Int, o: Origin[mut=True], a: Origin[mut=False]](
+    output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], rhs: Float32
 ) -> TensorStatus:
     comptime assert width >= 1, "SIMD width must be positive"
     return cpu_scalar_broadcast_binary_contiguous[1, False, width](
-        out, lhs, rhs,
+        output, lhs, rhs,
     )
 
 @inline(.always)
-def cpu_div_scalar_contiguous[width: Int, o: Origin[mut=True], a: Origin](
-    out: Span[True, Float32, o], lhs: Span[False, Float32, a], rhs: Float32
+def cpu_div_scalar_contiguous[width: Int, o: Origin[mut=True], a: Origin[mut=False]](
+    output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a], rhs: Float32
 ) -> TensorStatus:
     comptime assert width >= 1, "SIMD width must be positive"
     return cpu_scalar_broadcast_binary_contiguous[3, False, width](
-        out, lhs, rhs,
+        output, lhs, rhs,
     )
 
 @inline(.always)
 def _cpu_maximum_contiguous_unchecked[
-    width: Int, o: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, o: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, o], lhs: Span[False, Float32, a],
-    rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a],
+    rhs: Span[mut=False, Float32, b],
 ):
     comptime assert width >= 1, "SIMD width must be positive"
-    for i in range(len(out)):
-        out[i] = fp32_maximum(lhs[i], rhs[i])
+    for i in range(len(output)):
+        output[i] = fp32_maximum(lhs[i], rhs[i])
 
 
 @inline(.always)
 def _cpu_minimum_contiguous_unchecked[
-    width: Int, o: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, o: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, o], lhs: Span[False, Float32, a],
-    rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, o], lhs: Span[mut=False, Float32, a],
+    rhs: Span[mut=False, Float32, b],
 ):
     comptime assert width >= 1, "SIMD width must be positive"
-    for i in range(len(out)):
-        out[i] = fp32_minimum(lhs[i], rhs[i])
+    for i in range(len(output)):
+        output[i] = fp32_minimum(lhs[i], rhs[i])
 
 
 # One checked binary SIMD entrance for every primary owning Tensor/CPU AOT
@@ -437,11 +438,11 @@ def _cpu_minimum_contiguous_unchecked[
 # Numeric opcodes: add/sub/mul/div/maximum/minimum = 0..5.
 def cpu_binary_contiguous_checked[
     operation: Int, width: Int, output_origin: Origin[mut=True],
-    left_origin: Origin, right_origin: Origin,
+    left_origin: Origin[mut=False], right_origin: Origin[mut=False],
 ](
-    output: Span[True, Float32, output_origin],
-    left: Span[False, Float32, left_origin],
-    right: Span[False, Float32, right_origin],
+    output: Span[mut=True, Float32, output_origin],
+    left: Span[mut=False, Float32, left_origin],
+    right: Span[mut=False, Float32, right_origin],
 ) -> TensorStatus:
     comptime assert operation >= 0 and operation <= 5, "invalid FP32 binary opcode"
     comptime assert width >= 1, "positive vector width required"
@@ -531,64 +532,64 @@ def cpu_binary_contiguous_checked[
 # Checked public adapter: unsafe SIMD loads are private to this module.
 @inline(.always)
 def cpu_add_contiguous[
-    width: Int, out_origin: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, out_origin: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, out_origin],
-    lhs: Span[False, Float32, a], rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, out_origin],
+    lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b],
 ) -> TensorStatus:
-    return cpu_binary_contiguous_checked[0, width](out, lhs, rhs)
+    return cpu_binary_contiguous_checked[0, width](output, lhs, rhs)
 
 
 # Checked public adapter: unsafe SIMD loads are private to this module.
 @inline(.always)
 def cpu_sub_contiguous[
-    width: Int, out_origin: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, out_origin: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, out_origin],
-    lhs: Span[False, Float32, a], rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, out_origin],
+    lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b],
 ) -> TensorStatus:
-    return cpu_binary_contiguous_checked[1, width](out, lhs, rhs)
+    return cpu_binary_contiguous_checked[1, width](output, lhs, rhs)
 
 
 # Checked public adapter: unsafe SIMD loads are private to this module.
 @inline(.always)
 def cpu_mul_contiguous[
-    width: Int, out_origin: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, out_origin: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, out_origin],
-    lhs: Span[False, Float32, a], rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, out_origin],
+    lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b],
 ) -> TensorStatus:
-    return cpu_binary_contiguous_checked[2, width](out, lhs, rhs)
+    return cpu_binary_contiguous_checked[2, width](output, lhs, rhs)
 
 
 # Checked public adapter: unsafe SIMD loads are private to this module.
 @inline(.always)
 def cpu_div_contiguous[
-    width: Int, out_origin: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, out_origin: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, out_origin],
-    lhs: Span[False, Float32, a], rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, out_origin],
+    lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b],
 ) -> TensorStatus:
-    return cpu_binary_contiguous_checked[3, width](out, lhs, rhs)
+    return cpu_binary_contiguous_checked[3, width](output, lhs, rhs)
 
 
 # Checked public adapter: unsafe SIMD loads are private to this module.
 @inline(.always)
 def cpu_maximum_contiguous[
-    width: Int, out_origin: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, out_origin: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, out_origin],
-    lhs: Span[False, Float32, a], rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, out_origin],
+    lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b],
 ) -> TensorStatus:
-    return cpu_binary_contiguous_checked[4, width](out, lhs, rhs)
+    return cpu_binary_contiguous_checked[4, width](output, lhs, rhs)
 
 
 # Checked public adapter: unsafe SIMD loads are private to this module.
 @inline(.always)
 def cpu_minimum_contiguous[
-    width: Int, out_origin: Origin[mut=True], a: Origin, b: Origin,
+    width: Int, out_origin: Origin[mut=True], a: Origin[mut=False], b: Origin[mut=False],
 ](
-    out: Span[True, Float32, out_origin],
-    lhs: Span[False, Float32, a], rhs: Span[False, Float32, b],
+    output: Span[mut=True, Float32, out_origin],
+    lhs: Span[mut=False, Float32, a], rhs: Span[mut=False, Float32, b],
 ) -> TensorStatus:
-    return cpu_binary_contiguous_checked[5, width](out, lhs, rhs)
+    return cpu_binary_contiguous_checked[5, width](output, lhs, rhs)

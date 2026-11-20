@@ -110,8 +110,8 @@ def clone[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[T
     var checked_input = input._checked_current_layout()
     if not checked_input.is_ok():
         return TensorResult[Tensor[rank, HostStorage]](checked_input.status)
-    comptime if identical(S, HostStorage):
-        return input.clone()
+    comptime if S == HostStorage:
+        return rebind[Tensor[rank, HostStorage]](input).clone()
     # The generic host-readable source is traversed in full logical C-order.
     var made = _complete_overwrite_output[rank](checked_input.payload.value().shape)
     if not made.is_ok():
@@ -127,7 +127,7 @@ def clone[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[T
             return TensorResult[Tensor[rank, HostStorage]](value.status)
         destination[cursor.produced] = value.payload.value()
         cursor.advance()
-    return result._finish_complete_overwrite()
+    return (result^)._finish_complete_overwrite()
 
 
 # Materialization is explicit; view-only operations are in ops/view.mojo.
@@ -145,7 +145,7 @@ def ravel_copy[rank: Int](
 
 def flatten_copy[rank: Int, start_dim: Int, end_dim: Int](
     ref source: Tensor[rank, HostStorage]
-) -> TensorResult[Tensor[rank - (end_dim - start_dim), HostStorage]]:
+) -> TensorResult[Tensor[rank - (end_dim - start_dim), HostStorage]] where rank >= 1:
     return source.flatten_copy[start_dim, end_dim]()
 
 

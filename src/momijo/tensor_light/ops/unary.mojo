@@ -162,7 +162,7 @@ def _unary_generic_fixed[operation: Int, rank: Int, S: TensorStorage](
             return TensorResult[Tensor[rank, HostStorage]](source.status)
         destination[cursor.produced] = _unary_scalar_fp32_fixed[operation](source.payload.value())
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 def unary[rank: Int, S: TensorStorage](input: Tensor[rank, S], kind: UnaryKind) -> TensorResult[Tensor[rank, HostStorage]]:
@@ -170,7 +170,7 @@ def unary[rank: Int, S: TensorStorage](input: Tensor[rank, S], kind: UnaryKind) 
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
     if kind.code < 0 or kind.code > 8:
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.UNSUPPORTED)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         if kind.code == 0:
             return input.unary_host[0]()
         if kind.code == 1:
@@ -209,36 +209,36 @@ def unary[rank: Int, S: TensorStorage](input: Tensor[rank, S], kind: UnaryKind) 
 
 # Named public entry point; the computation is shared with unary().
 def neg[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.NEG)
+    return unary(input, materialize[UnaryKind.NEG]())
 
 # Named public entry point; the computation is shared with unary().
 def abs[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.ABS)
+    return unary(input, materialize[UnaryKind.ABS]())
 
 # Named public entry point; the computation is shared with unary().
 def sqrt[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.SQRT)
+    return unary(input, materialize[UnaryKind.SQRT]())
 
 # Named public entry point; the computation is shared with unary().
 def exp[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.EXP)
+    return unary(input, materialize[UnaryKind.EXP]())
 
 # Named public entry point; the computation is shared with unary().
 def log[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.LOG)
+    return unary(input, materialize[UnaryKind.LOG]())
 
 # Named public entry point; the computation is shared with unary().
 def sin[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.SIN)
+    return unary(input, materialize[UnaryKind.SIN]())
 
 # Named public entry point; the computation is shared with unary().
 def cos[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.COS)
+    return unary(input, materialize[UnaryKind.COS]())
 
 # Named public entry point; the computation is shared with unary().
 def tanh[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.TANH)
+    return unary(input, materialize[UnaryKind.TANH]())
 
 # Named public entry point; the computation is shared with unary().
 def reciprocal[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return unary(input, UnaryKind.RECIPROCAL)
+    return unary(input, materialize[UnaryKind.RECIPROCAL]())

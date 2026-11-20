@@ -195,7 +195,7 @@ def _binary_generic_fixed[operation: Int, rank: Int, SA: TensorStorage, SB: Tens
         var value = _apply_fp32_binary_fixed[operation](left.payload.value(), right.payload.value())
         dst[cursor.produced] = value
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 def binary[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB], kind: BinaryOpKind) -> TensorResult[Tensor[rank, HostStorage]]:
@@ -203,18 +203,18 @@ def binary[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA],
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
     if kind.code < 0 or kind.code > 5:
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.UNSUPPORTED)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
+    comptime if SA == HostStorage and SB == HostStorage:
         if kind.code == 0:
-            return a._binary_host[0](b)
+            return a._binary_host[0](rebind[Tensor[rank, HostStorage]](b))
         if kind.code == 1:
-            return a._binary_host[1](b)
+            return a._binary_host[1](rebind[Tensor[rank, HostStorage]](b))
         if kind.code == 2:
-            return a._binary_host[2](b)
+            return a._binary_host[2](rebind[Tensor[rank, HostStorage]](b))
         if kind.code == 3:
-            return a._binary_host[3](b)
+            return a._binary_host[3](rebind[Tensor[rank, HostStorage]](b))
         if kind.code == 4:
-            return a._binary_host[4](b)
-        return a._binary_host[5](b)
+            return a._binary_host[4](rebind[Tensor[rank, HostStorage]](b))
+        return a._binary_host[5](rebind[Tensor[rank, HostStorage]](b))
     # Non-HostStorage operands dispatch ONCE, not for every FP32 element.
     if kind.code == 0:
         return _binary_generic_fixed[0](a, b)
@@ -246,16 +246,16 @@ def fma_nd[ra: Int, rb: Int, rc: Int, out_rank: Int](
     return a.fma_nd[rb, rc, out_rank](b, c, mode)
 
 def add[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return binary(a, b, BinaryOpKind.ADD)
+    return binary(a, b, materialize[BinaryOpKind.ADD]())
 
 def sub[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return binary(a, b, BinaryOpKind.SUB)
+    return binary(a, b, materialize[BinaryOpKind.SUB]())
 
 def mul[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return binary(a, b, BinaryOpKind.MUL)
+    return binary(a, b, materialize[BinaryOpKind.MUL]())
 
 def div[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB]) -> TensorResult[Tensor[rank, HostStorage]]:
-    return binary(a, b, BinaryOpKind.DIV)
+    return binary(a, b, materialize[BinaryOpKind.DIV]())
 
 
 def maximum[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB]) -> TensorResult[Tensor[rank, HostStorage]]:
@@ -263,8 +263,8 @@ def maximum[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA]
     # dispatch and call the validated, one-allocation kernel directly.
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a._binary_host[4](b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a._binary_host[4](rebind[Tensor[rank, HostStorage]](b))
     else:
         return _binary_generic_fixed[4](a, b)
 
@@ -274,8 +274,8 @@ def minimum[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA]
     # dispatch and call the validated, one-allocation kernel directly.
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a._binary_host[5](b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a._binary_host[5](rebind[Tensor[rank, HostStorage]](b))
     else:
         return _binary_generic_fixed[5](a, b)
 
@@ -307,8 +307,8 @@ def _binary_nd_fixed[operation: Int, ra: Int, rb: Int, out_rank: Int, SA: Tensor
 ) -> TensorResult[Tensor[out_rank, HostStorage]]:
     comptime assert operation >= 0 and operation <= 5, "invalid fixed binary opcode"
     comptime assert out_rank == max(ra, rb) and out_rank <= 8, "invalid broadcast output rank"
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a._binary_nd_host[operation, rb, out_rank](b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a._binary_nd_host[operation, rb, out_rank](rebind[Tensor[rb, HostStorage]](b))
     var checked_a = a._checked_current_layout()
     if not checked_a.is_ok():
         return TensorResult[Tensor[out_rank, HostStorage]](checked_a.status)
@@ -370,7 +370,7 @@ def _binary_nd_fixed[operation: Int, ra: Int, rb: Int, out_rank: Int, SA: Tensor
         var result = _apply_fp32_binary_fixed[operation](x.payload.value(), y.payload.value())
         dst[cursor.produced] = result
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 def binary_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStorage](
@@ -383,39 +383,41 @@ def binary_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStor
     if kind.code < 0 or kind.code > 5:
         return TensorResult[Tensor[out_rank, HostStorage]](TensorStatus.UNSUPPORTED)
     comptime if ra == rb and ra == out_rank:
-        return binary(a, b, kind)
+        return rebind_var[TensorResult[Tensor[out_rank, HostStorage]]](
+            binary(a, rebind[Tensor[ra, SB]](b), kind)
+        )
     if kind.code == 0:
-        return _binary_nd_fixed[0](a, b)
+        return _binary_nd_fixed[0, ra, rb, out_rank](a, b)
     if kind.code == 1:
-        return _binary_nd_fixed[1](a, b)
+        return _binary_nd_fixed[1, ra, rb, out_rank](a, b)
     if kind.code == 2:
-        return _binary_nd_fixed[2](a, b)
+        return _binary_nd_fixed[2, ra, rb, out_rank](a, b)
     if kind.code == 3:
-        return _binary_nd_fixed[3](a, b)
+        return _binary_nd_fixed[3, ra, rb, out_rank](a, b)
     if kind.code == 4:
-        return _binary_nd_fixed[4](a, b)
-    return _binary_nd_fixed[5](a, b)
+        return _binary_nd_fixed[4, ra, rb, out_rank](a, b)
+    return _binary_nd_fixed[5, ra, rb, out_rank](a, b)
 
 
 def add_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStorage](
     a: Tensor[ra, SA], b: Tensor[rb, SB]
 ) -> TensorResult[Tensor[out_rank, HostStorage]]:
-    return binary_nd[ra, rb, out_rank](a, b, BinaryOpKind.ADD)
+    return binary_nd[ra, rb, out_rank](a, b, materialize[BinaryOpKind.ADD]())
 
 
 def sub_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStorage](
     a: Tensor[ra, SA], b: Tensor[rb, SB]
 ) -> TensorResult[Tensor[out_rank, HostStorage]]:
-    return binary_nd[ra, rb, out_rank](a, b, BinaryOpKind.SUB)
+    return binary_nd[ra, rb, out_rank](a, b, materialize[BinaryOpKind.SUB]())
 
 
 def mul_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStorage](
     a: Tensor[ra, SA], b: Tensor[rb, SB]
 ) -> TensorResult[Tensor[out_rank, HostStorage]]:
-    return binary_nd[ra, rb, out_rank](a, b, BinaryOpKind.MUL)
+    return binary_nd[ra, rb, out_rank](a, b, materialize[BinaryOpKind.MUL]())
 
 
 def div_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStorage](
     a: Tensor[ra, SA], b: Tensor[rb, SB]
 ) -> TensorResult[Tensor[out_rank, HostStorage]]:
-    return binary_nd[ra, rb, out_rank](a, b, BinaryOpKind.DIV)
+    return binary_nd[ra, rb, out_rank](a, b, materialize[BinaryOpKind.DIV]())

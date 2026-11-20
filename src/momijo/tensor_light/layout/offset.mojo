@@ -98,7 +98,7 @@ from ..internal.checked_math import checked_add, checked_sub, checked_mul
 from ..internal.status import TensorStatus, TensorResult
 
 @fieldwise_init
-struct PhysicalSpan(Copyable):
+struct PhysicalSpan(ImplicitlyCopyable):
     var lo: Int
     var hi: Int
     var empty: Bool

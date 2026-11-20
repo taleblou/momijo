@@ -95,7 +95,7 @@
 from max.gpu.host import DeviceContext, DeviceStream, DeviceEvent
 from .synchronization import synchronize_stream
 
-def default_stream(ctx: DeviceContext) -> DeviceStream:
+def default_stream(ctx: DeviceContext) raises -> DeviceStream:
     return ctx.stream()
 
 def create_stream(ctx: DeviceContext, priority: Int = 0) raises -> DeviceStream:

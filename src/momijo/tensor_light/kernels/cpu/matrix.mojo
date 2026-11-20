@@ -111,8 +111,8 @@ from ...parallel.parallel_for import CpuWorkPolicy, recommend_worker_count, exec
 # output/input independence ONCE before selecting the fast microkernel.
 # Kernels with an `_unchecked` execution contract never repeat these checks.
 def validate_fp32_gemm_buffers[co: Origin[mut=True], ao: Origin, bo: Origin](
-    c: Span[True, Float32, co], a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo], m: Int, k: Int, n: Int,
+    c: Span[Float32, co], a: Span[Float32, ao],
+    b: Span[Float32, bo], m: Int, k: Int, n: Int,
 ) -> TensorStatus:
     if m < 0 or k < 0 or n < 0:
         return TensorStatus.INVALID_SHAPE
@@ -143,9 +143,9 @@ def validate_fp32_gemm_buffers[co: Origin[mut=True], ao: Origin, bo: Origin](
 
 @inline(.always)
 def cpu_mm_contiguous[width: Int, co: Origin[mut=True], ao: Origin, bo: Origin](
-    c: Span[True, Float32, co],
-    a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo],
+    c: Span[Float32, co],
+    a: Span[Float32, ao],
+    b: Span[Float32, bo],
     m: Int, k: Int, n: Int,
 ):
     comptime assert width > 0, "invalid FP32 SIMD width"
@@ -200,7 +200,7 @@ def cpu_mm_contiguous[width: Int, co: Origin[mut=True], ao: Origin, bo: Origin](
 # reduction tree permits FASTEST-mode reassociation relative to scalar order.
 @inline(.always)
 def cpu_dot_contiguous[width: Int, ao: Origin, bo: Origin](
-    a: Span[False, Float32, ao], b: Span[False, Float32, bo]
+    a: Span[Float32, ao], b: Span[Float32, bo]
 ) -> Float32:
     comptime assert width > 0, "SIMD width must be positive"
     var n = len(a)
@@ -219,14 +219,14 @@ def cpu_dot_contiguous[width: Int, ao: Origin, bo: Origin](
 # same x without any GEMM packing or heap temporaries.
 @inline(.always)
 def cpu_gemv_contiguous[width: Int, co: Origin[mut=True], ao: Origin, xo: Origin](
-    out: Span[True, Float32, co], a: Span[False, Float32, ao],
-    x: Span[False, Float32, xo], m: Int, k: Int,
+    output: Span[Float32, co], a: Span[Float32, ao],
+    x: Span[Float32, xo], m: Int, k: Int,
 ):
     comptime assert width > 0, "SIMD width must be positive"
     var limit = k - k % width
     var ap = a.unsafe_ptr()
     var xp = x.unsafe_ptr()
-    var dst = out.unsafe_ptr()
+    var dst = output.unsafe_ptr()
     for row in range(m):
         var start = row * k
         var partial = SIMD[DType.float32, width](0.0)
@@ -242,11 +242,11 @@ def cpu_gemv_contiguous[width: Int, co: Origin[mut=True], ao: Origin, xo: Origin
 # loads instead of walking B one strided column at a time.
 @inline(.always)
 def cpu_vecmat_contiguous[width: Int, co: Origin[mut=True], xo: Origin, bo: Origin](
-    out: Span[True, Float32, co], x: Span[False, Float32, xo],
-    b: Span[False, Float32, bo], k: Int, n: Int,
+    output: Span[Float32, co], x: Span[Float32, xo],
+    b: Span[Float32, bo], k: Int, n: Int,
 ):
     comptime assert width > 0, "SIMD width must be positive"
-    var dst = out.unsafe_ptr()
+    var dst = output.unsafe_ptr()
     var xp = x.unsafe_ptr()
     var bp = b.unsafe_ptr()
     var bound = n - n % width
@@ -267,11 +267,11 @@ def cpu_vecmat_contiguous[width: Int, co: Origin[mut=True], xo: Origin, bo: Orig
 # Outer product: each x[i] is reused for a vectorized contiguous y run.
 @inline(.always)
 def cpu_outer_contiguous[width: Int, co: Origin[mut=True], ao: Origin, bo: Origin](
-    out: Span[True, Float32, co], a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo], m: Int, n: Int,
+    output: Span[Float32, co], a: Span[Float32, ao],
+    b: Span[Float32, bo], m: Int, n: Int,
 ):
     comptime assert width > 0, "SIMD width must be positive"
-    var dst = out.unsafe_ptr()
+    var dst = output.unsafe_ptr()
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
     var bound = n - n % width
@@ -289,8 +289,8 @@ def cpu_outer_contiguous[width: Int, co: Origin[mut=True], ao: Origin, bo: Origi
 # when N is too narrow for packed 64-column macro-panels. All buffers were
 # checked by cpu_mm_autoselect_fp32 before entering this leaf.
 def cpu_mm_parallel_narrow_unchecked[width: Int, co: Origin[mut=True], ao: Origin, bo: Origin](
-    c: Span[True, Float32, co], a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo], m: Int, k: Int, n: Int,
+    c: Span[Float32, co], a: Span[Float32, ao],
+    b: Span[Float32, bo], m: Int, k: Int, n: Int,
 ) -> TensorStatus:
     comptime assert width > 0, "positive FP32 SIMD width required"
     var groups = m // 4
@@ -365,10 +365,10 @@ def _cpu_mm_packed_with_workspace_unchecked[
     width: Int, kc: Int, nc: Int, mc: Int,
     co: Origin[mut=True], ao: Origin, bo: Origin, so: Origin[mut=True],
 ](
-    c: Span[True, Float32, co],
-    a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo],
-    scratch: Span[True, Float32, so],
+    c: Span[Float32, co],
+    a: Span[Float32, ao],
+    b: Span[Float32, bo],
+    scratch: Span[Float32, so],
     m: Int, k: Int, n: Int,
 ) -> TensorStatus:
     comptime assert width > 0 and kc > 0 and nc > 0 and mc > 0, "invalid GEMM tile"
@@ -494,9 +494,9 @@ def _cpu_mm_packed_alloc_after_preflight_unchecked[
     width: Int, kc: Int, nc: Int, mc: Int,
     co: Origin[mut=True], ao: Origin, bo: Origin,
 ](
-    c: Span[True, Float32, co],
-    a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo],
+    c: Span[Float32, co],
+    a: Span[Float32, ao],
+    b: Span[Float32, bo],
     m: Int, k: Int, n: Int,
 ) -> TensorStatus:
     var allocation = HostStorage._allocate_for_complete_overwrite(kc * nc)
@@ -515,9 +515,9 @@ def cpu_mm_packed_fp32[
     width: Int, kc: Int, nc: Int, mc: Int,
     co: Origin[mut=True], ao: Origin, bo: Origin,
 ](
-    c: Span[True, Float32, co],
-    a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo],
+    c: Span[Float32, co],
+    a: Span[Float32, ao],
+    b: Span[Float32, bo],
     m: Int, k: Int, n: Int,
 ) -> TensorStatus:
     comptime assert width > 0 and kc > 0 and nc > 0 and mc > 0, "invalid GEMM tile"
@@ -546,10 +546,10 @@ def cpu_mm_packed_workspace_fp32[
     width: Int, kc: Int, nc: Int, mc: Int,
     co: Origin[mut=True], ao: Origin, bo: Origin, so: Origin[mut=True],
 ](
-    c: Span[True, Float32, co],
-    a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo],
-    scratch: Span[True, Float32, so],
+    c: Span[Float32, co],
+    a: Span[Float32, ao],
+    b: Span[Float32, bo],
+    scratch: Span[Float32, so],
     m: Int, k: Int, n: Int,
 ) -> TensorStatus:
     comptime assert width > 0 and kc > 0 and nc > 0 and mc > 0, "invalid GEMM tile"
@@ -590,8 +590,8 @@ def cpu_mm_packed_workspace_fp32[
 def cpu_mm_k1_strict_contiguous[
     width: Int, co: Origin[mut=True], ao: Origin, bo: Origin,
 ](
-    c: Span[True, Float32, co], a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo], m: Int, n: Int,
+    c: Span[Float32, co], a: Span[Float32, ao],
+    b: Span[Float32, bo], m: Int, n: Int,
 ):
     comptime assert width > 0, "SIMD width must be positive"
     var dst = c.unsafe_ptr()
@@ -618,9 +618,9 @@ def cpu_mm_k1_strict_contiguous[
 def cpu_mm_autoselect_fp32[
     width: Int, co: Origin[mut=True], ao: Origin, bo: Origin,
 ](
-    c: Span[True, Float32, co],
-    a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo],
+    c: Span[Float32, co],
+    a: Span[Float32, ao],
+    b: Span[Float32, bo],
     m: Int, k: Int, n: Int,
     math_mode: Fp32MathMode = Fp32MathMode.STRICT_FP32,
 ) -> TensorStatus:
@@ -678,8 +678,8 @@ def cpu_mm_autoselect_fp32[
 def cpu_mm_bias_relu_into_fp32[
     width: Int, co: Origin[mut=True], ao: Origin, bo: Origin, bias_origin: Origin,
 ](
-    c: Span[True, Float32, co], a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo], bias: Span[False, Float32, bias_origin],
+    c: Span[Float32, co], a: Span[Float32, ao],
+    b: Span[Float32, bo], bias: Span[Float32, bias_origin],
     m: Int, k: Int, n: Int,
 ) -> TensorStatus:
     comptime assert width > 0, "positive Float32 lane width required"
@@ -736,7 +736,7 @@ def cpu_mm_bias_relu_into_fp32[
 # The preflight is O(1) and never runs in a reduction or GEMM inner loop.
 # Raw cpu_*_contiguous microkernels above retain their internal unchecked ABI.
 def cpu_dot_checked_fp32[width: Int, ao: Origin, bo: Origin](
-    a: Span[False, Float32, ao], b: Span[False, Float32, bo],
+    a: Span[Float32, ao], b: Span[Float32, bo],
 ) -> TensorResult[Float32]:
     var n = len(a)
     if n < 0 or n != len(b):
@@ -750,8 +750,8 @@ def cpu_dot_checked_fp32[width: Int, ao: Origin, bo: Origin](
 
 
 def cpu_gemv_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, xo: Origin](
-    out: Span[True, Float32, co], a: Span[False, Float32, ao],
-    x: Span[False, Float32, xo], m: Int, k: Int,
+    output: Span[Float32, co], a: Span[Float32, ao],
+    x: Span[Float32, xo], m: Int, k: Int,
 ) -> TensorStatus:
     if m < 0 or k < 0:
         return TensorStatus.INVALID_SHAPE
@@ -760,7 +760,7 @@ def cpu_gemv_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, xo: Orig
     if k > 0 and m > (Int.MAX // 4) // k:
         return TensorStatus.OVERFLOW
     var a_count = m * k
-    if m > len(out) or a_count > len(a) or k > len(x):
+    if m > len(output) or a_count > len(a) or k > len(x):
         return TensorStatus.SIZE_MISMATCH
     if m == 0:
         return TensorStatus.OK
@@ -768,9 +768,9 @@ def cpu_gemv_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, xo: Orig
         # Empty inner dimension is a well-defined zero vector. Never form a
         # pointer into an empty input just to produce its zero-valued result.
         for row in range(m):
-            out[row] = Float32(0.0)
+            output[row] = Float32(0.0)
         return TensorStatus.OK
-    var target = out[0:m]
+    var target = output[0:m]
     if not host_output_disjoint_from_input(target, a[0:a_count]):
         return TensorStatus.ALIAS_UNKNOWN
     if not host_output_disjoint_from_input(target, x[0:k]):
@@ -785,7 +785,7 @@ def cpu_gemv_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, xo: Orig
     if workers > 1:
         var a_ptr = a.unsafe_ptr()
         var x_ptr = x.unsafe_ptr()
-        var dest_ptr = out.unsafe_ptr()
+        var dest_ptr = output.unsafe_ptr()
         var vector_end = k - k % width
 
         def gemv_row_shard(shard: Int) {imm}:
@@ -806,13 +806,13 @@ def cpu_gemv_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, xo: Orig
                 dest_ptr.unsafe_store[alignment=4](row, total)
 
         return execute_parallel_shards(gemv_row_shard, m, policy)
-    cpu_gemv_contiguous[width](out, a, x, m, k)
+    cpu_gemv_contiguous[width](output, a, x, m, k)
     return TensorStatus.OK
 
 
 def cpu_vecmat_checked_fp32[width: Int, co: Origin[mut=True], xo: Origin, bo: Origin](
-    out: Span[True, Float32, co], x: Span[False, Float32, xo],
-    b: Span[False, Float32, bo], k: Int, n: Int,
+    output: Span[Float32, co], x: Span[Float32, xo],
+    b: Span[Float32, bo], k: Int, n: Int,
 ) -> TensorStatus:
     if k < 0 or n < 0:
         return TensorStatus.INVALID_SHAPE
@@ -821,15 +821,15 @@ def cpu_vecmat_checked_fp32[width: Int, co: Origin[mut=True], xo: Origin, bo: Or
     if n > 0 and k > (Int.MAX // 4) // n:
         return TensorStatus.OVERFLOW
     var b_count = k * n
-    if n > len(out) or k > len(x) or b_count > len(b):
+    if n > len(output) or k > len(x) or b_count > len(b):
         return TensorStatus.SIZE_MISMATCH
     if n == 0:
         return TensorStatus.OK
     if k == 0:
         for col in range(n):
-            out[col] = Float32(0.0)
+            output[col] = Float32(0.0)
         return TensorStatus.OK
-    var target = out[0:n]
+    var target = output[0:n]
     if not host_output_disjoint_from_input(target, x[0:k]):
         return TensorStatus.ALIAS_UNKNOWN
     if not host_output_disjoint_from_input(target, b[0:b_count]):
@@ -844,7 +844,7 @@ def cpu_vecmat_checked_fp32[width: Int, co: Origin[mut=True], xo: Origin, bo: Or
         var policy = CpuWorkPolicy(32, 8)
         var workers = recommend_worker_count(vector_groups, policy)
         if workers > 1:
-            var dst_ptr = out.unsafe_ptr()
+            var dst_ptr = output.unsafe_ptr()
             var vec_ptr = x.unsafe_ptr()
             var mat_ptr = b.unsafe_ptr()
 
@@ -873,13 +873,13 @@ def cpu_vecmat_checked_fp32[width: Int, co: Origin[mut=True], xo: Origin, bo: Or
                             dst_ptr.unsafe_store[alignment=4](tail_col, scalar)
 
             return execute_parallel_shards(vecmat_column_shard, vector_groups, policy)
-    cpu_vecmat_contiguous[width](out, x, b, k, n)
+    cpu_vecmat_contiguous[width](output, x, b, k, n)
     return TensorStatus.OK
 
 
 def cpu_outer_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, bo: Origin](
-    out: Span[True, Float32, co], a: Span[False, Float32, ao],
-    b: Span[False, Float32, bo], m: Int, n: Int,
+    output: Span[Float32, co], a: Span[Float32, ao],
+    b: Span[Float32, bo], m: Int, n: Int,
 ) -> TensorStatus:
     if m < 0 or n < 0:
         return TensorStatus.INVALID_SHAPE
@@ -888,11 +888,11 @@ def cpu_outer_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, bo: Ori
     if n > 0 and m > (Int.MAX // 4) // n:
         return TensorStatus.OVERFLOW
     var total = m * n
-    if total > len(out) or m > len(a) or n > len(b):
+    if total > len(output) or m > len(a) or n > len(b):
         return TensorStatus.SIZE_MISMATCH
     if total == 0:
         return TensorStatus.OK
-    var target = out[0:total]
+    var target = output[0:total]
     if not host_output_disjoint_from_input(target, a[0:m]):
         return TensorStatus.ALIAS_UNKNOWN
     if not host_output_disjoint_from_input(target, b[0:n]):
@@ -903,7 +903,7 @@ def cpu_outer_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, bo: Ori
     if workers > 1:
         var a_ptr = a.unsafe_ptr()
         var b_ptr = b.unsafe_ptr()
-        var dst_ptr = out.unsafe_ptr()
+        var dst_ptr = output.unsafe_ptr()
         var vector_end = n - n % width
 
         def outer_row_shard(shard: Int) {imm}:
@@ -924,5 +924,5 @@ def cpu_outer_checked_fp32[width: Int, co: Origin[mut=True], ao: Origin, bo: Ori
                         scalar * b_ptr.unsafe_load[alignment=4](col))
 
         return execute_parallel_shards(outer_row_shard, m, policy)
-    cpu_outer_contiguous[width](out, a, b, m, n)
+    cpu_outer_contiguous[width](output, a, b, m, n)
     return TensorStatus.OK

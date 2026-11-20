@@ -180,7 +180,7 @@ def checked_partition_cover[parts: Int](
         return TensorStatus.OUT_OF_BOUNDS
     var cursor = begin
     for i in range(parts):
-        var part = ranges[i]
+        var part = ranges[i].copy()
         if part.begin != cursor or part.end < part.begin or part.end > end:
             return TensorStatus.HYBRID_PARTITION_INVALID
         cursor = part.end
@@ -209,7 +209,7 @@ def split_range_parts[parts: Int](
         var boundary = cursor + take
         result[i] = WorkRange(cursor, boundary)
         cursor = boundary
-    return TensorResult[Array[WorkRange, parts]](result)
+    return TensorResult[Array[WorkRange, parts]](result^)
 
 
 # A fixed number of chunks keeps all scheduling metadata on the stack. The

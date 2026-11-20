@@ -140,7 +140,7 @@ def checked_cpu_kernel_config(
         return TensorResult[CpuKernelConfig](TensorStatus.OVERFLOW)
     if candidate.mc > (Int.MAX // 4) // candidate.nc:
         return TensorResult[CpuKernelConfig](TensorStatus.OVERFLOW)
-    return TensorResult[CpuKernelConfig](candidate)
+    return TensorResult[CpuKernelConfig](candidate.copy())
 
 
 def checked_matrix_kernel_config(candidate: MatrixKernelConfig) -> TensorStatus:

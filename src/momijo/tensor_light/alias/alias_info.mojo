@@ -124,7 +124,7 @@ def make_alias_info[rank: Int](
         return TensorResult[AliasInfo](proof.status)
     var checked = proof.payload.value()
     return TensorResult[AliasInfo](
-        AliasInfo(identity, checked.span_lo, checked.span_hi, checked.shape.is_empty())
+        AliasInfo(identity.copy(), checked.span_lo, checked.span_hi, checked.shape.is_empty())
     )
 
 

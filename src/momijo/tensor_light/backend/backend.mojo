@@ -105,11 +105,11 @@ def _backend_for_validated_plan(plan: ExecutionPlan) -> BackendSelection:
     # Internal only: this function must receive a snapshot that has already
     # passed ExecutionPlan.checked(). There is no implicit hybrid fallback for
     # unknown execution placement values.
-    if plan.placement == ExecutionPlacement.CPU_ONLY:
-        return BackendSelection.CPU
-    if plan.placement == ExecutionPlacement.GPU_ONLY:
-        return BackendSelection.GPU
-    return BackendSelection.HYBRID
+    if plan.placement == materialize[ExecutionPlacement.CPU_ONLY]():
+        return materialize[BackendSelection.CPU]()
+    if plan.placement == materialize[ExecutionPlacement.GPU_ONLY]():
+        return materialize[BackendSelection.GPU]()
+    return materialize[BackendSelection.HYBRID]()
 
 
 def backend_for_plan(plan: ExecutionPlan) -> TensorResult[BackendSelection]:
@@ -119,7 +119,7 @@ def backend_for_plan(plan: ExecutionPlan) -> TensorResult[BackendSelection]:
     var proof = plan.checked_snapshot()
     if not proof.is_ok():
         return TensorResult[BackendSelection](proof.status)
-    var checked_plan = proof.payload.value()
+    var checked_plan = proof.payload.value().copy()
     return TensorResult[BackendSelection](_backend_for_validated_plan(checked_plan))
 
 

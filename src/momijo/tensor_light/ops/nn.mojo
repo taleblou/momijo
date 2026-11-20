@@ -159,7 +159,7 @@ def relu[rank: Int](input: Tensor[rank, HostStorage]) -> TensorResult[Tensor[ran
                 src[layout.physical_offset_unchecked(cursor.coordinates)]
             )
             cursor.advance()
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 def gelu_tanh[rank: Int](input: Tensor[rank, HostStorage]) -> TensorResult[Tensor[rank, HostStorage]]:
@@ -183,7 +183,7 @@ def gelu_tanh[rank: Int](input: Tensor[rank, HostStorage]) -> TensorResult[Tenso
                 src[layout.physical_offset_unchecked(cursor.coordinates)]
             )
             cursor.advance()
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 def softmax_last_axis[rank: Int](
@@ -263,7 +263,7 @@ def softmax_last_axis[rank: Int](
                 destination[out_base + column] = Float32(
                     Float64(destination[out_base + column]) / denominator
                 )
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 def logsumexp_vector(input: Tensor[1, HostStorage]) -> TensorResult[Float32]:
@@ -438,7 +438,7 @@ def layernorm_last_axis[rank: Int](
                     (Float64(src[base + i * stride]) - wide_mean)
                     * wide_inverse_std
                 )
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 def checked_attention_wide_scratch_nbytes(value_depth: Int) -> TensorResult[Int]:
@@ -499,7 +499,7 @@ def scaled_dot_product_attention_2d(
         return TensorResult[Tensor[2, HostStorage]](created.status)
     var output = created.payload.take()
     if queries == 0 or vdepth == 0:
-        return TensorResult[Tensor[2, HostStorage]](output)
+        return TensorResult[Tensor[2, HostStorage]](output^)
     var dest = output.impl.storage.borrow_mut_span()
     var qdata = q.impl.storage.borrow_span()
     var kdata = k.impl.storage.borrow_span()
@@ -861,4 +861,4 @@ def scaled_dot_product_attention_2d(
                 if not Bool(fp32_isfinite(normalized)):
                     return TensorResult[Tensor[2, HostStorage]](TensorStatus.UNSUPPORTED)
                 dest[qi * vdepth + d] = normalized
-    return TensorResult[Tensor[2, HostStorage]](output)
+    return TensorResult[Tensor[2, HostStorage]](output^)

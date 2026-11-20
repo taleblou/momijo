@@ -106,8 +106,8 @@ def cpu_fill[rank: Int, S: MutableTensorStorage](mut tensor: Tensor[rank, S], va
     var plan_proof = plan.checked_native_cpu_snapshot()
     if not plan_proof.is_ok():
         return plan_proof.status
-    var checked_plan = plan_proof.payload.value()
-    if checked_plan.placement != ExecutionPlacement.CPU_ONLY:
+    var checked_plan = plan_proof.payload.value().copy()
+    if checked_plan.placement != materialize[ExecutionPlacement.CPU_ONLY]():
         return TensorStatus.DEVICE_MISMATCH
     if checked_plan.total_items != tensor.numel():
         return TensorStatus.SIZE_MISMATCH
@@ -136,8 +136,8 @@ def _cpu_binary_owned_host_fp32[rank: Int, operation: Int](
     var plan_proof = plan.checked_native_cpu_snapshot()
     if not plan_proof.is_ok():
         return plan_proof.status
-    var checked_plan = plan_proof.payload.value()
-    if checked_plan.placement != ExecutionPlacement.CPU_ONLY or checked_plan.output_device != 0:
+    var checked_plan = plan_proof.payload.value().copy()
+    if checked_plan.placement != materialize[ExecutionPlacement.CPU_ONLY]() or checked_plan.output_device != 0:
         return TensorStatus.DEVICE_MISMATCH
     var la_result = left._checked_current_layout()
     if not la_result.is_ok():

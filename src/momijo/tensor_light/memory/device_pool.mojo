@@ -382,11 +382,11 @@ struct DeviceFp32Pool(Movable):
                     self.poisoned = True
                     self.cached_elements += needed
                     if chosen == 0:
-                        self.slot0 = Optional[_CachedDeviceFp32Block](block)
+                        self.slot0 = Optional[_CachedDeviceFp32Block](block^)
                     elif chosen == 1:
-                        self.slot1 = Optional[_CachedDeviceFp32Block](block)
+                        self.slot1 = Optional[_CachedDeviceFp32Block](block^)
                     else:
-                        self.slot2 = Optional[_CachedDeviceFp32Block](block)
+                        self.slot2 = Optional[_CachedDeviceFp32Block](block^)
                     return TensorResult[DeviceFp32Lease](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
                 # The event reported a failure even though the fallback stream
                 # join succeeded. Retire this buffer using the owning lease's
@@ -494,7 +494,7 @@ struct DeviceFp32Pool(Movable):
         var free_immediately = physical_count > self.cache_limit_elements
         if not self.slot0 and not self.slot1 and not self.slot2:
             free_immediately = False
-        elif self.slot0 and self.slot1 and self.slot2:
+        elif Bool(self.slot0) and Bool(self.slot1) and Bool(self.slot2):
             free_immediately = True
         if physical_count > self.cache_limit_elements - self.cached_elements:
             free_immediately = True
@@ -524,11 +524,11 @@ struct DeviceFp32Pool(Movable):
         )
         self.cached_elements += physical_count
         if not self.slot0:
-            self.slot0 = Optional[_CachedDeviceFp32Block](kept)
+            self.slot0 = Optional[_CachedDeviceFp32Block](kept^)
         elif not self.slot1:
-            self.slot1 = Optional[_CachedDeviceFp32Block](kept)
+            self.slot1 = Optional[_CachedDeviceFp32Block](kept^)
         else:
-            self.slot2 = Optional[_CachedDeviceFp32Block](kept)
+            self.slot2 = Optional[_CachedDeviceFp32Block](kept^)
         return TensorStatus.OK
 
     def unsafe_release_after_device_event(
@@ -564,7 +564,7 @@ struct DeviceFp32Pool(Movable):
             self._unproven_orphan_lease = True
             lease._quarantine_unproven()
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        return self.unsafe_release_after_stream(lease)
+        return self.unsafe_release_after_stream(lease^)
 
     def clear(mut self) -> TensorStatus:
         if self.poisoned:

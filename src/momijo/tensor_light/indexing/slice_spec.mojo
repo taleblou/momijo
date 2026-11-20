@@ -126,34 +126,34 @@ struct BasicIndex(Copyable):
     var slice_value: SliceSpec
 
     def __init__(out self, kind: BasicIndexKind, integer_value: Int, slice_value: SliceSpec):
-        self.kind = kind
+        self.kind = kind.copy()
         self.integer_value = integer_value
-        self.slice_value = slice_value
+        self.slice_value = slice_value.copy()
 
     def __init__(out self, *, copy: Self):
-        self.kind = copy.kind
+        self.kind = copy.kind.copy()
         self.integer_value = copy.integer_value
         self.slice_value = copy.slice_value.copy()
 
     @staticmethod
     def integer(value: Int) -> Self:
-        return Self(BasicIndexKind.INTEGER, value, SliceSpec(None, None, 1))
+        return Self(materialize[BasicIndexKind.INTEGER](), value, SliceSpec(None, None, 1))
 
     @staticmethod
     def sliced(value: SliceSpec) -> Self:
-        return Self(BasicIndexKind.SLICE, 0, value)
+        return Self(materialize[BasicIndexKind.SLICE](), 0, value)
 
     @staticmethod
     def full_slice() -> Self:
-        return Self(BasicIndexKind.SLICE, 0, SliceSpec(None, None, 1))
+        return Self(materialize[BasicIndexKind.SLICE](), 0, SliceSpec(None, None, 1))
 
     @staticmethod
     def new_axis() -> Self:
-        return Self(BasicIndexKind.NEW_AXIS, 0, SliceSpec(None, None, 1))
+        return Self(materialize[BasicIndexKind.NEW_AXIS](), 0, SliceSpec(None, None, 1))
 
     @staticmethod
     def ellipsis() -> Self:
-        return Self(BasicIndexKind.ELLIPSIS, 0, SliceSpec(None, None, 1))
+        return Self(materialize[BasicIndexKind.ELLIPSIS](), 0, SliceSpec(None, None, 1))
 
 
 # Public specification vocabulary: IndexSpec is the canonical checked
@@ -189,14 +189,14 @@ def inferred_basic_index_rank[src_rank: Int, *IndexTypes: AnyType]() -> Int:
     var result = src_rank
     var ellipses = 0
     comptime for i in range(IndexTypes.length):
-        comptime if identical(IndexTypes[i], Int):
+        comptime if IndexTypes[i] == Int:
             consumed += 1
             result -= 1
-        elif identical(IndexTypes[i], SliceSpec):
+        elif IndexTypes[i] == SliceSpec:
             consumed += 1
-        elif identical(IndexTypes[i], NewAxis):
+        elif IndexTypes[i] == NewAxis:
             result += 1
-        elif identical(IndexTypes[i], EllipsisIndex):
+        elif IndexTypes[i] == EllipsisIndex:
             ellipses += 1
         else:
             # A compile-time failure keeps dynamic BasicIndex out of an
@@ -226,19 +226,19 @@ def _summarize_basic_index_pack[count: Int](
     var produced = 0
     var ellipses = 0
     comptime for i in range(count):
-        var term = terms[i]
-        if term.kind == BasicIndexKind.INTEGER:
+        var term = terms[i].copy()
+        if term.kind == materialize[BasicIndexKind.INTEGER]():
             consumed += 1
-        elif term.kind == BasicIndexKind.SLICE:
+        elif term.kind == materialize[BasicIndexKind.SLICE]():
             # Slice length/endpoint checks need the indexed extent, but a
             # zero/Int.MIN step is invalid independently of that extent.
             if term.slice_value.step == 0 or term.slice_value.step == Int.MIN:
                 return TensorResult[BasicIndexPackSummary](TensorStatus.INVALID_LAYOUT)
             consumed += 1
             produced += 1
-        elif term.kind == BasicIndexKind.NEW_AXIS:
+        elif term.kind == materialize[BasicIndexKind.NEW_AXIS]():
             produced += 1
-        elif term.kind == BasicIndexKind.ELLIPSIS:
+        elif term.kind == materialize[BasicIndexKind.ELLIPSIS]():
             ellipses += 1
         else:
             return TensorResult[BasicIndexPackSummary](TensorStatus.UNSUPPORTED)
@@ -274,7 +274,7 @@ def result_rank_of_basic_index_pack[src_rank: Int, count: Int](
     var inspected = _summarize_basic_index_pack(terms)
     if not inspected.is_ok():
         return TensorResult[Int](inspected.status)
-    var metadata = inspected.payload.value()
+    var metadata = inspected.payload.value().copy()
     if metadata.consumed_source_axes > src_rank:
         return TensorResult[Int](TensorStatus.INVALID_AXIS)
     # The ellipsis, when present, stands for exactly the unconsumed axes.
@@ -308,14 +308,14 @@ def validate_basic_index_pack[src_rank: Int, out_rank: Int, count: Int](
 def validate_basic_index_pack[*IndexTypes: AnyType]() -> Bool:
     comptime for i in range(IndexTypes.length):
         comptime assert (
-            identical(IndexTypes[i], Int)
-            or identical(IndexTypes[i], SliceSpec)
-            or identical(IndexTypes[i], NewAxis)
-            or identical(IndexTypes[i], EllipsisIndex)
+            IndexTypes[i] == Int
+            or IndexTypes[i] == SliceSpec
+            or IndexTypes[i] == NewAxis
+            or IndexTypes[i] == EllipsisIndex
         ), "Only Int, SliceSpec, NewAxis and EllipsisIndex are valid typed indices"
     var ellipses = 0
     comptime for i in range(IndexTypes.length):
-        comptime if identical(IndexTypes[i], EllipsisIndex):
+        comptime if IndexTypes[i] == EllipsisIndex:
             ellipses += 1
     if ellipses > 1:
         return False
@@ -326,12 +326,12 @@ def count_ellipsis[*IndexTypes: AnyType]() -> Int:
     var n = 0
     comptime for i in range(IndexTypes.length):
         comptime assert (
-            identical(IndexTypes[i], Int)
-            or identical(IndexTypes[i], SliceSpec)
-            or identical(IndexTypes[i], NewAxis)
-            or identical(IndexTypes[i], EllipsisIndex)
+            IndexTypes[i] == Int
+            or IndexTypes[i] == SliceSpec
+            or IndexTypes[i] == NewAxis
+            or IndexTypes[i] == EllipsisIndex
         ), "Unsupported typed basic index"
-        comptime if identical(IndexTypes[i], EllipsisIndex):
+        comptime if IndexTypes[i] == EllipsisIndex:
             n += 1
     if n > 1:
         return -1
@@ -342,12 +342,12 @@ def count_consumed_axes[*IndexTypes: AnyType]() -> Int:
     var n = 0
     comptime for i in range(IndexTypes.length):
         comptime assert (
-            identical(IndexTypes[i], Int)
-            or identical(IndexTypes[i], SliceSpec)
-            or identical(IndexTypes[i], NewAxis)
-            or identical(IndexTypes[i], EllipsisIndex)
+            IndexTypes[i] == Int
+            or IndexTypes[i] == SliceSpec
+            or IndexTypes[i] == NewAxis
+            or IndexTypes[i] == EllipsisIndex
         ), "Unsupported typed basic index"
-        comptime if identical(IndexTypes[i], Int) or identical(IndexTypes[i], SliceSpec):
+        comptime if IndexTypes[i] == Int or IndexTypes[i] == SliceSpec:
             n += 1
     return n
 
@@ -360,19 +360,19 @@ def result_rank_of_basic_index_pack[src_rank: Int, *IndexTypes: AnyType]() -> In
     var ellipses = 0
     comptime for i in range(IndexTypes.length):
         comptime assert (
-            identical(IndexTypes[i], Int)
-            or identical(IndexTypes[i], SliceSpec)
-            or identical(IndexTypes[i], NewAxis)
-            or identical(IndexTypes[i], EllipsisIndex)
+            IndexTypes[i] == Int
+            or IndexTypes[i] == SliceSpec
+            or IndexTypes[i] == NewAxis
+            or IndexTypes[i] == EllipsisIndex
         ), "Unsupported typed basic index"
-        comptime if identical(IndexTypes[i], Int):
+        comptime if IndexTypes[i] == Int:
             consumed += 1
-        elif identical(IndexTypes[i], SliceSpec):
+        elif IndexTypes[i] == SliceSpec:
             consumed += 1
             retained_slices += 1
-        elif identical(IndexTypes[i], NewAxis):
+        elif IndexTypes[i] == NewAxis:
             inserted += 1
-        elif identical(IndexTypes[i], EllipsisIndex):
+        elif IndexTypes[i] == EllipsisIndex:
             ellipses += 1
     if ellipses > 1 or consumed > src_rank:
         return -1

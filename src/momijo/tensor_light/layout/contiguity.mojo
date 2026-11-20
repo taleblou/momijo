@@ -98,7 +98,7 @@ from ..internal.checked_math import checked_sub, checked_add
 from .offset import checked_relative_span
 
 @fieldwise_init
-struct InternalOverlapKind(Copyable, Equatable):
+struct InternalOverlapKind(ImplicitlyCopyable, Equatable):
     var code: Int
     comptime NONE = Self(0)
     comptime DEFINITE = Self(1)

@@ -98,7 +98,7 @@ from ..view.view import TensorView
 from ..internal.status import TensorResult
 
 struct PackedHostAccessor[rank: Int, origin: Origin](Copyable):
-    var span: Span[False, Float32, Self.origin]
+    var span: Span[mut=False, Float32, Self.origin]
     var dims: StaticRankArray[Self.rank]
     var strides: StaticRankArray[Self.rank]
     var offset: Int

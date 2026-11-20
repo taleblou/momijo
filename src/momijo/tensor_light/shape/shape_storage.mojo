@@ -96,7 +96,7 @@
 
 from ..internal.status import TensorResult, TensorStatus
 # Rank-0 has one physical metadata slot but no logical axes.
-struct StaticRankArray[rank: Int](Copyable):
+struct StaticRankArray[rank: Int](ImplicitlyCopyable):
     var _entries: Array[Int, max(Self.rank, 1)]
 
     def __init__(out self, value: Int = 0):

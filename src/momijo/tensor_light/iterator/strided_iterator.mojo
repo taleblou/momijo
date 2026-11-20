@@ -91,6 +91,7 @@
 # No-allocation physical-offset cursors for validated FP32 layouts.
 from ..layout.layout import TensorLayout
 from ..shape.shape_storage import StaticRankArray
+from ..shape.shape import TensorShape
 from ..internal.status import TensorResult, TensorStatus
 
 struct StridedCursor[rank: Int]:
@@ -296,7 +297,7 @@ struct StridedZipCursor[src_rank: Int, dst_rank: Int]:
             var dst_shape = dst.shape.checked_numel()
             if not dst_shape.is_ok():
                 return TensorResult[Self](dst_shape.status)
-            if not src.shape.same_extents(dst.shape):
+            if not src.shape.same_extents(rebind[TensorShape[Self.src_rank]](dst.shape)):
                 return TensorResult[Self](TensorStatus.SHAPE_MISMATCH)
             return TensorResult[Self](Self(src, dst))
 
@@ -317,7 +318,7 @@ struct StridedZipCursor[src_rank: Int, dst_rank: Int]:
         # logical-only overload cannot authorize physical offset queries.
         var logical = Self.checked(source_proof.payload.value(), target_proof.payload.value())
         if not logical.is_ok():
-            return logical
+            return logical^
         return TensorResult[Self](Self(
             source_proof.payload.value(), target_proof.payload.value(),
             src_capacity, dst_capacity,
@@ -330,7 +331,9 @@ struct StridedZipCursor[src_rank: Int, dst_rank: Int]:
         comptime if Self.src_rank != Self.dst_rank:
             return False
         else:
-            if not self.source.layout.shape.same_extents(self.destination.layout.shape):
+            if not self.source.layout.shape.same_extents(
+                rebind[TensorShape[Self.src_rank]](self.destination.layout.shape)
+            ):
                 return False
         # A public Shape can be modified after cursor construction. Compare
         # recomputed, overflow-checked counts rather than trusting cached
@@ -441,7 +444,9 @@ struct StridedZipCursor[src_rank: Int, dst_rank: Int]:
         comptime if Self.src_rank != Self.dst_rank:
             return TensorStatus.SHAPE_MISMATCH
         else:
-            if not self.source.layout.shape.same_extents(self.destination.layout.shape):
+            if not self.source.layout.shape.same_extents(
+                rebind[TensorShape[Self.src_rank]](self.destination.layout.shape)
+            ):
                 return TensorStatus.SHAPE_MISMATCH
         if src_count != dst_count or self.source.visited != self.destination.visited:
             return TensorStatus.SIZE_MISMATCH

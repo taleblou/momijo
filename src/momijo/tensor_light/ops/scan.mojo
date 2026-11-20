@@ -107,7 +107,7 @@ from ..dtype.fp32 import fp32_minimum, fp32_maximum
 def _scan[operation: Int, rank: Int, S: TensorStorage](input: Tensor[rank, S], axis: Int) -> TensorResult[Tensor[rank, HostStorage]]:
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         # The owning public Tensor type is the single source of HostStorage
         # scan semantics. Generic host-accessible storage uses fallback below.
         return input._scan_host[operation](axis)
@@ -165,7 +165,7 @@ def _scan[operation: Int, rank: Int, S: TensorStorage](input: Tensor[rank, S], a
                     next = fp32_maximum(previous, next)
         out_data[cursor.produced] = next
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 def cumsum[rank: Int, S: TensorStorage](input: Tensor[rank, S], axis: Int) -> TensorResult[Tensor[rank, HostStorage]]:

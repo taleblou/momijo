@@ -98,7 +98,7 @@ struct TensorRef[rank: Int, origin: Origin](Copyable):
     var view_data: TensorView[Self.rank, Self.origin]
 
     def __init__(out self, view: TensorView[Self.rank, Self.origin]):
-        self.view_data = view
+        self.view_data = view.copy()
 
     def __init__(out self, *, copy: Self):
         self.view_data = copy.view_data.copy()
@@ -170,7 +170,7 @@ struct TensorMutRef[rank: Int, origin: Origin[mut=True]](Movable):
     var view_data: TensorMutView[Self.rank, Self.origin]
 
     def __init__(out self, var view: TensorMutView[Self.rank, Self.origin]):
-        self.view_data = view
+        self.view_data = view^
 
     def shape(self) -> TensorShape[Self.rank]:
         return self.view_data.shape()

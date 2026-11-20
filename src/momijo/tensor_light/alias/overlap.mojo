@@ -129,8 +129,8 @@ def ranges_overlap(a: AliasInfo, b: AliasInfo) -> Bool:
 def host_output_disjoint_from_input[
     dst_origin: Origin[mut=True], src_origin: Origin,
 ](
-    output: Span[True, Float32, dst_origin],
-    source: Span[False, Float32, src_origin],
+    output: Span[Float32, dst_origin],
+    source: Span[Float32, src_origin],
 ) -> Bool:
     var output_count = len(output)
     var input_count = len(source)
@@ -168,8 +168,8 @@ def host_output_disjoint_from_input[
 def host_mutable_fp32_spans_disjoint[
     left_origin: Origin[mut=True], right_origin: Origin[mut=True],
 ](
-    left: Span[True, Float32, left_origin],
-    right: Span[True, Float32, right_origin],
+    left: Span[Float32, left_origin],
+    right: Span[Float32, right_origin],
 ) -> Bool:
     var left_count = len(left)
     var right_count = len(right)
@@ -196,8 +196,8 @@ def host_mutable_fp32_spans_disjoint[
 def host_output_exactly_matches_input[
     dst_origin: Origin[mut=True], src_origin: Origin,
 ](
-    output: Span[True, Float32, dst_origin],
-    source: Span[False, Float32, src_origin],
+    output: Span[Float32, dst_origin],
+    source: Span[Float32, src_origin],
 ) -> Bool:
     # Exact forward element-for-element alias is safe for FP32 binary kernels
     # that LOAD both operands before writing each SIMD group. Partial/shifted
@@ -221,8 +221,8 @@ def host_output_exactly_matches_input[
 # provenance IDs. The address-range proof below is used only for copy/move
 # policy, never as permission to synthesize a Mojo noalias pointer.
 def can_use_memcpy[dst_origin: Origin[mut=True], src_origin: Origin](
-    output: Span[True, Float32, dst_origin],
-    source: Span[False, Float32, src_origin],
+    output: Span[Float32, dst_origin],
+    source: Span[Float32, src_origin],
 ) -> Bool:
     if len(output) != len(source):
         return False
@@ -230,8 +230,8 @@ def can_use_memcpy[dst_origin: Origin[mut=True], src_origin: Origin](
 
 
 def requires_memmove[dst_origin: Origin[mut=True], src_origin: Origin](
-    output: Span[True, Float32, dst_origin],
-    source: Span[False, Float32, src_origin],
+    output: Span[Float32, dst_origin],
+    source: Span[Float32, src_origin],
 ) -> Bool:
     # A caller must independently reject unequal logical copy sizes. When
     # any overlap is possible, memmove semantics preserve unread elements.
@@ -250,8 +250,8 @@ def requires_memmove[dst_origin: Origin[mut=True], src_origin: Origin](
 def host_output_disjoint_from_indices[
     dst_origin: Origin[mut=True], index_origin: Origin,
 ](
-    output: Span[True, Float32, dst_origin],
-    indices: Span[False, Int, index_origin],
+    output: Span[Float32, dst_origin],
+    indices: Span[Int, index_origin],
 ) -> Bool:
     var output_count = len(output)
     var index_count = len(indices)

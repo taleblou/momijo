@@ -160,14 +160,14 @@ def choose_elementwise_plan(
         if count == 0:
             gpu_dependencies = 0
         return ExecutionPlan.checked(
-            ExecutionPlacement.GPU_ONLY, count, 0, 0, 0, count,
+            materialize[ExecutionPlacement.GPU_ONLY](), count, 0, 0, 0, count,
             0, variant, gpu_dependencies, 1,
         )
     # With only the host operands proven resident, no GPU lowering or legal
     # transfer schedule is supplied to this generic selector. Do not choose a
     # seemingly faster but unexecutable GPU_ONLY plan from a cost estimate.
     return ExecutionPlan.checked(
-        ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+        materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
         0, variant, 0, 0,
     )
 
@@ -208,7 +208,7 @@ def choose_validated_split(count: Int, cpu_items: Int, gpu_split_bytes: Int, gpu
         return TensorResult[ExecutionPlan](TensorStatus.INVALID_LAYOUT)
     if hybrid_time >= cpu_only or hybrid_time >= gpu_only:
         return TensorResult[ExecutionPlan](TensorStatus.NOT_REPRESENTABLE)
-    return ExecutionPlan.checked(ExecutionPlacement.HYBRID_SPLIT, count, 0, cpu_items, cpu_items, count, gpu_split_bytes, variant, 2, 0)
+    return ExecutionPlan.checked(materialize[ExecutionPlacement.HYBRID_SPLIT](), count, 0, cpu_items, cpu_items, count, gpu_split_bytes, variant, 2, 0)
 
 
 # A Float64 representation cannot distinguish every Int above 2^53.
@@ -242,11 +242,11 @@ def choose_host_add_plan(
     if not Bool(isfinite(cpu_time)):
         return TensorResult[ExecutionPlan](TensorStatus.INVALID_LAYOUT)
     if not gpu_enabled or profile.gpu_elems_per_us <= 0.0 or profile.h2d_bytes_per_us <= 0.0:
-        return ExecutionPlan.checked(ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0, 0, variant, 0, 0)
+        return ExecutionPlan.checked(materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0, 0, variant, 0, 0)
     # The transfer-byte field is representable only below this boundary.
     # Do not reject a valid CPU plan for an unavailable GPU transfer size.
     if count > Int.MAX // 12:
-        return ExecutionPlan.checked(ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0, 0, variant, 0, 0)
+        return ExecutionPlan.checked(materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0, 0, variant, 0, 0)
     var full_bytes = count * 12
     var gpu_time = (
         profile.gpu_launch_us + Float64(full_bytes) / profile.h2d_bytes_per_us
@@ -296,14 +296,14 @@ def choose_host_add_plan(
                 split_at = cpu_items
     if best_kind == 2:
         return ExecutionPlan.checked(
-            ExecutionPlacement.HYBRID_SPLIT, count, 0, split_at,
+            materialize[ExecutionPlacement.HYBRID_SPLIT](), count, 0, split_at,
             split_at, count, (count - split_at) * 12, variant, 2, 0,
         )
     if best_kind == 1:
         return ExecutionPlan.checked(
-            ExecutionPlacement.GPU_ONLY, count, 0, 0, 0, count, full_bytes, variant, 1, 0,
+            materialize[ExecutionPlacement.GPU_ONLY](), count, 0, 0, 0, count, full_bytes, variant, 1, 0,
         )
-    return ExecutionPlan.checked(ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0, 0, variant, 0, 0)
+    return ExecutionPlan.checked(materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0, 0, variant, 0, 0)
 
 # The executor accepts arbitrarily many GPU chunks, while each staging block
 # is limited by the target's calibrated/selected capacity. Account for those
@@ -364,14 +364,14 @@ def choose_host_add_plan_for_capacity(
         return TensorResult[ExecutionPlan](TensorStatus.INVALID_LAYOUT)
     if not gpu_enabled or count == 0 or profile.gpu_elems_per_us <= 0.0 or profile.h2d_bytes_per_us <= 0.0:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
             0, variant, 0, 0,
         )
     # A host-result GPU add transfers three FP32 buffers. If the aggregate
     # transfer byte count cannot be represented, the CPU plan still can.
     if count > Int.MAX // 12:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
             0, variant, 0, 0,
         )
     # CPU-only hardware never needs a GPU staging allocation.
@@ -380,7 +380,7 @@ def choose_host_add_plan_for_capacity(
         # partition. Prefer the valid CPU_ONLY mapping instead of failing a
         # perfectly valid host workload merely because GPU staging is absent.
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
             0, variant, 0, 0,
         )
     var cap = min(count, gpu_chunk_capacity)
@@ -600,17 +600,17 @@ def choose_host_add_plan_for_capacity(
                     best_cpu_items = cpu_items
     if best_kind == 2:
         return ExecutionPlan.checked(
-            ExecutionPlacement.HYBRID_SPLIT, count, 0, best_cpu_items,
+            materialize[ExecutionPlacement.HYBRID_SPLIT](), count, 0, best_cpu_items,
             best_cpu_items, count, (count - best_cpu_items) * 12,
             variant, 2, 0,
         )
     if best_kind == 1:
         return ExecutionPlan.checked(
-            ExecutionPlacement.GPU_ONLY, count, 0, 0, 0, count,
+            materialize[ExecutionPlacement.GPU_ONLY](), count, 0, 0, 0, count,
             count * 12, variant, 1, 0,
         )
     return ExecutionPlan.checked(
-        ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+        materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
         0, variant, 0, 0,
     )
 
@@ -643,12 +643,12 @@ def build_host_gemm_rows_split_plan(
     # The GEMM lowerer transfers exactly A[gpu_rows,K], shared B[K,N]
     # and C[gpu_rows,N]. It does not consume two inputs per output row.
     var built = ExecutionPlan.checked(
-        ExecutionPlacement.HYBRID_SPLIT, m,
+        materialize[ExecutionPlacement.HYBRID_SPLIT](), m,
         0, cpu_rows, cpu_rows, m,
         actual_bytes, variant, 2, 0,
     )
     if not built.is_ok():
-        return built
+        return built^
     return built.payload.value().checked_host_gemm_rows_split_snapshot(k, n)
 
 
@@ -707,7 +707,7 @@ def choose_host_gemm_rows_split_plan_for_capacity(
         return TensorResult[ExecutionPlan](TensorStatus.OVERFLOW)
     if not gpu_enabled or m < 2 or k == 0 or n == 0 or gpu_row_capacity <= 0:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, m, 0, m, 0, 0, 0, 0, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), m, 0, m, 0, 0, 0, 0, 0, 0,
         )
     var shared = k * n
     if k > Int.MAX - n:
@@ -720,7 +720,7 @@ def choose_host_gemm_rows_split_plan_for_capacity(
     )
     if maximal_gpu_rows <= 0:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, m, 0, m, 0, 0, 0, 0, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), m, 0, m, 0, 0, 0, 0, 0, 0,
         )
     var flops_per_row = 2.0 * Float64(k) * Float64(n)
     var cpu_us_per_row = flops_per_row / profile.cpu_fp32_flops_per_us
@@ -779,7 +779,7 @@ def choose_host_gemm_rows_split_plan_for_capacity(
             best_us = split_time
     if best_gpu_rows == 0:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, m, 0, m, 0, 0, 0, 0, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), m, 0, m, 0, 0, 0, 0, 0, 0,
         )
     return build_host_gemm_rows_split_plan(
         m, k, n, m - best_gpu_rows, 14,
@@ -844,14 +844,14 @@ def choose_host_reduce_rows_split_plan_for_capacity(
     if (not gpu_enabled or rows < 2 or columns == 0
         or capacity <= 0):
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, rows, 0, rows, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), rows, 0, rows, 0, 0,
             0, 0, 0, 0,
         )
     var row_transport = columns + 1
     var bound = min(min(rows - 1, capacity), (Int.MAX // 4) // row_transport)
     if bound <= 0:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, rows, 0, rows, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), rows, 0, rows, 0, 0,
             0, 0, 0, 0,
         )
     var cpu_time_per_row = 1.0 / profile.cpu_rows_per_us
@@ -898,7 +898,7 @@ def choose_host_reduce_rows_split_plan_for_capacity(
             chosen_gpu_rows = gpu_rows
     if chosen_gpu_rows == 0:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, rows, 0, rows, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), rows, 0, rows, 0, 0,
             0, 0, 0, 0,
         )
     return build_host_reduce_rows_split_plan(
@@ -920,13 +920,13 @@ def build_host_binary_split_schedule(plan: ExecutionPlan) -> TensorResult[BoundS
     var selected = verified.payload.take()
     if selected.output_device != 0:
         return TensorResult[BoundStageSchedule[10, 11]](TensorStatus.NOT_REPRESENTABLE)
-    if selected.placement != ExecutionPlacement.HYBRID_SPLIT and selected.placement != ExecutionPlacement.HYBRID_CPU_ASSIST:
+    if selected.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]() and selected.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
         return TensorResult[BoundStageSchedule[10, 11]](TensorStatus.NOT_REPRESENTABLE)
     # Both contiguous partition orders are legal; physical access ranges
     # derive from the explicit plan boundaries rather than an ordering guess.
     var cpu_first = selected.cpu_begin == 0 and selected.cpu_end == selected.gpu_begin and selected.gpu_end == selected.total_items
     var gpu_first = selected.gpu_begin == 0 and selected.gpu_end == selected.cpu_begin and selected.cpu_end == selected.total_items
-    if selected.placement == ExecutionPlacement.HYBRID_CPU_ASSIST:
+    if selected.placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]():
         if not gpu_first:
             return TensorResult[BoundStageSchedule[10, 11]](TensorStatus.INVALID_LAYOUT)
     elif not cpu_first and not gpu_first:
@@ -942,7 +942,7 @@ def build_host_binary_split_schedule(plan: ExecutionPlan) -> TensorResult[BoundS
     # CPU-slice snapshots: 9/10. Space 2 denotes staging, pinned where DMA
     # is used and ordinary host allocations for CPU-local snapshots.
     var disabled = ExecutionAccess.none()
-    var unused = ExecutionStage(0, ExecutionStageKind.CPU_PREPARE, 0, disabled, disabled, disabled, 0)
+    var unused = ExecutionStage(0, materialize[ExecutionStageKind.CPU_PREPARE](), 0, disabled.copy(), disabled.copy(), disabled.copy(), 0)
     var stages = Array[ExecutionStage, 10](fill=unused)
     var g0 = selected.gpu_begin
     var g1 = selected.gpu_end
@@ -954,53 +954,53 @@ def build_host_binary_split_schedule(plan: ExecutionPlan) -> TensorResult[BoundS
 
     # Copy GPU-owned inputs to independent staging before output writes.
     stages[0] = ExecutionStage(
-        0, ExecutionStageKind.CPU_PREPARE, 0,
-        ExecutionAccess(0, 0, g0, g1), disabled, ExecutionAccess(2, 3, 0, gpu_items), 0,
+        0, materialize[ExecutionStageKind.CPU_PREPARE](), 0,
+        ExecutionAccess(0, 0, g0, g1), disabled.copy(), ExecutionAccess(2, 3, 0, gpu_items), 0,
     )
     stages[1] = ExecutionStage(
-        1, ExecutionStageKind.CPU_PREPARE, 0,
-        ExecutionAccess(0, 1, g0, g1), disabled, ExecutionAccess(2, 4, 0, gpu_items), 0,
+        1, materialize[ExecutionStageKind.CPU_PREPARE](), 0,
+        ExecutionAccess(0, 1, g0, g1), disabled.copy(), ExecutionAccess(2, 4, 0, gpu_items), 0,
     )
     # CPU-owned inputs are also snapshotted so shifted/overlapping host
     # views cannot be corrupted by a write earlier in the CPU loop.
     stages[2] = ExecutionStage(
-        2, ExecutionStageKind.CPU_PREPARE, 0,
-        ExecutionAccess(0, 0, c0, c1), disabled, ExecutionAccess(2, 9, 0, cpu_items), 0,
+        2, materialize[ExecutionStageKind.CPU_PREPARE](), 0,
+        ExecutionAccess(0, 0, c0, c1), disabled.copy(), ExecutionAccess(2, 9, 0, cpu_items), 0,
     )
     stages[3] = ExecutionStage(
-        3, ExecutionStageKind.CPU_PREPARE, 0,
-        ExecutionAccess(0, 1, c0, c1), disabled, ExecutionAccess(2, 10, 0, cpu_items), 0,
+        3, materialize[ExecutionStageKind.CPU_PREPARE](), 0,
+        ExecutionAccess(0, 1, c0, c1), disabled.copy(), ExecutionAccess(2, 10, 0, cpu_items), 0,
     )
     # The H2D uploads depend on their corresponding preparation stages.
     stages[4] = ExecutionStage(
-        4, ExecutionStageKind.H2D, 1,
-        ExecutionAccess(2, 3, 0, gpu_items), disabled, ExecutionAccess(1, 5, 0, gpu_items), 2,
+        4, materialize[ExecutionStageKind.H2D](), 1,
+        ExecutionAccess(2, 3, 0, gpu_items), disabled.copy(), ExecutionAccess(1, 5, 0, gpu_items), 2,
     )
     stages[5] = ExecutionStage(
-        5, ExecutionStageKind.H2D, 2,
-        ExecutionAccess(2, 4, 0, gpu_items), disabled, ExecutionAccess(1, 6, 0, gpu_items), 2,
+        5, materialize[ExecutionStageKind.H2D](), 2,
+        ExecutionAccess(2, 4, 0, gpu_items), disabled.copy(), ExecutionAccess(1, 6, 0, gpu_items), 2,
     )
     stages[6] = ExecutionStage(
-        6, ExecutionStageKind.GPU_KERNEL, 48,
+        6, materialize[ExecutionStageKind.GPU_KERNEL](), 48,
         ExecutionAccess(1, 5, 0, gpu_items), ExecutionAccess(1, 6, 0, gpu_items),
         ExecutionAccess(1, 7, 0, gpu_items), 1,
     )
     # Both GPU and CPU source snapshots must precede the first CPU write.
     stages[7] = ExecutionStage(
-        7, ExecutionStageKind.CPU_COMPUTE, 15,
+        7, materialize[ExecutionStageKind.CPU_COMPUTE](), 15,
         ExecutionAccess(2, 9, 0, cpu_items), ExecutionAccess(2, 10, 0, cpu_items),
         ExecutionAccess(0, 2, c0, c1), 0,
     )
     stages[8] = ExecutionStage(
-        8, ExecutionStageKind.D2H, 64,
-        ExecutionAccess(1, 7, 0, gpu_items), disabled, ExecutionAccess(2, 8, 0, gpu_items), 2,
+        8, materialize[ExecutionStageKind.D2H](), 64,
+        ExecutionAccess(1, 7, 0, gpu_items), disabled.copy(), ExecutionAccess(2, 8, 0, gpu_items), 2,
     )
     # The final join copies only GPU-owned output and waits for CPU work.
     stages[9] = ExecutionStage(
-        9, ExecutionStageKind.HOST_JOIN, 384,
-        ExecutionAccess(2, 8, 0, gpu_items), disabled, ExecutionAccess(0, 2, g0, g1), 3,
+        9, materialize[ExecutionStageKind.HOST_JOIN](), 384,
+        ExecutionAccess(2, 8, 0, gpu_items), disabled.copy(), ExecutionAccess(0, 2, g0, g1), 3,
     )
-    var built = CheckedStageSchedule[10].checked(stages, 10, selected.total_items)
+    var built = CheckedStageSchedule[10].checked(stages^, 10, selected.total_items)
     if not built.is_ok():
         return TensorResult[BoundStageSchedule[10, 11]](built.status)
     var coverage = built.payload.value().checked_host_output_coverage(0, selected.total_items)
@@ -1064,12 +1064,12 @@ def choose_host_cpu_tail_assist_plan_for_capacity(
         return TensorResult[ExecutionPlan](TensorStatus.INVALID_LAYOUT)
     if not gpu_enabled or count == 0 or count > Int.MAX // 12:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
             0, variant, 0, 0,
         )
     if gpu_chunk_capacity <= 0 or profile.gpu_elems_per_us <= 0.0 or profile.h2d_bytes_per_us <= 0.0:
         return ExecutionPlan.checked(
-            ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+            materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
             0, variant, 0, 0,
         )
     var cap = min(count, gpu_chunk_capacity)
@@ -1097,17 +1097,17 @@ def choose_host_cpu_tail_assist_plan_for_capacity(
         )
         if Bool(isfinite(tail_cost)) and tail_cost < best_single_cost:
             return ExecutionPlan.checked(
-                ExecutionPlacement.HYBRID_CPU_ASSIST, count,
+                materialize[ExecutionPlacement.HYBRID_CPU_ASSIST](), count,
                 gpu_prefix, count, 0, gpu_prefix, gpu_prefix * 12,
                 variant, 2, 0,
             )
     if best_single_gpu:
         return ExecutionPlan.checked(
-            ExecutionPlacement.GPU_ONLY, count, 0, 0, 0, count,
+            materialize[ExecutionPlacement.GPU_ONLY](), count, 0, 0, 0, count,
             count * 12, variant, 1, 0,
         )
     return ExecutionPlan.checked(
-        ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+        materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
         0, variant, 0, 0,
     )
 
@@ -1124,7 +1124,7 @@ def build_host_binary_pipeline_window_schedule(
     if not verified.is_ok():
         return TensorResult[BoundStageSchedule[14, 15]](verified.status)
     var selected = verified.payload.take()
-    if selected.placement != ExecutionPlacement.HYBRID_PIPELINE:
+    if selected.placement != materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         return TensorResult[BoundStageSchedule[14, 15]](TensorStatus.DEVICE_MISMATCH)
     if capacity <= 0 or capacity > Int.MAX // 2:
         return TensorResult[BoundStageSchedule[14, 15]](TensorStatus.OVERFLOW)
@@ -1136,7 +1136,7 @@ def build_host_binary_pipeline_window_schedule(
     # The staging/transfer ABI never reads capacity-sized uninitialized tails.
 
     var disabled = ExecutionAccess.none()
-    var placeholder = ExecutionStage(0, ExecutionStageKind.CPU_PREPARE, 0, disabled, disabled, disabled, 0)
+    var placeholder = ExecutionStage(0, materialize[ExecutionStageKind.CPU_PREPARE](), 0, disabled.copy(), disabled.copy(), disabled.copy(), 0)
     var stages = Array[ExecutionStage, 14](fill=placeholder)
     # Snapshot sources 0,1 and disjoint final host output 2. Each slot has
     # unique stage buffers 3+6*q .. 8+6*q, disjoint by ownership.
@@ -1146,43 +1146,43 @@ def build_host_binary_pipeline_window_schedule(
         var end = off + capacity
         var sid = 3 + q * 6
         stages[base] = ExecutionStage(
-            base, ExecutionStageKind.CPU_PREPARE, 0,
-            ExecutionAccess(0, 0, off, end), disabled,
+            base, materialize[ExecutionStageKind.CPU_PREPARE](), 0,
+            ExecutionAccess(0, 0, off, end), disabled.copy(),
             ExecutionAccess(2, sid, 0, capacity), 0,
         )
         stages[base+1] = ExecutionStage(
-            base+1, ExecutionStageKind.CPU_PREPARE, 0,
-            ExecutionAccess(0, 1, off, end), disabled,
+            base+1, materialize[ExecutionStageKind.CPU_PREPARE](), 0,
+            ExecutionAccess(0, 1, off, end), disabled.copy(),
             ExecutionAccess(2, sid+1, 0, capacity), 0,
         )
         stages[base+2] = ExecutionStage(
-            base+2, ExecutionStageKind.H2D, Int(1) << base,
-            ExecutionAccess(2, sid, 0, capacity), disabled,
+            base+2, materialize[ExecutionStageKind.H2D](), Int(1) << base,
+            ExecutionAccess(2, sid, 0, capacity), disabled.copy(),
             ExecutionAccess(1, sid+2, 0, capacity), 2,
         )
         stages[base+3] = ExecutionStage(
-            base+3, ExecutionStageKind.H2D, Int(1) << (base+1),
-            ExecutionAccess(2, sid+1, 0, capacity), disabled,
+            base+3, materialize[ExecutionStageKind.H2D](), Int(1) << (base+1),
+            ExecutionAccess(2, sid+1, 0, capacity), disabled.copy(),
             ExecutionAccess(1, sid+3, 0, capacity), 2,
         )
         stages[base+4] = ExecutionStage(
-            base+4, ExecutionStageKind.GPU_KERNEL,
+            base+4, materialize[ExecutionStageKind.GPU_KERNEL](),
             (Int(1) << (base+2)) | (Int(1) << (base+3)),
             ExecutionAccess(1, sid+2, 0, capacity),
             ExecutionAccess(1, sid+3, 0, capacity),
             ExecutionAccess(1, sid+4, 0, capacity), 1,
         )
         stages[base+5] = ExecutionStage(
-            base+5, ExecutionStageKind.D2H, Int(1) << (base+4),
-            ExecutionAccess(1, sid+4, 0, capacity), disabled,
+            base+5, materialize[ExecutionStageKind.D2H](), Int(1) << (base+4),
+            ExecutionAccess(1, sid+4, 0, capacity), disabled.copy(),
             ExecutionAccess(2, sid+5, 0, capacity), 2,
         )
         stages[base+6] = ExecutionStage(
-            base+6, ExecutionStageKind.HOST_JOIN, Int(1) << (base+5),
-            ExecutionAccess(2, sid+5, 0, capacity), disabled,
+            base+6, materialize[ExecutionStageKind.HOST_JOIN](), Int(1) << (base+5),
+            ExecutionAccess(2, sid+5, 0, capacity), disabled.copy(),
             ExecutionAccess(0, 2, off, end), 3,
         )
-    var checked = CheckedStageSchedule[14].checked(stages, 14, selected.total_items)
+    var checked = CheckedStageSchedule[14].checked(stages^, 14, selected.total_items)
     if not checked.is_ok():
         return TensorResult[BoundStageSchedule[14, 15]](checked.status)
     # This reusable AOT template covers exactly the first two staging slots.
@@ -1248,7 +1248,7 @@ def choose_host_binary_pipeline_plan_for_capacity[operation: Int](
     var pipeline_time = first_prepare + max(gpu_time, prepare_time) + profile.join_us
     if Bool(isfinite(pipeline_time)) and pipeline_time < cpu_time and pipeline_time < gpu_time + prepare_time + profile.join_us:
         return ExecutionPlan.checked(
-            ExecutionPlacement.HYBRID_PIPELINE, count, 0, 0, 0, count,
+            materialize[ExecutionPlacement.HYBRID_PIPELINE](), count, 0, 0, 0, count,
             count * 12, variant, 2, 0,
         )
     return choose_host_binary_plan_for_capacity[operation](count, capacity, profile, variant, gpu_enabled)
@@ -1285,7 +1285,7 @@ def build_host_reduce_rows_split_plan(
         cpu_begin = gpu_rows
         cpu_end = rows
     return ExecutionPlan.checked(
-        ExecutionPlacement.HYBRID_SPLIT, rows,
+        materialize[ExecutionPlacement.HYBRID_SPLIT](), rows,
         cpu_begin, cpu_end, gpu_begin, gpu_end,
         transfer_bytes, 30 + operation, 2, 0,
     )
@@ -1307,16 +1307,16 @@ def choose_host_unary_plan_for_capacity(
         return TensorResult[ExecutionPlan](valid)
     var variant = 20 + operation
     var cpu_plan = ExecutionPlan.checked(
-        ExecutionPlacement.CPU_ONLY, count, 0, count, 0, 0,
+        materialize[ExecutionPlacement.CPU_ONLY](), count, 0, count, 0, 0,
         0, variant, 0, 0,
     )
     if not gpu_enabled or count <= 1 or gpu_chunk_capacity <= 0:
-        return cpu_plan
+        return cpu_plan^
     if profile.gpu_elems_per_us <= 0.0 or profile.h2d_bytes_per_us <= 0.0:
-        return cpu_plan
+        return cpu_plan^
     if count > Int.MAX // 8:
         # CPU-only is legal even when the aggregate GPU transfer is not.
-        return cpu_plan
+        return cpu_plan^
     var cap = min(count, gpu_chunk_capacity)
     var cpu_per = 1.0 / profile.cpu_elems_per_us
     var gpu_per = 8.0 / profile.h2d_bytes_per_us + 1.0 / profile.gpu_elems_per_us
@@ -1414,16 +1414,16 @@ def choose_host_unary_plan_for_capacity(
             best_cpu_items = candidate
     if best_placement == 2:
         return ExecutionPlan.checked(
-            ExecutionPlacement.HYBRID_SPLIT, count, 0, best_cpu_items,
+            materialize[ExecutionPlacement.HYBRID_SPLIT](), count, 0, best_cpu_items,
             best_cpu_items, count, (count - best_cpu_items) * 8,
             variant, 2, 0,
         )
     if best_placement == 1:
         return ExecutionPlan.checked(
-            ExecutionPlacement.GPU_ONLY, count, 0, 0, 0, count,
+            materialize[ExecutionPlacement.GPU_ONLY](), count, 0, 0, 0, count,
             count * 8, variant, 1, 0,
         )
-    return cpu_plan
+    return cpu_plan^
 
 
 # Resource admission is deliberately distinct from latency-based placement.
@@ -1437,7 +1437,7 @@ def admit_host_binary_plan_with_budget(
 ) -> TensorResult[ExecutionPlan]:
     var checked = plan.checked_host_binary_snapshot()
     if not checked.is_ok():
-        return checked
+        return checked^
     # Malformed budget metadata is invalid even if the latency policy had
     # already selected the CPU path; do not report it as successful admission.
     var budget_valid = limits.validated()
@@ -1445,15 +1445,15 @@ def admit_host_binary_plan_with_budget(
         return TensorResult[ExecutionPlan](budget_valid)
     if fixed_device_bytes < 0 or fixed_pinned_host_bytes < 0:
         return TensorResult[ExecutionPlan](TensorStatus.INVALID_SHAPE)
-    var selected = checked.payload.value()
-    if selected.placement == ExecutionPlacement.CPU_ONLY:
-        return checked
+    var selected = checked.payload.value().copy()
+    if selected.placement == materialize[ExecutionPlacement.CPU_ONLY]():
+        return checked^
     if capacity <= 0:
         return TensorResult[ExecutionPlan](TensorStatus.INVALID_SHAPE)
     # One complete resident set for GPU_ONLY/SPLIT/ASSIST; exactly two
     # independently event-owned full sets for the three-stream PIPELINE.
     var wanted = 1
-    if selected.placement == ExecutionPlacement.HYBRID_PIPELINE:
+    if selected.placement == materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         wanted = 2
     var gpu_items = selected.gpu_end - selected.gpu_begin
     if gpu_items <= 0:
@@ -1465,17 +1465,17 @@ def admit_host_binary_plan_with_budget(
     )
     if memory.is_ok():
         if memory.payload.value().full_slots >= wanted:
-            return checked
+            return checked^
         # A small serial window has only an exactly-sized tail slot.
         if wanted == 1 and memory.payload.value().full_slots == 0:
-            return checked
+            return checked^
     elif memory.status != TensorStatus.NOT_REPRESENTABLE:
         # An invalid budget or arithmetic overflow is NOT a memory shortage.
         return TensorResult[ExecutionPlan](memory.status)
     # A resource-constrained host output remains identical in dtype and
     # shape on CPU, but this is NOT proof of a faster CPU placement.
     return ExecutionPlan.checked(
-        ExecutionPlacement.CPU_ONLY, selected.total_items,
+        materialize[ExecutionPlacement.CPU_ONLY](), selected.total_items,
         0, selected.total_items, 0, 0, 0,
         selected.aot_variant, 0, 0,
     )
@@ -1497,7 +1497,7 @@ def choose_host_binary_pipeline_with_budget[operation: Int](
         variant, gpu_enabled,
     )
     if not choice.is_ok():
-        return choice
+        return choice^
     return admit_host_binary_plan_with_budget(
         choice.payload.value(), capacity, limits,
         fixed_device_bytes, fixed_pinned_host_bytes,
@@ -1515,7 +1515,7 @@ def admit_host_binary_plan_with_total_ram_budget(
 ) -> TensorResult[ExecutionPlan]:
     var checked = plan.checked_host_binary_snapshot()
     if not checked.is_ok():
-        return checked
+        return checked^
     var valid = limits.validated()
     if valid != TensorStatus.OK:
         return TensorResult[ExecutionPlan](valid)
@@ -1563,7 +1563,7 @@ def choose_host_binary_pipeline_with_total_ram_budget[operation: Int](
         variant, gpu_enabled,
     )
     if not choice.is_ok():
-        return choice
+        return choice^
     return admit_host_binary_plan_with_total_ram_budget(
         choice.payload.value(), capacity, limits,
         fixed_device_bytes, fixed_pinned_host_bytes,

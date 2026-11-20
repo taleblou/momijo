@@ -93,21 +93,26 @@
 
 # FP32 GPU copy and fill. Overlap must be proven absent before launch.
 from max.gpu import global_idx
-from layout import TileTensor
+from layout import TileTensor, TensorLayout as MaxTensorLayout
 
 # The source and destination may have different static MAX layouts.
 # Preconditions: each provides a checked flat contiguous range of
 # count Float32 elements and the two physical ranges cannot overlap.
-def gpu_copy_fp32[LO: AnyType, LI: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], inp: TileTensor[DType.float32, LI, MutAnyOrigin], count_abi: Int32):
+def gpu_copy_fp32[LO: MaxTensorLayout, LI: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], inp: TileTensor[DType.float32, LI, MutAnyOrigin], count_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = inp[idx]
+        output[idx] = inp[idx]
 
-def gpu_fill_fp32[L: AnyType](out: TileTensor[DType.float32, L, MutAnyOrigin], value: Float32, count_abi: Int32):
+def gpu_fill_fp32[L: MaxTensorLayout](output: TileTensor[DType.float32, L, MutAnyOrigin], value: Float32, count_abi: Int32) where (
+    TileTensor[DType.float32, L, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = value
+        output[idx] = value

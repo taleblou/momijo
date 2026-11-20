@@ -427,29 +427,29 @@ def _has_dataflow_hazard(a: DataflowNode, b: DataflowNode) -> Bool:
 
 def _ordered_read_is_produced[nodes: Int, slots: Int](
     graph: Array[DataflowNode, nodes], memory: Array[DataflowMemorySlot, slots],
-    index: Int, transitive_before: Int, read: DataflowRegion,
+    index: Int, transitive_before: Int, read_region: DataflowRegion,
 ) -> Bool:
-    if not read.active():
+    if not read_region.active():
         return True
-    if memory[read.slot].source_input:
+    if memory[read_region.slot].source_input:
         # The native binder must supply a real initialized source owner.
         return True
     # A scratch read may be covered by multiple ordered, disjoint writes.
     # Greedily extend the covered prefix using ordered prior writers; this
     # bounded O(nodes^2) operation executes at the checked boundary only.
-    var covered = read.begin
-    while covered < read.end:
+    var covered = read_region.begin
+    while covered < read_region.end:
         var next_end = covered
         for before in range(index):
             if transitive_before & (Int(1) << before) == 0:
                 continue
-            var written = graph[before].write
-            if written.slot == read.slot and written.active():
+            var written = graph[before].write.copy()
+            if written.slot == read_region.slot and written.active():
                 if written.begin <= covered and written.end > next_end:
                     next_end = written.end
         if next_end == covered:
             return False
-        covered = min(next_end, read.end)
+        covered = min(next_end, read_region.end)
     return True
 
 
@@ -547,7 +547,7 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
         if logical_elements > 0 and count == 0:
             return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
         for i in range(used_slots):
-            var slot = memory[i]
+            var slot = memory[i].copy()
             if slot.identifier != i or slot.domain < 0 or slot.domain > 2:
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
             if slot.capacity_elements < 0 or slot.capacity_elements > Int.MAX // 4:
@@ -578,12 +578,12 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
         # lifetime and content-preservation proofs.
         var reserved_scratch_slots = Array[Bool, Self.max_slots](fill=False)
         for i in range(count):
-            var scratch = nodes[i].scratch
+            var scratch = nodes[i].scratch.copy()
             if scratch.active() and scratch.slot < used_slots:
                 reserved_scratch_slots[scratch.slot] = True
         var closures = Array[Int, Self.max_nodes](fill=0)
         for i in range(count):
-            var node = nodes[i]
+            var node = nodes[i].copy()
             if node.identifier != i or node.kind < 0 or node.kind > 7:
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
             if node.primitive < 0 or node.primitive > 8 or node.rank < 0 or node.rank > 8:
@@ -609,7 +609,7 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
                     return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
                 if not _region_valid[Self.max_slots](node.scratch, memory):
                     return TensorResult[Self](TensorStatus.OUT_OF_BOUNDS)
-                var scratch_slot = memory[node.scratch.slot]
+                ref scratch_slot = memory[node.scratch.slot]
                 if scratch_slot.source_input or not scratch_slot.writable:
                     return TensorResult[Self](TensorStatus.READ_ONLY)
                 if node.scratch.slot == output_slot:
@@ -704,7 +704,7 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
                 var next_end = covered
                 var matches = 0
                 for i in range(count):
-                    var out = nodes[i].write
+                    ref out = nodes[i].write
                     if out.slot == output_slot and out.begin == covered:
                         next_end = out.end
                         matches += 1
@@ -736,12 +736,12 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
             # stages that merely appear as predecessors of the public output.
             # Native allocation identity remains an independent obligation.
             for produced_index in range(count):
-                var produced = nodes[produced_index].write
+                ref produced = nodes[produced_index].write
                 if produced.slot == output_slot:
                     continue
                 var consumed = False
                 for reader_index in range(produced_index + 1, count):
-                    var reader = nodes[reader_index]
+                    var reader = nodes[reader_index].copy()
                     if closures[reader_index] & (Int(1) << produced_index) == 0:
                         continue
                     if (_same_allocation_overlap(produced, reader.read_a)
@@ -761,9 +761,9 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
         for i in range(count, Self.max_nodes):
             canonical_nodes[i] = DataflowNode(
                 i, 5, 0, 0, 0,
-                unused_region, unused_region, unused_region, unused_region,
+                unused_region.copy(), unused_region.copy(), unused_region.copy(), unused_region.copy(),
                 1, 0, 0, 0, 0, 0, 0, 0,
-                unused_region, 0, Float32(0.0),
+                unused_region.copy(), 0, Float32(0.0),
             )
         var canonical_memory = memory.copy()
         for i in range(used_slots, Self.max_slots):
@@ -816,7 +816,7 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
         var plan = self.checked_snapshot()
         if not plan.is_ok():
             return TensorResult[Bool](plan.status)
-        var safe = plan.payload.value()
+        ref safe = plan.payload.value()
         if released_slot < 0 or next_slot < 0:
             return TensorResult[Bool](TensorStatus.OUT_OF_BOUNDS)
         if released_slot >= safe._used_slots or next_slot >= safe._used_slots:
@@ -825,8 +825,8 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
             return TensorResult[Bool](False)
         if released_slot == safe._output_slot or next_slot == safe._output_slot:
             return TensorResult[Bool](False)
-        var released = safe._memory[released_slot]
-        var upcoming = safe._memory[next_slot]
+        var released = safe._memory[released_slot].copy()
+        var upcoming = safe._memory[next_slot].copy()
         if released.source_input or upcoming.source_input:
             return TensorResult[Bool](False)
         if released.domain != upcoming.domain:
@@ -848,7 +848,7 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
         var saw_old = False
         var saw_new = False
         for old_index in range(safe._count):
-            var old_node = safe._nodes[old_index]
+            var old_node = safe._nodes[old_index].copy()
             var old_used = (
                 old_node.read_a.slot == released_slot
                 or old_node.read_b.slot == released_slot
@@ -860,7 +860,7 @@ struct SealedStaticDataflowPlan[max_nodes: Int, max_slots: Int](Movable):
                 continue
             saw_old = True
             for new_index in range(safe._count):
-                var new_node = safe._nodes[new_index]
+                var new_node = safe._nodes[new_index].copy()
                 var new_used = (
                     new_node.read_a.slot == next_slot
                     or new_node.read_b.slot == next_slot
@@ -903,7 +903,7 @@ def static_dataflow_memory_requirements[nodes: Int, slots: Int](
     var checked = plan.checked_snapshot()
     if not checked.is_ok():
         return TensorResult[StaticDataflowMemoryRequirements](checked.status)
-    var safe = checked.payload.value()
+    ref safe = checked.payload.value()
     var max_elements = Int.MAX // 4
     var host_elements = 0
     var device_elements = 0
@@ -914,7 +914,7 @@ def static_dataflow_memory_requirements[nodes: Int, slots: Int](
     var largest_scratch_bytes = 0
     var seen_scratch = Array[Bool, slots](fill=False)
     for index in range(safe._used_slots):
-        var slot = safe._memory[index]
+        var slot = safe._memory[index].copy()
         var capacity = slot.capacity_elements
         # Checked construction proves each capacity is non-negative and <=
         # Int.MAX/4, but the sum of multiple slots can still overflow.
@@ -932,7 +932,7 @@ def static_dataflow_memory_requirements[nodes: Int, slots: Int](
         if slot.source_input:
             input_elements += capacity
     for index in range(safe._count):
-        var node = safe._nodes[index]
+        var node = safe._nodes[index].copy()
         if node.scratch.active():
             var scratch_slot = node.scratch.slot
             if not seen_scratch[scratch_slot]:
@@ -977,7 +977,7 @@ def analyze_static_dataflow_waves[nodes: Int, slots: Int](
     var checked = plan.checked_snapshot()
     if not checked.is_ok():
         return TensorResult[StaticDataflowWaveAnalysis[nodes]](checked.status)
-    var safe = checked.payload.value()
+    ref safe = checked.payload.value()
     var waves = Array[Int, nodes](fill=0)
     var masks = Array[Int, nodes](fill=0)
     var occupied = Array[Int, nodes](fill=0)
@@ -988,7 +988,7 @@ def analyze_static_dataflow_waves[nodes: Int, slots: Int](
     var total_waves = 0
     var largest_wave = 0
     for index in range(safe._count):
-        var node = safe._nodes[index]
+        var node = safe._nodes[index].copy()
         var wave = 0
         for before in range(index):
             if node.predecessors & (Int(1) << before) != 0:
@@ -1017,7 +1017,7 @@ def analyze_static_dataflow_waves[nodes: Int, slots: Int](
             terminal_mask |= Int(1) << index
     return TensorResult[StaticDataflowWaveAnalysis[nodes]](
         StaticDataflowWaveAnalysis[nodes](
-            waves, masks, total_waves, largest_wave,
+            waves^, masks^, total_waves, largest_wave,
             output_writers, terminal_mask, possible_overlap,
         )
     )
@@ -1053,8 +1053,8 @@ def _validate_static_dataflow_execution_plan[
     var plan_proof = placement.checked_snapshot()
     if not plan_proof.is_ok():
         return TensorResult[DataflowExecutionEvidence](plan_proof.status)
-    var safe = graph_proof.payload.value()
-    var chosen = plan_proof.payload.value()
+    ref safe = graph_proof.payload.value()
+    var chosen = plan_proof.payload.value().copy()
     if safe._logical_elements != chosen.total_items:
         return TensorResult[DataflowExecutionEvidence](TensorStatus.SIZE_MISMATCH)
     var final_domain = safe._memory[safe._output_slot].domain
@@ -1082,14 +1082,14 @@ def _validate_static_dataflow_execution_plan[
     var transferred_elements = 0
 
     for i in range(safe._count):
-        var item = safe._nodes[i]
+        var item = safe._nodes[i].copy()
         if item.kind == 0:
             # Legacy single-variant CPU-only plans may not advertise a
             # different executable specialization from any of their CPU
             # compute nodes. Hybrid CPU assistance is a separately typed
             # lowering and its CPU opcode need not share the GPU variant.
             comptime if not per_node_artifacts:
-                if (chosen.placement == ExecutionPlacement.CPU_ONLY
+                if (chosen.placement == materialize[ExecutionPlacement.CPU_ONLY]()
                     and item.aot_variant != chosen.aot_variant):
                     return TensorResult[DataflowExecutionEvidence](
                         TensorStatus.INVALID_LAYOUT
@@ -1137,16 +1137,16 @@ def _validate_static_dataflow_execution_plan[
                 return TensorResult[DataflowExecutionEvidence](TensorStatus.UNSUPPORTED)
             # An output must be produced by a stage with the correct native
             # result semantics, not an unrelated copy or host preparation.
-            if (chosen.placement == ExecutionPlacement.HYBRID_SPLIT
-                or chosen.placement == ExecutionPlacement.HYBRID_CPU_ASSIST):
+            if (chosen.placement == materialize[ExecutionPlacement.HYBRID_SPLIT]()
+                or chosen.placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
                 if item.kind != 0 and item.kind != 3 and item.kind != 6:
                     return TensorResult[DataflowExecutionEvidence](TensorStatus.UNSUPPORTED)
-            elif chosen.placement == ExecutionPlacement.HYBRID_PIPELINE:
+            elif chosen.placement == materialize[ExecutionPlacement.HYBRID_PIPELINE]():
                 if item.kind != 3 and item.kind != 6:
                     return TensorResult[DataflowExecutionEvidence](TensorStatus.UNSUPPORTED)
             var written = item.write.end - item.write.begin
             if (item.kind == 0 or item.kind == 5
-                or (item.kind == 6 and chosen.placement == ExecutionPlacement.CPU_ONLY)):
+                or (item.kind == 6 and chosen.placement == materialize[ExecutionPlacement.CPU_ONLY]())):
                 # A host join/copy is ordinary CPU work in CPU_ONLY plans.
                 # In Hybrid plans the same host join is the completion of an
                 # accelerator-dependent result, not a CPU compute partition.
@@ -1175,13 +1175,13 @@ def _validate_static_dataflow_execution_plan[
     if transfer_bytes > chosen.transfer_bytes:
         return TensorResult[DataflowExecutionEvidence](TensorStatus.SIZE_MISMATCH)
 
-    if chosen.placement == ExecutionPlacement.CPU_ONLY:
+    if chosen.placement == materialize[ExecutionPlacement.CPU_ONLY]():
         if (gpu_compute != 0 or transfer_count != 0 or gpu_written != 0
             or cpu_written != chosen.total_items):
             return TensorResult[DataflowExecutionEvidence](TensorStatus.DEVICE_MISMATCH)
         if chosen.total_items > 0 and (cpu_min != 0 or cpu_max != chosen.total_items):
             return TensorResult[DataflowExecutionEvidence](TensorStatus.HYBRID_PARTITION_INVALID)
-    elif chosen.placement == ExecutionPlacement.GPU_ONLY:
+    elif chosen.placement == materialize[ExecutionPlacement.GPU_ONLY]():
         if cpu_compute != 0 or cpu_written != 0 or gpu_written != chosen.total_items:
             return TensorResult[DataflowExecutionEvidence](TensorStatus.DEVICE_MISMATCH)
         if chosen.total_items > 0:
@@ -1191,8 +1191,8 @@ def _validate_static_dataflow_execution_plan[
             # A GPU mapping needs GPU computation or an actual GPU DMA.
             if gpu_compute == 0 and gpu_dma_count == 0:
                 return TensorResult[DataflowExecutionEvidence](TensorStatus.UNSUPPORTED)
-    elif (chosen.placement == ExecutionPlacement.HYBRID_SPLIT
-          or chosen.placement == ExecutionPlacement.HYBRID_CPU_ASSIST):
+    elif (chosen.placement == materialize[ExecutionPlacement.HYBRID_SPLIT]()
+          or chosen.placement == materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
         # Work partitions are proven from the same output slot regardless of
         # primitive arity. A unary operation needs one input, a binary needs
         # two, and a resident GEMM input may need no H2D at all. The sealed
@@ -1217,7 +1217,7 @@ def _validate_static_dataflow_execution_plan[
         # against the immutable plan above, with no hidden transfers.
         if d2h_elements < gpu_written:
             return TensorResult[DataflowExecutionEvidence](TensorStatus.SIZE_MISMATCH)
-    elif chosen.placement == ExecutionPlacement.HYBRID_PIPELINE:
+    elif chosen.placement == materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         # In the current pipeline ABI the host prepares the NEXT chunk, but
         # never computes a disjoint arithmetic output partition.
         if (cpu_compute != 0 or cpu_written != 0 or gpu_written != chosen.total_items
@@ -1291,13 +1291,13 @@ def canonical_host_binary_dataflow_from_schedule[
         return TensorResult[SealedStaticDataflowPlan[stages, buffers]](
             validated_plan.status
         )
-    var chosen = validated_plan.payload.value()
+    var chosen = validated_plan.payload.value().copy()
     var validated_schedule = schedule.checked_snapshot()
     if not validated_schedule.is_ok():
         return TensorResult[SealedStaticDataflowPlan[stages, buffers]](
             validated_schedule.status
         )
-    var native = validated_schedule.payload.value()
+    ref native = validated_schedule.payload.value()
     if output_elements <= 0 or output_elements > chosen.total_items:
         return TensorResult[SealedStaticDataflowPlan[stages, buffers]](
             TensorStatus.SIZE_MISMATCH
@@ -1313,7 +1313,7 @@ def canonical_host_binary_dataflow_from_schedule[
     var empty_slot = DataflowMemorySlot(0, 0, 0, False, False)
     var memory = Array[DataflowMemorySlot, buffers](fill=empty_slot)
     for i in range(buffers):
-        var entry = native._bounds[i]
+        var entry = native._bounds[i].copy()
         # The native ABI has a dense table, one distinct allocation per ID.
         # A missing entry, foreign domain, or permuted ID is not a binding.
         if entry.buffer_id != i or entry.space < 0 or entry.space > 2:
@@ -1336,25 +1336,28 @@ def canonical_host_binary_dataflow_from_schedule[
             TensorStatus.OUT_OF_BOUNDS
         )
     var none = DataflowRegion.none()
-    var unused = DataflowNode(0, 5, 0, 0, 0, none, none, none, none, 1, 0, 0, 0, 0, 0, 0, 0, none, 0, Float32(0.0))
+    var unused = DataflowNode(
+        0, 5, 0, 0, 0, none.copy(), none.copy(), none.copy(), none.copy(),
+        1, 0, 0, 0, 0, 0, 0, 0, none^, 0, Float32(0.0),
+    )
     var graph = Array[DataflowNode, stages](fill=unused)
     for i in range(native._schedule.count):
-        var stage = native._schedule.stages[i]
+        ref stage = native._schedule.stages[i]
         var family = -1
         var primitive = 0
-        if stage.kind == ExecutionStageKind.CPU_PREPARE:
+        if stage.kind == materialize[ExecutionStageKind.CPU_PREPARE]():
             family = 5
-        elif stage.kind == ExecutionStageKind.H2D:
+        elif stage.kind == materialize[ExecutionStageKind.H2D]():
             family = 2
-        elif stage.kind == ExecutionStageKind.GPU_KERNEL:
+        elif stage.kind == materialize[ExecutionStageKind.GPU_KERNEL]():
             family = 1
             primitive = 2
-        elif stage.kind == ExecutionStageKind.D2H:
+        elif stage.kind == materialize[ExecutionStageKind.D2H]():
             family = 3
-        elif stage.kind == ExecutionStageKind.CPU_COMPUTE:
+        elif stage.kind == materialize[ExecutionStageKind.CPU_COMPUTE]():
             family = 0
             primitive = 2
-        elif stage.kind == ExecutionStageKind.HOST_JOIN:
+        elif stage.kind == materialize[ExecutionStageKind.HOST_JOIN]():
             family = 6
         else:
             return TensorResult[SealedStaticDataflowPlan[stages, buffers]](
@@ -1371,7 +1374,8 @@ def canonical_host_binary_dataflow_from_schedule[
             _bound_access_to_dataflow_region(stage.read_b),
             DataflowRegion.none(),
             _bound_access_to_dataflow_region(stage.write),
-            1, 0, chosen.aot_variant, 0, 0, 0, 0, 0, none, 0, Float32(0.0),
+            1, 0, chosen.aot_variant, 0, 0, 0, 0, 0,
+            DataflowRegion.none(), 0, Float32(0.0),
         )
     return SealedStaticDataflowPlan[stages, buffers].checked(
         graph, memory, native._schedule.count, output_elements, 2, buffers,
@@ -1390,9 +1394,9 @@ def validate_host_binary_native_schedule_agreement[
     var selected = plan.checked_snapshot()
     if not selected.is_ok():
         return selected.status
-    var fixed = selected.payload.value()
-    if (fixed.placement != ExecutionPlacement.HYBRID_SPLIT
-        and fixed.placement != ExecutionPlacement.HYBRID_CPU_ASSIST):
+    var fixed = selected.payload.value().copy()
+    if (fixed.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]()
+        and fixed.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
         return TensorStatus.UNSUPPORTED
     var converted = canonical_host_binary_dataflow_from_schedule[
         stages, buffers,
@@ -1424,8 +1428,8 @@ def checked_host_binary_pipeline_window(
     var proof = whole_plan.checked_snapshot()
     if not proof.is_ok():
         return TensorResult[CheckedHostBinaryPipelineWindow](proof.status)
-    var selected = proof.payload.value()
-    if selected.placement != ExecutionPlacement.HYBRID_PIPELINE:
+    var selected = proof.payload.value().copy()
+    if selected.placement != materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         return TensorResult[CheckedHostBinaryPipelineWindow](
             TensorStatus.DEVICE_MISMATCH
         )
@@ -1473,14 +1477,14 @@ def validate_host_binary_pipeline_window_agreement[
     var selected = whole_plan.checked_snapshot()
     if not selected.is_ok():
         return selected.status
-    var whole = selected.payload.value()
-    if whole.placement != ExecutionPlacement.HYBRID_PIPELINE:
+    var whole = selected.payload.value().copy()
+    if whole.placement != materialize[ExecutionPlacement.HYBRID_PIPELINE]():
         return TensorStatus.DEVICE_MISMATCH
     if (window_elements < 2 or window_elements > whole.total_items
         or window_elements > Int.MAX // 12):
         return TensorStatus.SIZE_MISMATCH
     var prefix = ExecutionPlan.checked(
-        ExecutionPlacement.HYBRID_PIPELINE,
+        materialize[ExecutionPlacement.HYBRID_PIPELINE](),
         window_elements, 0, 0, 0, window_elements,
         window_elements * 12, whole.aot_variant, 2, 0,
     )

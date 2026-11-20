@@ -101,7 +101,8 @@
 # implemented. No MAX source-kernel enqueue or JIT occurs in this module.
 from std.collections import Span, Optional
 from std.memory import forget_deinit
-from max.gpu.host import DeviceContext, DeviceBuffer, HostBuffer, DeviceExternalFunction
+from max.gpu.host import DeviceContext, DeviceBuffer, HostBuffer
+from max.gpu.host.device_context import DeviceExternalFunction
 from ..internal.status import TensorStatus
 from ..execution.execution_plan import ExecutionPlan, ExecutionPlacement
 from ..dispatch.specialization import ReduceRowsAOTArtifactIdentity
@@ -195,7 +196,7 @@ struct _HybridReduceRowOwners(Movable):
 
 def unsafe_execute_hybrid_reduce_rows_fp32[
     operation: Int, static_gpu_row_capacity: Int,
-    input_origin: Origin, output_origin: Origin[mut=True],
+    input_origin: Origin[mut=False], output_origin: Origin[mut=True],
 ](
     ctx: DeviceContext,
     precompiled_reduce_rows: DeviceExternalFunction,
@@ -203,8 +204,8 @@ def unsafe_execute_hybrid_reduce_rows_fp32[
     target_arch: Int,
     plan: ExecutionPlan,
     columns: Int,
-    source: Span[False, Float32, input_origin],
-    mut output: Span[True, Float32, output_origin],
+    source: Span[mut=False, Float32, input_origin],
+    mut output: Span[mut=True, Float32, output_origin],
 ) -> TensorStatus:
     # Narrow CPU/GPU SPLIT row reduction: C-order input [rows,columns],
     # C-order output [rows]. CPU/GPU partitions are DISJOINT output rows.
@@ -215,9 +216,9 @@ def unsafe_execute_hybrid_reduce_rows_fp32[
     var checked = plan.checked_host_reduce_rows_split_snapshot(columns)
     if not checked.is_ok():
         return checked.status
-    var selected = checked.payload.value()
-    if (selected.placement != ExecutionPlacement.HYBRID_SPLIT
-        and selected.placement != ExecutionPlacement.HYBRID_CPU_ASSIST):
+    var selected = checked.payload.value().copy()
+    if (selected.placement != materialize[ExecutionPlacement.HYBRID_SPLIT]()
+        and selected.placement != materialize[ExecutionPlacement.HYBRID_CPU_ASSIST]()):
         return TensorStatus.DEVICE_MISMATCH
     if selected.output_device != 0:
         return TensorStatus.DEVICE_MISMATCH

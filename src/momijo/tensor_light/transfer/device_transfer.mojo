@@ -173,7 +173,7 @@ def device_fp32_regions_disjoint(
 
 
 def validate_binary_fp32_device_owners(
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     left: DeviceBuffer[DType.float32],
     right: DeviceBuffer[DType.float32],
     count: Int,
@@ -187,13 +187,13 @@ def validate_binary_fp32_device_owners(
     # Do not use this as a cross-device pointer-identity or AOT-code proof.
     if count < 0 or count > Int.MAX // 4:
         return TensorStatus.INVALID_SHAPE
-    if count > len(out) or count > len(left) or count > len(right):
+    if count > len(output) or count > len(left) or count > len(right):
         return TensorStatus.SIZE_MISMATCH
     if count == 0:
         return TensorStatus.OK
-    if not device_fp32_regions_disjoint(out, count, left, count):
+    if not device_fp32_regions_disjoint(output, count, left, count):
         return TensorStatus.ALIAS_UNKNOWN
-    if not device_fp32_regions_disjoint(out, count, right, count):
+    if not device_fp32_regions_disjoint(output, count, right, count):
         return TensorStatus.ALIAS_UNKNOWN
     return TensorStatus.OK
 
@@ -422,13 +422,13 @@ def copy_d2d_fp32(
 # This move-only joined owner preserves the context for the entire returned
 # buffer lifetime. Borrowing cannot outlive the completed owner; deliberately
 # moving out the private buffer alone has no checked/supported public API.
-struct CompletedFp32Transfer[Buffer: Movable](Movable):
+struct CompletedFp32Transfer[Buffer: Movable & Deinitable](Movable):
     var _buffer: Self.Buffer
     var _context: DeviceContext
 
     def __init__(out self, var buffer: Self.Buffer, var context: DeviceContext):
-        self._buffer = buffer
-        self._context = context
+        self._buffer = buffer^
+        self._context = context^
 
     def borrow_buffer(ref self) -> ref[origin_of(self._buffer)] Self.Buffer:
         return self._buffer
@@ -442,8 +442,8 @@ struct CompletedFp32Transfer[Buffer: Movable](Movable):
         try:
             self._context.stream().synchronize()
         except:
-            forget_deinit(self._buffer)
-            forget_deinit(self._context)
+            forget_deinit(self._buffer^)
+            forget_deinit(self._context^)
             return
         _ = self._buffer
         try:
@@ -451,9 +451,9 @@ struct CompletedFp32Transfer[Buffer: Movable](Movable):
         except:
             # A scheduled free has uncertain completion: keep the underlying
             # context alive even though the buffer owner was already dropped.
-            forget_deinit(self._context)
+            forget_deinit(self._context^)
             return
-        _ = self._context
+        _ = self._context^
 
 
 # Owner-retaining asynchronous transfer. Unlike unsafe_enqueue_* returning
@@ -463,7 +463,9 @@ struct CompletedFp32Transfer[Buffer: Movable](Movable):
 # A fatal backend failure preventing synchronization cannot establish a safe
 # completion proof; recovery/quarantine remains the responsibility of the
 # device runtime. No implicit fallback or cross-device pointer conversion.
-struct OwnedAsyncFp32Transfer[Destination: Movable, Source: Movable](Movable):
+struct OwnedAsyncFp32Transfer[
+    Destination: Movable & Deinitable, Source: Movable & Deinitable,
+](Movable):
     # There is deliberately NO caller-writable `joined` switch: even a
     # forged mutable flag must not permit premature buffer deallocation.
     # The leading underscores mark an expert-only internal ownership state.
@@ -477,10 +479,10 @@ struct OwnedAsyncFp32Transfer[Destination: Movable, Source: Movable](Movable):
         var destination: Self.Destination, var source: Self.Source,
         var completion: DeviceEvent,
     ):
-        self._context = context
-        self._destination = destination
-        self._source = source
-        self._completion = completion
+        self._context = context^
+        self._destination = destination^
+        self._source = source^
+        self._completion = completion^
 
     def wait(self) -> TensorStatus:
         try:
@@ -505,29 +507,29 @@ struct OwnedAsyncFp32Transfer[Destination: Movable, Source: Movable](Movable):
         if completed != TensorStatus.OK:
             if completed == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
                 # Double failure: deliberately quarantine ALL native owners.
-                forget_deinit(self._source)
-                forget_deinit(self._destination)
-                forget_deinit(self._completion)
-                forget_deinit(self._context)
+                forget_deinit(self._source^)
+                forget_deinit(self._destination^)
+                forget_deinit(self._completion^)
+                forget_deinit(self._context^)
             else:
                 # Stream recovery proves copy completion, not completion of
                 # the frees queued by HostBuffer/DeviceBuffer destruction.
                 # Drain those frees before dropping the final native context.
                 _ = self._source
                 _ = self._destination
-                _ = self._completion
+                _ = self._completion^
                 try:
                     self._context.stream().synchronize()
                 except:
-                    forget_deinit(self._context)
+                    forget_deinit(self._context^)
                     return TensorResult[Joined](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
-                _ = self._context
+                _ = self._context^
             return TensorResult[Joined](completed)
         # On success the source/event may die only after the exact event
         # join. Transfer destination AND context as one move-only owner.
         _ = self._source
-        _ = self._completion
-        return TensorResult[Joined](Joined(self._destination, self._context))
+        _ = self._completion^
+        return TensorResult[Joined](Joined(self._destination^, self._context^))
 
     def __deinit__(deinit self):
         # An event wait, followed by a stream recovery wait, normally proves
@@ -543,30 +545,32 @@ struct OwnedAsyncFp32Transfer[Destination: Movable, Source: Movable](Movable):
             try:
                 self._context.stream().synchronize()
             except:
-                forget_deinit(self._source)
-                forget_deinit(self._destination)
-                forget_deinit(self._completion)
-                forget_deinit(self._context)
+                forget_deinit(self._source^)
+                forget_deinit(self._destination^)
+                forget_deinit(self._completion^)
+                forget_deinit(self._context^)
                 return
         # The event join proves completion of the transfer, not completion
         # of the later native frees queued by buffer destructors. Keep the
         # context owning those frees until the second stream barrier succeeds.
         _ = self._source
         _ = self._destination
-        _ = self._completion
+        _ = self._completion^
         try:
             self._context.stream().synchronize()
         except:
-            forget_deinit(self._context)
+            forget_deinit(self._context^)
             return
-        _ = self._context
+        _ = self._context^
 
 
 # Consuming an invalid owned-transfer request still destroys its native
 # source/destination owners. MAX buffer destructors may enqueue asynchronous
 # frees: a rejected request must drain those frees BEFORE its final owning
 # DeviceContext drops. This slow path never runs on a valid transfer.
-def _retire_rejected_owned_fp32_transfer[Destination: Movable, Source: Movable](
+def _retire_rejected_owned_fp32_transfer[
+    Destination: Movable & Deinitable, Source: Movable & Deinitable,
+](
     var ctx: DeviceContext, var destination: Destination,
     var source: Source, failure: TensorStatus,
 ) -> TensorStatus:
@@ -575,9 +579,9 @@ def _retire_rejected_owned_fp32_transfer[Destination: Movable, Source: Movable](
     try:
         ctx.stream().synchronize()
     except:
-        forget_deinit(source)
-        forget_deinit(destination)
-        forget_deinit(ctx)
+        forget_deinit(source^)
+        forget_deinit(destination^)
+        forget_deinit(ctx^)
         return TensorStatus.GPU_QUIESCENCE_UNPROVEN
     _ = source
     _ = destination
@@ -585,7 +589,7 @@ def _retire_rejected_owned_fp32_transfer[Destination: Movable, Source: Movable](
     try:
         ctx.stream().synchronize()
     except:
-        forget_deinit(ctx)
+        forget_deinit(ctx^)
         return TensorStatus.GPU_QUIESCENCE_UNPROVEN
     return failure
 
@@ -623,19 +627,19 @@ def enqueue_owned_h2d_fp32(
             # failed. A fatal stream failure provides no quiescence proof.
             # The only safe local fallback is to forfeit these owners rather
             # than deallocate memory which a device might still access.
-            forget_deinit(source)
-            forget_deinit(destination)
-            forget_deinit(ctx)
+            forget_deinit(source^)
+            forget_deinit(destination^)
+            forget_deinit(ctx^)
             return TensorResult[Pending](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
         # A failed enqueue/event setup can still have enqueued a copy. The
         # first synchronize proved quiescence; the frees scheduled by owner
         # destruction need a SECOND join before releasing the context.
-        _ = source
-        _ = destination
+        _ = source^
+        _ = destination^
         try:
             ctx.stream().synchronize()
         except:
-            forget_deinit(ctx)
+            forget_deinit(ctx^)
             return TensorResult[Pending](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
         return TensorResult[Pending](TensorStatus.TRANSFER_UNAVAILABLE)
     return TensorResult[Pending](Pending(ctx, destination, source, event))
@@ -674,19 +678,19 @@ def enqueue_owned_d2h_fp32(
             # failed. A fatal stream failure provides no quiescence proof.
             # The only safe local fallback is to forfeit these owners rather
             # than deallocate memory which a device might still access.
-            forget_deinit(source)
-            forget_deinit(destination)
-            forget_deinit(ctx)
+            forget_deinit(source^)
+            forget_deinit(destination^)
+            forget_deinit(ctx^)
             return TensorResult[Pending](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
         # A failed enqueue/event setup can still have enqueued a copy. The
         # first synchronize proved quiescence; the frees scheduled by owner
         # destruction need a SECOND join before releasing the context.
-        _ = source
-        _ = destination
+        _ = source^
+        _ = destination^
         try:
             ctx.stream().synchronize()
         except:
-            forget_deinit(ctx)
+            forget_deinit(ctx^)
             return TensorResult[Pending](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
         return TensorResult[Pending](TensorStatus.TRANSFER_UNAVAILABLE)
     return TensorResult[Pending](Pending(ctx, destination, source, event))
@@ -725,19 +729,19 @@ def enqueue_owned_d2d_fp32(
             # failed. A fatal stream failure provides no quiescence proof.
             # The only safe local fallback is to forfeit these owners rather
             # than deallocate memory which a device might still access.
-            forget_deinit(source)
-            forget_deinit(destination)
-            forget_deinit(ctx)
+            forget_deinit(source^)
+            forget_deinit(destination^)
+            forget_deinit(ctx^)
             return TensorResult[Pending](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
         # A failed enqueue/event setup can still have enqueued a copy. The
         # first synchronize proved quiescence; the frees scheduled by owner
         # destruction need a SECOND join before releasing the context.
-        _ = source
-        _ = destination
+        _ = source^
+        _ = destination^
         try:
             ctx.stream().synchronize()
         except:
-            forget_deinit(ctx)
+            forget_deinit(ctx^)
             return TensorResult[Pending](TensorStatus.GPU_QUIESCENCE_UNPROVEN)
         return TensorResult[Pending](TensorStatus.TRANSFER_UNAVAILABLE)
     return TensorResult[Pending](Pending(ctx, destination, source, event))

@@ -139,12 +139,12 @@ struct CpuOfflineAOTProfile(Copyable):
 
 
 def choose_cpu_elementwise_with_offline_profile[
-    out_origin: Origin[mut=True], left_origin: Origin, right_origin: Origin,
+    out_origin: Origin[mut=True], left_origin: Origin[mut=False], right_origin: Origin[mut=False],
 ](
     key: DispatchKey, capabilities: CpuCapabilities,
-    result: Span[True, Float32, out_origin],
-    left: Span[False, Float32, left_origin],
-    right: Span[False, Float32, right_origin],
+    result: Span[mut=True, Float32, out_origin],
+    left: Span[mut=False, Float32, left_origin],
+    right: Span[mut=False, Float32, right_origin],
     profile: CpuOfflineAOTProfile,
 ) -> TensorResult[SpecializationDecision]:
     var policy = profile.checked_snapshot()
@@ -157,21 +157,21 @@ def choose_cpu_elementwise_with_offline_profile[
         key, capabilities, result, left, right,
     )
     if not scalar.is_ok():
-        return scalar
+        return scalar^
     var count = len(result)
-    var thresholds = policy.payload.value()
+    ref thresholds = policy.payload.value()
     if count < thresholds.vector_from:
-        return scalar
+        return scalar^
     if not capabilities.has_avx2 or not capabilities.has_fma:
-        return scalar
+        return scalar^
     # Native AVX2 is selected only after actual pointer alignment and ISA
     # proof; a numeric profile cannot authorize a compiled instruction.
     var baseline = choose_avx2_elementwise_for_spans(
         key, capabilities, result, left, right,
     )
     if not baseline.is_ok():
-        return baseline
-    var selected = baseline.payload.value()
+        return baseline^
+    ref selected = baseline.payload.value()
     if (selected.aot_variant == 2
         and count < thresholds.aligned_from):
         return SpecializationDecision.checked(1, 8, 1, 1, 1)

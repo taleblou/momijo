@@ -104,16 +104,32 @@ from ..indexing.slice import SliceSpec
 from ..indexing.slice_spec import BasicIndex, NewAxis, EllipsisIndex, as_basic_index, inferred_basic_index_rank
 from ..indexing.index_math import basic_index_layout
 
+# Resolve the concrete type before calling the overload. A heterogeneous
+# pack element still has a generic type when Mojo checks this function.
+def _pack_basic_index[T: AnyType](ref value: T) -> BasicIndex:
+    comptime if T == Int:
+        return as_basic_index(rebind[Int](value))
+    elif T == SliceSpec:
+        return as_basic_index(rebind[SliceSpec](value))
+    elif T == NewAxis:
+        return as_basic_index(rebind[NewAxis](value))
+    elif T == EllipsisIndex:
+        return as_basic_index(rebind[EllipsisIndex](value))
+    else:
+        comptime assert T == BasicIndex, "unsupported basic index type"
+        return as_basic_index(rebind[BasicIndex](value))
+
+
 struct TensorView[rank: Int, origin: Origin](Copyable):
-    var data: Span[False, Float32, Self.origin]
+    var data: Span[mut=False, Float32, Self.origin]
     var layout: TensorLayout[Self.rank]
 
-    def __init__(out self, data: Span[False, Float32, Self.origin], layout: TensorLayout[Self.rank]):
+    def __init__(out self, data: Span[mut=False, Float32, Self.origin], layout: TensorLayout[Self.rank]):
         self.data = data
         self.layout = layout
 
     @staticmethod
-    def from_span_checked(data: Span[False, Float32, Self.origin], layout: TensorLayout[Self.rank]) -> TensorResult[Self]:
+    def from_span_checked(data: Span[mut=False, Float32, Self.origin], layout: TensorLayout[Self.rank]) -> TensorResult[Self]:
         var true_shape = TensorShape[Self.rank].checked(layout.shape.dims)
         if not true_shape.is_ok():
             return TensorResult[Self](true_shape.status)
@@ -173,14 +189,14 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
         return self.get(indices)
 
     def __getitem__(self, index: Int) -> TensorResult[Float32] where Self.rank == 1:
-        var coords = StaticRankArray[1](0)
+        var coords = StaticRankArray[Self.rank](0)
         coords.set(0, index)
         return self.get(coords)
 
     def __getitem__(
         self, index: Int,
     ) -> TensorResult[TensorView[Self.rank - 1, Self.origin]] where Self.rank >= 2:
-        return self.index_basic(index)
+        return self.index_basic_as[Self.rank - 1](index)
 
     def is_empty(self) -> Bool:
         # Cached element counts can be changed on externally constructed
@@ -351,11 +367,13 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
         comptime assert out_rank >= 0 and out_rank <= 8, "output rank must be 0..8"
         comptime if count == 0:
             comptime assert out_rank == Self.rank, "identity index must preserve rank"
-            return Self.from_span_checked(self.data, self.layout)
+            return TensorView[out_rank, Self.origin].from_span_checked(
+                self.data, rebind[TensorLayout[out_rank]](self.layout)
+            )
         else:
             var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
             comptime for i in range(count):
-                packed[i] = as_basic_index(terms[i])
+                packed[i] = _pack_basic_index(terms[i])
             return self.index_view[out_rank, count](packed)
 
     # Auto rank inference for statically typed heterogeneous indexes.
@@ -365,33 +383,24 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
     ) -> TensorResult[TensorView[inferred_basic_index_rank[Self.rank, *IndexTypes](), Self.origin]]:
         comptime out_rank = inferred_basic_index_rank[Self.rank, *IndexTypes]()
         comptime assert out_rank >= 0 and out_rank <= 8, "invalid heterogeneous index signature"
-        comptime count = terms.__len__()
-        comptime assert count <= 17, "basic index pack must have at most 17 terms"
-        comptime if count == 0:
-            comptime assert out_rank == Self.rank, "identity index must preserve rank"
-            return Self.from_span_checked(self.data, self.layout)
-        else:
-            var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
-            comptime for i in range(count):
-                packed[i] = as_basic_index(terms[i])
-            return self.index_view[out_rank, count](packed)
+        return self.index_basic_as[out_rank](*terms)
 
     # Slice/ellipsis/newaxis sugar shares the same basic_index_layout proof
     # as the owning Tensor facade. No copy or fallback materialization occurs.
     def __getitem__(
         self, spec: SliceSpec,
     ) -> TensorResult[TensorView[Self.rank, Self.origin]] where Self.rank >= 1:
-        return self.index_basic(spec)
+        return self.index_basic_as[Self.rank](spec)
 
     def __getitem__(
         self, spec: EllipsisIndex,
     ) -> TensorResult[TensorView[Self.rank, Self.origin]]:
-        return self.index_basic(spec)
+        return self.index_basic_as[Self.rank](spec)
 
     def __getitem__(
         self, spec: NewAxis,
     ) -> TensorResult[TensorView[Self.rank + 1, Self.origin]] where Self.rank < 8:
-        return self.index_basic(spec)
+        return self.index_basic_as[Self.rank + 1](spec)
 
     def slice_axis(self, axis: Int, slice_spec: SliceSpec) -> TensorResult[Self]:
         var checked_source = self._checked_current_layout()
@@ -523,6 +532,7 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
         var checked_source = self._checked_current_layout()
         if not checked_source.is_ok():
             return TensorResult[TensorView[new_rank, Self.origin]](checked_source.status)
+        comptime assert Self.rank >= 0
         var mapped = broadcast_layout[Self.rank, new_rank](checked_source.payload.value(), target, len(self.data))
         if not mapped.is_ok():
             return TensorResult[TensorView[new_rank, Self.origin]](mapped.status)
@@ -534,6 +544,7 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
         var checked_source = self._checked_current_layout()
         if not checked_source.is_ok():
             return TensorResult[TensorView[Self.rank + 1, Self.origin]](checked_source.status)
+        comptime assert Self.rank >= 0 and Self.rank < 8 and axis >= 0 and axis <= Self.rank
         var mapped = unsqueeze[Self.rank, axis](checked_source.payload.value(), len(self.data))
         if not mapped.is_ok():
             return TensorResult[TensorView[Self.rank + 1, Self.origin]](mapped.status)
@@ -545,6 +556,7 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
         var checked_source = self._checked_current_layout()
         if not checked_source.is_ok():
             return TensorResult[TensorView[Self.rank - 1, Self.origin]](checked_source.status)
+        comptime assert Self.rank >= 1 and Self.rank <= 8 and axis >= 0 and axis < Self.rank
         var mapped = squeeze_axis[Self.rank, axis](checked_source.payload.value(), len(self.data))
         if not mapped.is_ok():
             return TensorResult[TensorView[Self.rank - 1, Self.origin]](mapped.status)
@@ -558,6 +570,7 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[TensorView[Self.rank - count, Self.origin]](proof.status)
+        comptime assert Self.rank >= 0 and Self.rank <= 8 and count >= 0 and count <= Self.rank
         var reduced = squeeze_axes_layout[Self.rank, count](
             proof.payload.value(), axes, len(self.data),
         )
@@ -583,15 +596,15 @@ struct TensorView[rank: Int, origin: Origin](Copyable):
         )
 
 struct TensorMutView[rank: Int, origin: Origin[mut=True]](Movable):
-    var data: Span[True, Float32, Self.origin]
+    var data: Span[mut=True, Float32, Self.origin]
     var layout: TensorLayout[Self.rank]
 
-    def __init__(out self, data: Span[True, Float32, Self.origin], layout: TensorLayout[Self.rank]):
+    def __init__(out self, data: Span[mut=True, Float32, Self.origin], layout: TensorLayout[Self.rank]):
         self.data = data
         self.layout = layout
 
     @staticmethod
-    def from_span_checked(data: Span[True, Float32, Self.origin], layout: TensorLayout[Self.rank]) -> TensorResult[Self]:
+    def from_span_checked(data: Span[mut=True, Float32, Self.origin], layout: TensorLayout[Self.rank]) -> TensorResult[Self]:
         var true_shape = TensorShape[Self.rank].checked(layout.shape.dims)
         if not true_shape.is_ok():
             return TensorResult[Self](true_shape.status)
@@ -788,25 +801,25 @@ struct TensorMutView[rank: Int, origin: Origin[mut=True]](Movable):
         return self.get(indices)
 
     def __getitem__(self, index: Int) -> TensorResult[Float32] where Self.rank == 1:
-        var coords = StaticRankArray[1](0)
+        var coords = StaticRankArray[Self.rank](0)
         coords.set(0, index)
         return self.get(coords)
 
     def __getitem__(
         mut self, index: Int,
     ) -> TensorResult[TensorMutView[Self.rank - 1, Self.origin]] where Self.rank >= 2:
-        return self.index_basic_mut(index)
+        return self._index_basic_mut_as[Self.rank - 1](index)
 
     def __setitem__(mut self, indices: StaticRankArray[Self.rank], value: Float32) -> TensorStatus:
         return self.set(indices, value)
 
     def __setitem__(mut self, index: Int, value: Float32) -> TensorStatus where Self.rank == 1:
-        var coords = StaticRankArray[1](0)
+        var coords = StaticRankArray[Self.rank](0)
         coords.set(0, index)
         return self.set(coords, value)
 
     def __setitem__(mut self, index: Int, value: Float32) -> TensorStatus where Self.rank >= 2:
-        var selected = self.index_basic_mut(index)
+        var selected = self._index_basic_mut_as[Self.rank - 1](index)
         if not selected.is_ok():
             return selected.status
         var writable = selected.payload.take()
@@ -835,41 +848,49 @@ struct TensorMutView[rank: Int, origin: Origin[mut=True]](Movable):
             TensorMutView[out_rank, Self.origin](self.data, selected)
         )
 
+    def _index_basic_mut_as[out_rank: Int, *IndexTypes: AnyType](
+        mut self, *terms: *IndexTypes,
+    ) -> TensorResult[TensorMutView[out_rank, Self.origin]]:
+        comptime count = terms.__len__()
+        comptime assert count <= 17, "mutable basic index pack must have at most 17 terms"
+        comptime if count == 0:
+            # Rank zero and identity indexing do not construct Array[T, 0].
+            comptime assert out_rank == Self.rank, "identity index must preserve rank"
+            return TensorMutView[out_rank, Self.origin].from_span_checked(
+                self.data, rebind[TensorLayout[out_rank]](self.layout)
+            )
+        else:
+            var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
+            comptime for i in range(count):
+                packed[i] = _pack_basic_index(terms[i])
+            return self.index_mut_view[out_rank, count](packed)
+
     def index_basic_mut[*IndexTypes: AnyType](
         mut self, *terms: *IndexTypes,
     ) -> TensorResult[TensorMutView[inferred_basic_index_rank[Self.rank, *IndexTypes](), Self.origin]]:
         comptime out_rank = inferred_basic_index_rank[Self.rank, *IndexTypes]()
         comptime assert out_rank >= 0 and out_rank <= 8, "invalid mutable index signature"
-        comptime count = terms.__len__()
-        comptime assert count <= 17, "mutable basic index pack must have at most 17 terms"
-        comptime if count == 0:
-            # Rank zero and identity indexing do not construct Array[T, 0].
-            return Self.from_span_checked(self.data, self.layout)
-        else:
-            var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
-            comptime for i in range(count):
-                packed[i] = as_basic_index(terms[i])
-            return self.index_mut_view[out_rank, count](packed)
+        return self._index_basic_mut_as[out_rank](*terms)
 
     def __getitem__(
         mut self, spec: SliceSpec,
     ) -> TensorResult[TensorMutView[Self.rank, Self.origin]] where Self.rank >= 1:
-        return self.index_basic_mut(spec)
+        return self._index_basic_mut_as[Self.rank](spec)
 
     def __getitem__(
         mut self, spec: EllipsisIndex,
     ) -> TensorResult[TensorMutView[Self.rank, Self.origin]]:
-        return self.index_basic_mut(spec)
+        return self._index_basic_mut_as[Self.rank](spec)
 
     def __getitem__(
         mut self, spec: NewAxis,
     ) -> TensorResult[TensorMutView[Self.rank + 1, Self.origin]] where Self.rank < 8:
-        return self.index_basic_mut(spec)
+        return self._index_basic_mut_as[Self.rank + 1](spec)
 
     def __setitem__(
         mut self, spec: SliceSpec, value: Float32,
     ) -> TensorStatus where Self.rank >= 1:
-        var selected = self.index_basic_mut(spec)
+        var selected = self._index_basic_mut_as[Self.rank](spec)
         if not selected.is_ok():
             return selected.status
         var writable = selected.payload.take()
@@ -1010,6 +1031,7 @@ struct TensorMutView[rank: Int, origin: Origin[mut=True]](Movable):
         var source = self._checked_current_layout()
         if not source.is_ok():
             return TensorResult[TensorMutView[Self.rank + 1, Self.origin]](source.status)
+        comptime assert Self.rank >= 0 and Self.rank < 8 and axis >= 0 and axis <= Self.rank
         var mapped = unsqueeze[Self.rank, axis](source.payload.value(), len(self.data))
         if not mapped.is_ok():
             return TensorResult[TensorMutView[Self.rank + 1, Self.origin]](mapped.status)
@@ -1026,6 +1048,7 @@ struct TensorMutView[rank: Int, origin: Origin[mut=True]](Movable):
         var source = self._checked_current_layout()
         if not source.is_ok():
             return TensorResult[TensorMutView[Self.rank - 1, Self.origin]](source.status)
+        comptime assert Self.rank >= 1 and Self.rank <= 8 and axis >= 0 and axis < Self.rank
         var mapped = squeeze_axis[Self.rank, axis](source.payload.value(), len(self.data))
         if not mapped.is_ok():
             return TensorResult[TensorMutView[Self.rank - 1, Self.origin]](mapped.status)
@@ -1042,6 +1065,7 @@ struct TensorMutView[rank: Int, origin: Origin[mut=True]](Movable):
         var source = self._checked_current_layout()
         if not source.is_ok():
             return TensorResult[TensorMutView[Self.rank - count, Self.origin]](source.status)
+        comptime assert Self.rank >= 0 and Self.rank <= 8 and count >= 0 and count <= Self.rank
         var mapped = squeeze_axes_layout[Self.rank, count](
             source.payload.value(), axes, len(self.data),
         )
@@ -1062,6 +1086,7 @@ struct TensorMutView[rank: Int, origin: Origin[mut=True]](Movable):
         var source = self._checked_current_layout()
         if not source.is_ok():
             return TensorResult[TensorMutView[new_rank, Self.origin]](source.status)
+        comptime assert Self.rank >= 0
         var mapped = broadcast_layout[Self.rank, new_rank](
             source.payload.value(), target, len(self.data),
         )

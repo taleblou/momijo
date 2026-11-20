@@ -100,7 +100,7 @@ struct TensorAccessor[rank: Int, origin: Origin](Copyable):
     var view: TensorView[Self.rank, Self.origin]
 
     def __init__(out self, view: TensorView[Self.rank, Self.origin]):
-        self.view = view
+        self.view = view.copy()
 
     def __init__(out self, *, copy: Self):
         self.view = copy.view.copy()
@@ -118,7 +118,7 @@ struct TensorMutAccessor[rank: Int, origin: Origin[mut=True]](Movable):
     var view: TensorMutView[Self.rank, Self.origin]
 
     def __init__(out self, var view: TensorMutView[Self.rank, Self.origin]):
-        self.view = view
+        self.view = view^
 
     def load(self, indices: StaticRankArray[Self.rank]) -> TensorResult[Float32]:
         return self.view.get(indices)
@@ -148,7 +148,7 @@ def make_accessor[rank: Int, origin: Origin](view: TensorView[rank, origin]) -> 
         view.data, validated.payload.value(),
     )
     return TensorResult[TensorAccessor[rank, origin]](
-        TensorAccessor[rank, origin](canonical_view),
+        TensorAccessor[rank, origin](canonical_view^),
     )
 
 
@@ -169,7 +169,7 @@ def make_mut_accessor[rank: Int, origin: Origin[mut=True]](
         view.data, checked.payload.take(),
     )
     return TensorResult[TensorMutAccessor[rank, origin]](
-        TensorMutAccessor[rank, origin](canonical_view),
+        TensorMutAccessor[rank, origin](canonical_view^),
     )
 
 
@@ -200,8 +200,8 @@ def store_scalar_unchecked[rank: Int, origin: Origin[mut=True]](
 
 
 @inline(.always)
-def load_contiguous_unchecked[width: Int, origin: Origin](
-    source: Span[False, Float32, origin], start: Int,
+def load_contiguous_unchecked[width: Int, origin: Origin[mut=False]](
+    source: Span[mut=False, Float32, origin], start: Int,
 ) -> SIMD[DType.float32, width]:
     # The caller proves [start, start + width) is in the live storage span.
     return source.unsafe_ptr().unsafe_load[width=width, alignment=4](start)
@@ -209,14 +209,14 @@ def load_contiguous_unchecked[width: Int, origin: Origin](
 
 @inline(.always)
 def store_contiguous_unchecked[width: Int, origin: Origin[mut=True]](
-    destination: Span[True, Float32, origin], start: Int,
+    destination: Span[mut=True, Float32, origin], start: Int,
     value: SIMD[DType.float32, width],
 ):
     destination.unsafe_ptr().unsafe_store[alignment=4](start, value)
 
 
-def masked_load_tail[width: Int, origin: Origin](
-    source: Span[False, Float32, origin], start: Int,
+def masked_load_tail[width: Int, origin: Origin[mut=False]](
+    source: Span[mut=False, Float32, origin], start: Int,
     valid_lanes: Int,
 ) -> TensorResult[SIMD[DType.float32, width]]:
     # Public tail boundary is checked once; masked-off lanes are never read,
@@ -232,7 +232,7 @@ def masked_load_tail[width: Int, origin: Origin](
 
 
 def masked_store_tail[width: Int, origin: Origin[mut=True]](
-    destination: Span[True, Float32, origin], start: Int,
+    destination: Span[mut=True, Float32, origin], start: Int,
     values: SIMD[DType.float32, width], valid_lanes: Int,
 ) -> TensorStatus:
     if valid_lanes < 0 or valid_lanes > width or start < 0 or start > len(destination):
@@ -245,8 +245,8 @@ def masked_store_tail[width: Int, origin: Origin[mut=True]](
 
 
 @inline(.always)
-def load_strided_unchecked[width: Int, origin: Origin](
-    source: Span[False, Float32, origin], start: Int, step: Int,
+def load_strided_unchecked[width: Int, origin: Origin[mut=False]](
+    source: Span[mut=False, Float32, origin], start: Int, step: Int,
 ) -> SIMD[DType.float32, width]:
     # AOT irregular-stride fallback: shape/layout span proof is upstream.
     # Do not vector-load across holes or reversed physical storage.
@@ -259,7 +259,7 @@ def load_strided_unchecked[width: Int, origin: Origin](
 
 @inline(.always)
 def store_strided_unchecked[width: Int, origin: Origin[mut=True]](
-    destination: Span[True, Float32, origin], start: Int, step: Int,
+    destination: Span[mut=True, Float32, origin], start: Int, step: Int,
     value: SIMD[DType.float32, width],
 ):
     # PRECONDITION: unique physical output offsets and all lanes in bounds.
@@ -269,8 +269,8 @@ def store_strided_unchecked[width: Int, origin: Origin[mut=True]](
 
 
 @inline(.always)
-def gather_unchecked[width: Int, origin: Origin](
-    source: Span[False, Float32, origin],
+def gather_unchecked[width: Int, origin: Origin[mut=False]](
+    source: Span[mut=False, Float32, origin],
     offsets: SIMD[DType.int64, width],
 ) -> SIMD[DType.float32, width]:
     var result = SIMD[DType.float32, width](0.0)
@@ -282,7 +282,7 @@ def gather_unchecked[width: Int, origin: Origin](
 
 @inline(.always)
 def scatter_unchecked[width: Int, origin: Origin[mut=True]](
-    destination: Span[True, Float32, origin],
+    destination: Span[mut=True, Float32, origin],
     offsets: SIMD[DType.int64, width],
     values: SIMD[DType.float32, width],
 ):

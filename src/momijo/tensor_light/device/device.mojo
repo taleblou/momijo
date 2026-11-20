@@ -107,17 +107,17 @@ struct Device(Copyable):
     var ordinal: Int
 
     def is_cpu(self) -> Bool:
-        return self.kind == DeviceType.CPU
+        return self.kind == materialize[DeviceType.CPU]()
 
     def is_gpu(self) -> Bool:
-        return self.kind == DeviceType.GPU
+        return self.kind == materialize[DeviceType.GPU]()
 
 def cpu_device() -> Device:
-    return Device(DeviceType.CPU, 0)
+    return Device(materialize[DeviceType.CPU](), 0)
 
 def _gpu_device_unchecked(index: Int) -> Device:
     # Internal only, after an explicit nonnegative ordinal proof.
-    return Device(DeviceType.GPU, index)
+    return Device(materialize[DeviceType.GPU](), index)
 
 
 def gpu_device(index: Int) -> TensorResult[Device]:
@@ -133,11 +133,11 @@ def gpu_device_checked(index: Int) -> TensorResult[Device]:
 
 
 def validate_device(device: Device) -> TensorStatus:
-    if device.kind == DeviceType.CPU:
+    if device.kind == materialize[DeviceType.CPU]():
         if device.ordinal == 0:
             return TensorStatus.OK
         return TensorStatus.DEVICE_MISMATCH
-    if device.kind == DeviceType.GPU and device.ordinal >= 0:
+    if device.kind == materialize[DeviceType.GPU]() and device.ordinal >= 0:
         return TensorStatus.OK
     return TensorStatus.DEVICE_MISMATCH
 
