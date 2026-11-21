@@ -12,6 +12,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Reject changes to protected legacy paths (names only)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
+          legacy_changes=$(git diff-tree --no-commit-id --name-only --no-renames -r "$BASE_SHA" "$HEAD_SHA" -- legacy/)
+          if [ -n "$legacy_changes" ]; then
+            printf 'Protected legacy paths changed:\n%s\n' "$legacy_changes" >&2
+            exit 1
+          fi
       - name: Check required namespaces and prevent reserved-domain light forks
         run: |
           set -e
@@ -43,10 +56,10 @@ jobs:
       - name: Enforce allowed source and documentation formats
         run: |
           set -eu
-          unexpected=$(find . -type f ! -path './.git/*' \
+          unexpected=$(find . \( -path './.git' -o -path './legacy' \) -prune -o -type f \
             ! \( -name '*.mojo' -o -name '*.md' -o -name '*.toml' \
               -o -name '*.yaml' -o -name '*.yml' -o -name '*.lock' \
-              -o -name '*.cff' -o -name '*.png' -o -name '*.jpg' \
+              -o -name '*.cff' -o -iname '*.png' -o -name '*.jpg' \
               -o -name '*.jpeg' -o -name '*.webp' -o -name '*.svg' \
               -o -name '*.gif' -o -name '*.ico' -o -name '*.pdf' \
               -o -name '.editorconfig' -o -name '.gitattributes' \
@@ -55,7 +68,7 @@ jobs:
             printf 'Unexpected repository files (review source-language policy):\n%s\n' "$unexpected" >&2
             exit 1
           fi
-          symlinks=$(find . -type l ! -path './.git/*' -print)
+          symlinks=$(find . \( -path './.git' -o -path './legacy' \) -prune -o -type l -print)
           if [ -n "$symlinks" ]; then
             printf 'Symlinks are not permitted in this repository:\n%s\n' "$symlinks" >&2
             exit 1
