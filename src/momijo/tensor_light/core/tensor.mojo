@@ -111,7 +111,7 @@ from ..memory.allocation import _allocate_host_fp32_uninitialized
 from std.collections import Span
 from std.memory import unsafe_memcpy, forget_deinit
 from ..memory.memory_pool import HostPool
-from ..view.view import TensorView, TensorMutView
+from ..view.view import TensorView, TensorMutView, _pack_basic_index
 from layout import Layout, LayoutTensor, IntTuple
 from layout.tile_tensor import TileTensor, LTToTTLayout
 from ..view.adapters import (
@@ -165,7 +165,7 @@ from ..iterator.nd_iterator import NDIndexIterator
 from ..view.as_strided import slice_axis as slice_layout_axis
 from ..indexing.slice import SliceSpec
 from ..indexing.index import normalize_index
-from ..indexing.slice_spec import BasicIndex, NewAxis, EllipsisIndex, as_basic_index, inferred_basic_index_rank
+from ..indexing.slice_spec import BasicIndex, NewAxis, EllipsisIndex, inferred_basic_index_rank
 from ..layout.memory_format import ContiguousOrder
 from ..layout.layout_analysis import is_reverse_c_contiguous, is_reverse_f_contiguous
 from ..kernels.cpu.reduction import cpu_sum_contiguous, cpu_sum_contiguous_parallel_fast, cpu_sum_strided_parallel_fast, cpu_sum_c_strict_fp32, cpu_prod_c_fp32, cpu_extremum_c_fp32, cpu_argextremum_c_fp32, cpu_reduce_strided_fp32, cpu_reduce_c_trailing_axes_fp32, cpu_reduce_c_axis_block_fp32, cpu_scan_strided_fp32
@@ -180,7 +180,7 @@ from ..kernels.cpu.matrix import (
 from ..kernels.cpu.unary import cpu_unary_scalar_fp32, cpu_unary_contiguous_fp32
 from ..storage.device_storage import DeviceStorage, _retain_context_on_unproven_gpu_completion
 from ..dtype.fp32 import fp32_minimum, fp32_maximum, fp32_argmin_prefers, fp32_argmax_prefers
-from max.gpu.host import DeviceExternalFunction
+from max.gpu.host.device_context import DeviceExternalFunction
 from ..dispatch.specialization import BinaryAOTArtifactIdentity, GemmAOTArtifactIdentity, UnaryAOTArtifactIdentity, ReduceRowsAOTArtifactIdentity, ScanRowsAOTArtifactIdentity
 from ..execution.execution_plan import ExecutionPlan, ExecutionPlacement
 from ..execution.launch_policy import HybridGemmTuningProfile, HybridRowReductionTuningProfile, choose_host_gemm_rows_split_plan_for_capacity, choose_host_reduce_rows_split_plan_for_capacity
@@ -192,7 +192,7 @@ from ..backend.hybrid_reduction import unsafe_execute_hybrid_reduce_rows_fp32
 from ..backend.hybrid_matrix import unsafe_execute_hybrid_gemm_rows_fp32
 from ..backend.hybrid import unsafe_execute_host_unary_fp32, execute_host_binary_fp32
 from ..kernels.launch import run_owned_bound_gpu_binary_fp32, run_owned_bound_gpu_gemm_fp32, run_owned_bound_gpu_unary_fp32, run_owned_bound_gpu_sum_rows_fp32, run_owned_bound_gpu_reduce_rows_fp32, run_owned_bound_gpu_scan_rows_fp32, run_owned_gpu_binary_strided_fp32, run_owned_gpu_unary_strided_fp32, run_owned_gpu_reduce_axis_strided_fp32, run_owned_gpu_scan_axis_strided_fp32, run_owned_gpu_reduce_axes_strided_fp32
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from .tensor_options import TensorOptions, validate_tensor_options
 from ..memory.memory_space import MemorySpace
 from ..kernels.cpu.elementwise import (
@@ -222,7 +222,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def __init__(out self, var impl: TensorImpl[Self.rank, Self.S]):
         comptime assert Self.rank >= 0 and Self.rank <= 8, "Self.rank must be 0..8"
-        self.impl = impl
+        self.impl = impl^
 
     @staticmethod
     def _from_parts_unchecked(
@@ -231,7 +231,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # Internal zero-check assembly. Requires a checked rank, shape,
         # span and allocation-capacity proof from the caller. Never expose
         # this unchecked constructor as a public untrusted-buffer factory.
-        return Self(TensorImpl[Self.rank, Self.S](owned, layout))
+        return Self(TensorImpl[Self.rank, Self.S](owned^, layout))
 
     @staticmethod
     def from_parts_checked(var owned: Self.S, layout: TensorLayout[Self.rank]) -> TensorResult[Self]:
@@ -249,13 +249,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         )
         if not validated.is_ok():
             return TensorResult[Self](validated.status)
-        return TensorResult[Self](Self._from_parts_unchecked(owned, validated.payload.value()))
+        return TensorResult[Self](Self._from_parts_unchecked(owned^, validated.payload.value()))
 
     @staticmethod
     def unsafe_adopt_external_checked[D: ExternalFp32Deleter](
         address: Int, allocation_elements: Int, alignment: Int,
         var deleter: D, layout: TensorLayout[Self.rank],
-    ) -> TensorResult[Self] where identical(Self.S, ExternalOwnedStorage[D]):
+    ) -> TensorResult[Self] where Self.S == ExternalOwnedStorage[D]:
         # Complete ALL fallible shape/layout checks before adopting the
         # foreign allocation. Otherwise a failed from_parts_checked would
         # destroy the temporary storage and free the caller's buffer despite
@@ -276,7 +276,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # If pointer/alignment metadata is invalid, adoption returns an
         # error before constructing an owned-storage object.
         var adopted = ExternalOwnedStorage[D].unsafe_adopt_checked(
-            address, allocation_elements, alignment, deleter
+            address, allocation_elements, alignment, deleter^
         )
         if not adopted.is_ok():
             return TensorResult[Self](adopted.status)
@@ -284,12 +284,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # The destructor invokes the exact supplied deleter after success.
         return TensorResult[Self](
             Self._from_parts_unchecked(
-                adopted.payload.take(), valid_layout.payload.value()
+                rebind_var[Self.S](adopted.payload.take()), valid_layout.payload.value()
             )
         )
 
     @staticmethod
-    def full_checked(shape: TensorShape[Self.rank], value: Float32) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def full_checked(shape: TensorShape[Self.rank], value: Float32) -> TensorResult[Self] where Self.S == HostStorage:
         # The primary Tensor type is also the public owning factory. Validate
         # before allocation, then build one canonical C-order layout.
         var canonical = TensorShape[Self.rank].checked(shape.dims)
@@ -304,12 +304,16 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var owned = HostStorage.full(trusted.numel(), value)
         if not owned.is_ok():
             return TensorResult[Self](owned.status)
-        return TensorResult[Self](Self._from_parts_unchecked(owned.payload.take(), layout.payload.value()))
+        return TensorResult[Self](
+            Self._from_parts_unchecked(
+                rebind_var[Self.S](owned.payload.take()), layout.payload.value()
+            )
+        )
 
     @staticmethod
     def full_from_pool_checked(
         mut pool: HostPool, shape: TensorShape[Self.rank], value: Float32
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         # Canonical validation precedes leasing; one writer initializes every
         # element before the owning Tensor is exposed to the caller.
         var canonical = TensorShape[Self.rank].checked(shape.dims)
@@ -325,25 +329,29 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not leased.is_ok():
             return TensorResult[Self](leased.status)
         var owned = HostStorage(leased.payload.take())
-        return TensorResult[Self](Self._from_parts_unchecked(owned, layout.payload.value()))
+        return TensorResult[Self](
+            Self._from_parts_unchecked(rebind_var[Self.S](owned^), layout.payload.value())
+        )
 
     @staticmethod
-    def full_from_pool(mut pool: HostPool, shape: TensorShape[Self.rank], value: Float32) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def full_from_pool(mut pool: HostPool, shape: TensorShape[Self.rank], value: Float32) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_from_pool_checked(pool, shape, value)
 
-    def recycle_into_host_pool(deinit self, mut pool: HostPool) -> TensorStatus where identical(Self.S, HostStorage):
+    def recycle_into_host_pool(deinit self, mut pool: HostPool) -> TensorStatus where Self.S == HostStorage:
         # A pooled Tensor must have a symmetric, explicit return path; simply
         # dropping an owned Tensor frees its allocation instead of caching it.
         # Consuming self proves that no safe Tensor/View borrow survives. The
         # pool validates the physical owner and takes its allocation exactly
         # once, so the following full_from_pool() can reuse it without a malloc.
         # Caller-issued unsafe asynchronous borrows must already be complete.
-        return pool.release(self.impl.storage.owned)
+        var impl = self.impl^
+        var storage = rebind_var[HostStorage]((impl^)._take_storage())
+        return pool.release((storage^)._take_allocation())
 
     @staticmethod
     def from_copy_span_checked[origin: Origin](
-        source: Span[False, Float32, origin], shape: TensorShape[Self.rank]
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+        source: Span[Float32, origin], shape: TensorShape[Self.rank]
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         # Validate before allocation; the destination is a different owning
         # allocation and every accessible Float32 is initialized by the copy.
         var canonical = TensorShape[Self.rank].checked(shape.dims)
@@ -365,18 +373,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var copied = owned._copy_from_disjoint_span_unchecked(source)
         if copied != TensorStatus.OK:
             return TensorResult[Self](copied)
-        return TensorResult[Self](Self._from_parts_unchecked(owned, layout.payload.value()))
+        return TensorResult[Self](
+            Self._from_parts_unchecked(rebind_var[Self.S](owned^), layout.payload.value())
+        )
 
     @staticmethod
     def from_copy_span[origin: Origin](
-        source: Span[False, Float32, origin], shape: TensorShape[Self.rank]
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+        source: Span[Float32, origin], shape: TensorShape[Self.rank]
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.from_copy_span_checked(source, shape)
 
     @staticmethod
     def _empty_for_complete_overwrite_checked(
         shape: TensorShape[Self.rank]
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         # INTERNAL-ONLY: caller must initialize EVERY logical element before
         # returning this Tensor. Error paths consume and destroy the owner.
         # Only internal kernels with a proven complete-write path may use
@@ -394,12 +404,16 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var owned = HostStorage._allocate_for_complete_overwrite(trusted.numel())
         if not owned.is_ok():
             return TensorResult[Self](owned.status)
-        return TensorResult[Self](Self._from_parts_unchecked(owned.payload.take(), layout.payload.value()))
+        return TensorResult[Self](
+            Self._from_parts_unchecked(
+                rebind_var[Self.S](owned.payload.take()), layout.payload.value()
+            )
+        )
 
     @staticmethod
     def unsafe_empty_uninitialized_checked(
         shape: TensorShape[Self.rank]
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         # The historical expert spelling must not expose a readable Tensor
         # backed by uninitialized storage. This is an allocation-only builder;
         # initialize_fill() or initialize_from_physical_span() consumes it and
@@ -409,23 +423,23 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def empty_checked(
         shape: TensorShape[Self.rank]
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         # A fresh uninitialized owner must NOT be returned as a readable
         # Tensor. Explicit full initialization consumes this builder.
         # This preserves the O(1) allocation-only path for speed-critical code.
         return UninitializedHostTensor[Self.rank].allocate_checked(shape, ContiguousOrder.C)
 
     @staticmethod
-    def zeros_checked(shape: TensorShape[Self.rank]) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def zeros_checked(shape: TensorShape[Self.rank]) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_checked(shape, 0.0)
 
     @staticmethod
-    def ones_checked(shape: TensorShape[Self.rank]) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def ones_checked(shape: TensorShape[Self.rank]) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_checked(shape, 1.0)
 
     @staticmethod
-    def scalar_checked(value: Float32) -> TensorResult[Self] where identical(Self.S, HostStorage) and Self.rank == 0:
-        var shape = TensorShape[0].checked(StaticRankArray[0](0))
+    def scalar_checked(value: Float32) -> TensorResult[Self] where Self.S == HostStorage and Self.rank == 0:
+        var shape = TensorShape[Self.rank].checked(StaticRankArray[Self.rank](0))
         if not shape.is_ok():
             return TensorResult[Self](shape.status)
         return Self.full_checked(shape.payload.value(), value)
@@ -435,7 +449,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def full_with_order_checked(
         shape: TensorShape[Self.rank], value: Float32, order: ContiguousOrder
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         if order == ContiguousOrder.C:
             return Self.full_checked(shape, value)
         if order != ContiguousOrder.F:
@@ -452,12 +466,16 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var storage = HostStorage.full(trusted.numel(), value)
         if not storage.is_ok():
             return TensorResult[Self](storage.status)
-        return TensorResult[Self](Self._from_parts_unchecked(storage.payload.take(), mapping.payload.value()))
+        return TensorResult[Self](
+            Self._from_parts_unchecked(
+                rebind_var[Self.S](storage.payload.take()), mapping.payload.value()
+            )
+        )
 
     @staticmethod
     def unsafe_empty_with_order_uninitialized_checked(
         shape: TensorShape[Self.rank], order: ContiguousOrder
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         # C/F layout selection happens once, before the allocation. Neither
         # order creates an uninitialized readable Tensor or duplicates the
         # underlying fast allocation path.
@@ -466,7 +484,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def empty_with_order_checked(
         shape: TensorShape[Self.rank], order: ContiguousOrder
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         # The returned uninitialized owner cannot be used as a readable
         # Tensor until initialize_fill()/initialize_from_physical_span().
         return UninitializedHostTensor[Self.rank].allocate_checked(shape, order)
@@ -474,13 +492,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def zeros_with_order_checked(
         shape: TensorShape[Self.rank], order: ContiguousOrder
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_with_order_checked(shape, 0.0, order)
 
     @staticmethod
     def ones_with_order_checked(
         shape: TensorShape[Self.rank], order: ContiguousOrder
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_with_order_checked(shape, 1.0, order)
 
     @staticmethod
@@ -492,7 +510,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # Never pretend it satisfies pinned/device or >64-byte alignment.
         if options.device_ordinal != -1:
             return TensorStatus.DEVICE_MISMATCH
-        if options.memory_space != MemorySpace.HOST_PAGEABLE:
+        if options.memory_space != materialize[MemorySpace.HOST_PAGEABLE]():
             return TensorStatus.UNSUPPORTED
         if options.requested_alignment > 64:
             return TensorStatus.INVALID_ALIGNMENT
@@ -501,7 +519,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def full_with_options_checked(
         shape: TensorShape[Self.rank], value: Float32, options: TensorOptions
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         var checked = Self._validate_host_options(options)
         if checked != TensorStatus.OK:
             return TensorResult[Self](checked)
@@ -512,7 +530,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def empty_with_options_checked(
         shape: TensorShape[Self.rank], options: TensorOptions
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         var checked = Self._validate_host_options(options)
         if checked != TensorStatus.OK:
             return TensorResult[UninitializedHostTensor[Self.rank]](checked)
@@ -528,7 +546,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def unsafe_empty_with_options_uninitialized_checked(
         shape: TensorShape[Self.rank], options: TensorOptions
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         # The historical unsafe alias now has the same non-readable typestate
         # as every other allocation-only constructor. Initialization-to-zero
         # is deliberately handled by zeros_with_options_checked() instead.
@@ -537,13 +555,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def zeros_with_options_checked(
         shape: TensorShape[Self.rank], options: TensorOptions
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_with_options_checked(shape, 0.0, options)
 
     @staticmethod
     def ones_with_options_checked(
         shape: TensorShape[Self.rank], options: TensorOptions
-    ) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_with_options_checked(shape, 1.0, options)
 
     # Tensor is the canonical public factory; the *_checked spellings are
@@ -552,32 +570,32 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def empty(
         shape: TensorShape[Self.rank]
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         # The canonical Tensor remains the ONLY readable owning tensor type.
         # Empty storage uses a restricted initialization builder instead.
         return Self.empty_checked(shape)
 
     @staticmethod
-    def full(shape: TensorShape[Self.rank], value: Float32) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def full(shape: TensorShape[Self.rank], value: Float32) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.full_checked(shape, value)
 
     @staticmethod
-    def zeros(shape: TensorShape[Self.rank]) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def zeros(shape: TensorShape[Self.rank]) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.zeros_checked(shape)
 
     @staticmethod
-    def ones(shape: TensorShape[Self.rank]) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def ones(shape: TensorShape[Self.rank]) -> TensorResult[Self] where Self.S == HostStorage:
         return Self.ones_checked(shape)
 
     @staticmethod
-    def scalar(value: Float32) -> TensorResult[Self] where identical(Self.S, HostStorage) and Self.rank == 0:
+    def scalar(value: Float32) -> TensorResult[Self] where Self.S == HostStorage and Self.rank == 0:
         return Self.scalar_checked(value)
 
     # Tensor-first factories. Each returns a fresh FP32 owning allocation;
     # unique F-order inputs retain F order, other layouts use explicit C order.
     def empty_like(
         ref self
-    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[UninitializedHostTensor[Self.rank]] where Self.S == HostStorage:
         # No payload may be read before explicit complete initialization.
         # The source contributes only shape/order metadata, never values.
         var checked = self._checked_current_layout()
@@ -590,7 +608,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
         return Tensor[Self.rank, HostStorage].empty_checked(source_layout.shape)
 
-    def zeros_like(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def zeros_like(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         var checked = self._checked_current_layout()
         if not checked.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](checked.status)
@@ -601,7 +619,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
         return Tensor[Self.rank, HostStorage].zeros_checked(source_layout.shape)
 
-    def ones_like(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def ones_like(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         var checked = self._checked_current_layout()
         if not checked.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](checked.status)
@@ -612,7 +630,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
         return Tensor[Self.rank, HostStorage].ones_checked(source_layout.shape)
 
-    def full_like(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def full_like(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         var checked = self._checked_current_layout()
         if not checked.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](checked.status)
@@ -629,7 +647,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def unsafe_empty_device_uninitialized_checked(
         ctx: DeviceContext, shape: TensorShape[Self.rank]
-    ) -> TensorResult[UninitializedDeviceTensor[Self.rank]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[UninitializedDeviceTensor[Self.rank]] where Self.S == DeviceStorage:
         # Never project an uninitialized GPU buffer into readable Tensor
         # ownership. This compatibility alias preserves explicit event-joined
         # allocation and the guarded initialize_fill() transition.
@@ -638,7 +656,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def empty_device_checked(
         ctx: DeviceContext, shape: TensorShape[Self.rank]
-    ) -> TensorResult[UninitializedDeviceTensor[Self.rank]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[UninitializedDeviceTensor[Self.rank]] where Self.S == DeviceStorage:
         # No readable device Tensor exists until a complete device fill has
         # completed and its completion event has been joined.
         return UninitializedDeviceTensor[Self.rank].allocate_checked(ctx, shape)
@@ -646,13 +664,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     @staticmethod
     def empty_device(
         ctx: DeviceContext, shape: TensorShape[Self.rank]
-    ) -> TensorResult[UninitializedDeviceTensor[Self.rank]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[UninitializedDeviceTensor[Self.rank]] where Self.S == DeviceStorage:
         return Self.empty_device_checked(ctx, shape)
 
     @staticmethod
     def full_device_checked(
         ctx: DeviceContext, shape: TensorShape[Self.rank], value: Float32
-    ) -> TensorResult[Self] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Self] where Self.S == DeviceStorage:
         # Canonical checked FP32 allocation: allocation and fill share one
         # stream and one joined Event. Unlike allocating an empty builder
         # and filling later, there is no redundant synchronization barrier.
@@ -671,24 +689,24 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         )
         if not filled.is_ok():
             return TensorResult[Self](filled.status)
-        return Self.from_parts_checked(filled.payload.take(), layout.payload.value())
+        return Self.from_parts_checked(rebind_var[Self.S](filled.payload.take()), layout.payload.value())
 
     @staticmethod
     def zeros_device(
         ctx: DeviceContext, shape: TensorShape[Self.rank]
-    ) -> TensorResult[Self] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Self] where Self.S == DeviceStorage:
         return Self.full_device_checked(ctx, shape, 0.0)
 
     @staticmethod
     def ones_device(
         ctx: DeviceContext, shape: TensorShape[Self.rank]
-    ) -> TensorResult[Self] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Self] where Self.S == DeviceStorage:
         return Self.full_device_checked(ctx, shape, 1.0)
 
     @staticmethod
     def full_device(
         ctx: DeviceContext, shape: TensorShape[Self.rank], value: Float32
-    ) -> TensorResult[Self] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Self] where Self.S == DeviceStorage:
         return Self.full_device_checked(ctx, shape, value)
 
     # Explicit H2D ownership transition. No implicit fallback or migration.
@@ -699,7 +717,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # copies retain their OWN staging/device buffers and DeviceContext.
     def to_device(
         ref self, ctx: DeviceContext
-    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where Self.S == HostStorage:
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Tensor[Self.rank, DeviceStorage]](proof.status)
@@ -721,7 +739,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                         var allocation_event = ctx.create_event()
                         ctx.stream().record_event(allocation_event)
                         allocation_event.synchronize()
-                        var source = self.impl.storage.borrow_span()
+                        var source = rebind[HostStorage](self.impl.storage).borrow_span()
                         if source_layout.is_c_contiguous() and source_layout.is_exhaustive():
                             var first = source_layout.span_lo
                             var source_run = source[first:first + count]
@@ -831,7 +849,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             if sealed != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, DeviceStorage]](sealed)
             return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-                initialized_owner, device_layout.payload.value()
+                initialized_owner^, device_layout.payload.value()
             )
         except:
             # No completed allocation owner was returned by the outer MAX
@@ -859,7 +877,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # to_host_consuming() is the owner-safe failure alternative.
     def to_host(
         ref self, ctx: DeviceContext
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == DeviceStorage:
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](proof.status)
@@ -875,19 +893,19 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # Reading device memory is legal only after the source owner's
         # original native queue has completed. An unrelated caller context
         # cannot validate this allocation or its producer stream.
-        if (not self.impl.storage.lifetime_context
-            or self.impl.storage.quiescence_unproven
-            or self.impl.storage.quarantined_context):
+        if (not rebind[DeviceStorage](self.impl.storage).lifetime_context
+            or rebind[DeviceStorage](self.impl.storage).quiescence_unproven
+            or rebind[DeviceStorage](self.impl.storage).quarantined_context):
             return TensorResult[Tensor[Self.rank, HostStorage]](
                 TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
-        var issuing = self.impl.storage.lifetime_context.value().copy()
+        var issuing = rebind[DeviceStorage](self.impl.storage).lifetime_context.value().copy()
         if ctx != issuing:
             return TensorResult[Tensor[Self.rank, HostStorage]](
                 TensorStatus.DEVICE_MISMATCH
             )
         var count = source_layout.shape.numel()
-        if count > 0 and len(self.impl.storage.buffer) != count:
+        if count > 0 and len(rebind[DeviceStorage](self.impl.storage).buffer) != count:
             return TensorResult[Tensor[Self.rank, HostStorage]](
                 TensorStatus.NOT_REPRESENTABLE
             )
@@ -898,11 +916,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Tensor[Self.rank, HostStorage]](prepared.status)
         var result = prepared.payload.take()
         if count == 0:
-            return result._finish_complete_overwrite()
+            return (result^)._finish_complete_overwrite()
         try:
             var staging = issuing.enqueue_create_host_buffer[DType.float32](count)
             try:
-                issuing.enqueue_copy(dst_buf=staging, src_buf=self.impl.storage.buffer)
+                issuing.enqueue_copy(dst_buf=staging, src_buf=rebind[DeviceStorage](self.impl.storage).buffer)
                 var received = issuing.create_event()
                 issuing.stream().record_event(received)
                 received.synchronize()
@@ -912,7 +930,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 unsafe_memcpy(
                     dest=output.unsafe_ptr(), src=staging.unsafe_ptr(), count=count,
                 )
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
             except:
                 try:
                     issuing.stream().synchronize()
@@ -956,7 +974,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def to_host_consuming(
         deinit self, ctx: DeviceContext
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == DeviceStorage:
         # Ownership-retaining alternative to borrowed to_host(). A failed
         # GPU event AND stream fence can leave the input device allocation
         # readable by an in-flight DMA; preserve its physical owner until
@@ -965,27 +983,27 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # for the lifetime of its borrowed DeviceContext.
         var outcome = self.to_host(ctx)
         if outcome.status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(self.impl.storage)
-        return outcome
+            forget_deinit(self^)
+        return outcome^
 
     # In-place, GPU-native FP32 fill. Only a fully addressable, unique,
     # exhaustive physical allocation can use the whole-buffer enqueue_fill
     # primitive. Irregular views are explicitly NOT_REPRESENTABLE.
     def fill_device(
         mut self, ctx: DeviceContext, value: Float32
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # A full, owner-bounded GPU overwrite may RECOVER an uninitialized
         # allocation after a previous drained native failure. Therefore do
         # NOT call _checked_current_layout(): that read-only boundary rejects
         # the very unreadable output whose entire content is being replaced.
         # A poisoned/unjoined owner, however, must never enqueue new writes.
-        if (self.impl.storage.quiescence_unproven
-            or self.impl.storage.quarantined_context
-            or self.impl.storage._native_update_pending
-            or not self.impl.storage.lifetime_context):
+        if (rebind[DeviceStorage](self.impl.storage).quiescence_unproven
+            or rebind[DeviceStorage](self.impl.storage).quarantined_context
+            or rebind[DeviceStorage](self.impl.storage)._native_update_pending
+            or not rebind[DeviceStorage](self.impl.storage).lifetime_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
         var proof = self.impl.layout.validated_snapshot(
-            self.impl.storage.capacity()
+            rebind[DeviceStorage](self.impl.storage).capacity()
         )
         if not proof.is_ok():
             return proof.status
@@ -997,31 +1015,31 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if mapping.span_lo != 0:
             return TensorStatus.NOT_REPRESENTABLE
         var count = mapping.shape.numel()
-        if count != self.impl.storage.count:
+        if count != rebind[DeviceStorage](self.impl.storage).count:
             return TensorStatus.NOT_REPRESENTABLE
         # MAX pads a logically empty DeviceBuffer allocation to one element;
         # the empty tensor still needs an allocation/completion event fence.
-        if count > 0 and len(self.impl.storage.buffer) != count:
+        if count > 0 and len(rebind[DeviceStorage](self.impl.storage).buffer) != count:
             return TensorStatus.NOT_REPRESENTABLE
         # An unrelated caller context cannot order the issuing stream.
         # Reject BEFORE revoking a previously valid payload.
-        var issuing = self.impl.storage.lifetime_context.value().copy()
+        var issuing = rebind[DeviceStorage](self.impl.storage).lifetime_context.value().copy()
         if ctx != issuing:
             return TensorStatus.DEVICE_MISMATCH
         # Use the SAME checked begin/complete transaction as native AOT
         # out= operations. Without this gate, an overlapping full fill could
         # bypass a pending native writer while its output remained unreadable.
-        var update = self.impl.storage._begin_native_output_update()
+        var update = rebind[DeviceStorage](self.impl.storage)._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         try:
             if count > 0:
-                self.impl.storage.buffer.enqueue_fill(value)
+                rebind[DeviceStorage](self.impl.storage).buffer.enqueue_fill(value)
             var completion = issuing.create_event()
             issuing.stream().record_event(completion)
             completion.synchronize()
-            return self.impl.storage._complete_native_output_update(
+            return rebind[DeviceStorage](self.impl.storage)._complete_native_output_update(
                 issuing, TensorStatus.OK, write_ticket, True
             )
         except:
@@ -1030,12 +1048,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             except:
                 # A completion failure quarantines this actual output owner
                 # with its native context, not only an error-code snapshot.
-                return self.impl.storage._complete_native_output_update(
+                return rebind[DeviceStorage](self.impl.storage)._complete_native_output_update(
                     issuing, TensorStatus.GPU_QUIESCENCE_UNPROVEN,
                     write_ticket, True,
                 )
             # A drained but possibly partial fill remains unreadable.
-            return self.impl.storage._complete_native_output_update(
+            return rebind[DeviceStorage](self.impl.storage)._complete_native_output_update(
                 issuing, TensorStatus.TRANSFER_UNAVAILABLE,
                 write_ticket, True,
             )
@@ -1048,18 +1066,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # the source owner on an unproven completion. No implicit CPU fallback.
     def unsafe_copy_from_device_borrowed(
         mut self, ctx: DeviceContext, ref source: Tensor[Self.rank, DeviceStorage]
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # D2D is a complete overwrite of the destination owner. A freshly
         # allocated destination can be uninitialized; checking its *readable*
         # descriptor would incorrectly prevent initializing it by copying.
         # In contrast, the source MUST already be fully joined and readable.
-        if (self.impl.storage.quiescence_unproven
-            or self.impl.storage.quarantined_context
-            or self.impl.storage._native_update_pending
-            or not self.impl.storage.lifetime_context):
+        if (rebind[DeviceStorage](self.impl.storage).quiescence_unproven
+            or rebind[DeviceStorage](self.impl.storage).quarantined_context
+            or rebind[DeviceStorage](self.impl.storage)._native_update_pending
+            or not rebind[DeviceStorage](self.impl.storage).lifetime_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
         var dst_proof = self.impl.layout.validated_snapshot(
-            self.impl.storage.capacity()
+            rebind[DeviceStorage](self.impl.storage).capacity()
         )
         if not dst_proof.is_ok():
             return dst_proof.status
@@ -1077,45 +1095,45 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or dst.span_lo != 0 or src.span_lo != 0):
             return TensorStatus.NOT_REPRESENTABLE
         var count = dst.shape.numel()
-        if count != self.impl.storage.count or count != source.impl.storage.count:
+        if count != rebind[DeviceStorage](self.impl.storage).count or count != source.impl.storage.count:
             return TensorStatus.SIZE_MISMATCH
         # An empty logical copy still has physical allocation ownership.
         # Validate context identity before publishing the destination ready.
-        if not source.impl.storage._shares_issuing_context(self.impl.storage):
+        if not source.impl.storage._shares_issuing_context(rebind[DeviceStorage](self.impl.storage)):
             return TensorStatus.DEVICE_MISMATCH
-        var issuing = self.impl.storage.lifetime_context.value().copy()
+        var issuing = rebind[DeviceStorage](self.impl.storage).lifetime_context.value().copy()
         if ctx != issuing:
             return TensorStatus.DEVICE_MISMATCH
         if count > 0:
-            if (len(self.impl.storage.buffer) != count
+            if (len(rebind[DeviceStorage](self.impl.storage).buffer) != count
                 or len(source.impl.storage.buffer) != count):
                 return TensorStatus.NOT_REPRESENTABLE
             if not device_fp32_regions_disjoint(
-                self.impl.storage.buffer, count, source.impl.storage.buffer, count,
+                rebind[DeviceStorage](self.impl.storage).buffer, count, source.impl.storage.buffer, count,
             ):
                 return TensorStatus.ALIAS_UNKNOWN
         # Both full D2D and an empty logical D2D must observe the pending
         # writer gate. The empty owner was already allocation-event joined
         # by the checked device allocation/adoption path.
-        var update = self.impl.storage._begin_native_output_update()
+        var update = rebind[DeviceStorage](self.impl.storage)._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         if count == 0:
-            return self.impl.storage._complete_native_output_update(
+            return rebind[DeviceStorage](self.impl.storage)._complete_native_output_update(
                 issuing, TensorStatus.OK, write_ticket, True
             )
         var outcome = copy_d2d_fp32(
-            issuing, self.impl.storage.buffer, source.impl.storage.buffer, count,
+            issuing, rebind[DeviceStorage](self.impl.storage).buffer, source.impl.storage.buffer, count,
         )
-        return self.impl.storage._complete_native_output_update(
+        return rebind[DeviceStorage](self.impl.storage)._complete_native_output_update(
             issuing, outcome, write_ticket, True
         )
 
     def copy_from_device_consuming(
         mut self, ctx: DeviceContext,
         var source: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # A consuming source makes error lifetime explicit. The destination
         # is already quarantined by unsafe_copy_from_device_borrowed() if no GPU completion
         # proof exists; the source owner must be retained as well, because
@@ -1123,20 +1141,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # joined before the local source owner is destroyed.
         var outcome = self.unsafe_copy_from_device_borrowed(ctx, source)
         if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source.impl.storage)
+            forget_deinit(source^)
         return outcome
 
     def copy_from_device(
         mut self, ctx: DeviceContext,
         var source: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # Safe-by-default D2D owner API: source ownership is passed into the
         # call rather than borrowing a buffer that might outlive the call on
         # failed native quiescence. The existing consuming implementation
         # retains (quarantines) both owners if an in-flight DMA cannot join.
         # This is a source compatibility break for borrowed callers: those
         # must choose the explicitly unsafe borrowed entry point.
-        return self.copy_from_device_consuming(ctx, source)
+        return self.copy_from_device_consuming(ctx, source^)
 
     # The device analogue of Tensor.clone(): one new independent owned FP32
     # allocation, explicit same-device transfer, no materialization on CPU.
@@ -1147,7 +1165,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # consumes and quarantines the source owner on unknown quiescence.
     def unsafe_clone_device_borrowed(
         ref self, ctx: DeviceContext
-    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where Self.S == DeviceStorage:
         # The caller context MUST equal the source owner's retained context;
         # an unrelated native queue cannot certify producer completion.
         # An externally produced buffer on a different stream requires its
@@ -1161,7 +1179,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 TensorStatus.NOT_REPRESENTABLE
             )
         var count = mapping.shape.numel()
-        if count > 0 and len(self.impl.storage.buffer) != count:
+        if count > 0 and len(rebind[DeviceStorage](self.impl.storage).buffer) != count:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](
                 TensorStatus.NOT_REPRESENTABLE
             )
@@ -1177,11 +1195,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # THIS SAME native context so a foreign event cannot be mistaken
         # for completion of a different stream/device. External producers on
         # independent streams remain outside this explicit contract.
-        if not self.impl.storage.lifetime_context:
+        if not rebind[DeviceStorage](self.impl.storage).lifetime_context:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](
                 TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
-        var issuing = self.impl.storage.lifetime_context.value().copy()
+        var issuing = rebind[DeviceStorage](self.impl.storage).lifetime_context.value().copy()
         if ctx != issuing:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](
                 TensorStatus.DEVICE_MISMATCH
@@ -1205,7 +1223,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         try:
             if count > 0:
                 var status = copy_d2d_fp32(
-                    issuing, new_buffer, self.impl.storage.buffer, count,
+                    issuing, new_buffer, rebind[DeviceStorage](self.impl.storage).buffer, count,
                 )
                 if status != TensorStatus.OK:
                     # A fatal D2D copy reports GPU_QUIESCENCE_UNPROVEN when
@@ -1265,32 +1283,29 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if sealed != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](sealed)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            initialized_owner, target_layout.payload.value()
+            initialized_owner^, target_layout.payload.value()
         )
 
     def clone_device_consuming(
         deinit self, ctx: DeviceContext
-    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where Self.S == DeviceStorage:
         # Prefer this variant when the caller can transfer source ownership.
         # On fatal stream failure, the read-only source may still be in use
         # and must not be freed even when its destination was quarantined.
         # This does not claim to own the caller's DeviceContext or artifact.
         var outcome = self.unsafe_clone_device_borrowed(ctx)
         if outcome.status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(self.impl.storage)
-        return outcome
+            forget_deinit(self^)
+        return outcome^
 
     def clone_device(
         deinit self, ctx: DeviceContext
-    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[Tensor[Self.rank, DeviceStorage]] where Self.S == DeviceStorage:
         # Safe-by-default deep device copy. Retain a source owner on an
         # unprovably unfinished transfer; otherwise destroy it only after
         # native completion has been joined. Borrowing callers explicitly
         # opt into unsafe_clone_device_borrowed() and its lease contract.
-        var outcome = self.unsafe_clone_device_borrowed(ctx)
-        if outcome.status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(self.impl.storage)
-        return outcome
+        return (self^).clone_device_consuming(ctx)
 
     # Tensor remains the primary public API for device-resident operations.
     # This owner-scoped out= form leaves allocation policy explicit, supports
@@ -1306,13 +1321,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         selected: ExecutionPlan,
         right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         comptime assert operation >= 0 and operation <= 5, "FP32 device opcode must be 0..5"
         var prepared = selected.checked_snapshot()
         if not prepared.is_ok():
             return prepared.status
-        var plan = prepared.payload.value()
-        if plan.placement != ExecutionPlacement.GPU_ONLY or plan.output_device != 1:
+        var plan = prepared.payload.value().copy()
+        if plan.placement != materialize[ExecutionPlacement.GPU_ONLY]() or plan.output_device != 1:
             return TensorStatus.DEVICE_MISMATCH
         var left_check = self._checked_current_layout()
         if not left_check.is_ok():
@@ -1347,7 +1362,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         if not right.impl.storage._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
@@ -1357,10 +1372,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_bound_gpu_binary_fp32[operation](
             issuing, artifact, identity, target_arch, plan,
-            result.impl.storage.buffer, self.impl.storage.buffer,
+            result.impl.storage.buffer, rebind[DeviceStorage](self.impl.storage).buffer,
             right.impl.storage.buffer,
         )
         # Rejected AOT identities, shapes and aliases never enqueue. Keep
@@ -1375,7 +1390,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref rhs: Tensor[right_rank, DeviceStorage],
         mut result: Tensor[out_rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # UNSAFE BORROWED API: if GPU_QUIESCENCE_UNPROVEN is returned, the
         # caller MUST retain both inputs and the DeviceContext until native
         # device reset/recovery. The result's backing allocation is retained
@@ -1402,7 +1417,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         if not rhs.impl.storage._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
@@ -1412,12 +1427,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_gpu_binary_strided_fp32[
             out_rank, Self.rank, right_rank, operation,
         ](
             issuing, selected, development_allow_runtime_compilation, result.impl.storage.buffer,
-            self.impl.storage.buffer, rhs.impl.storage.buffer,
+            rebind[DeviceStorage](self.impl.storage).buffer, rhs.impl.storage.buffer,
             output_check.payload.value(), left_check.payload.value(),
             right_check.payload.value(),
         )
@@ -1429,7 +1444,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, selected: ExecutionPlan,
         mut result: Tensor[Self.rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # UNSAFE BORROWED API: caller retains source and DeviceContext until
         # the GPU has quiesced, including an unproven-quiescence failure.
         # Prefer device_unary_strided_consuming when ownership can move.
@@ -1451,7 +1466,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         var issuing = result.impl.storage.lifetime_context.value().copy()
         if ctx != issuing:
@@ -1459,10 +1474,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_gpu_unary_strided_fp32[Self.rank, operation](
             issuing, selected, development_allow_runtime_compilation, result.impl.storage.buffer,
-            self.impl.storage.buffer,
+            rebind[DeviceStorage](self.impl.storage).buffer,
             output_check.payload.value(), input_check.payload.value(),
         )
         return result.impl.storage._complete_native_output_update(
@@ -1478,7 +1493,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var right: Tensor[right_rank, DeviceStorage],
         mut result: Tensor[out_rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # An owner-consuming entry point prevents early destruction of both
         # inputs if neither GPU event nor fallback stream wait can prove
         # quiescence. DeviceContext lifetime remains a caller obligation.
@@ -1486,8 +1501,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             operation, right_rank, out_rank,
         ](ctx, selected, right, result, development_allow_runtime_compilation)
         if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(left)
-            forget_deinit(right)
+            forget_deinit(left^)
+            forget_deinit(right^)
         return outcome
 
     @staticmethod
@@ -1496,19 +1511,19 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var source: Self,
         mut result: Tensor[Self.rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         var outcome = source.unsafe_device_unary_strided_into[operation](
             ctx, selected, result, development_allow_runtime_compilation
         )
         if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source)
+            forget_deinit(source^)
         return outcome
 
     def unsafe_device_reduce_axis_strided_into[operation: Int, axis: Int](
         ref self, ctx: DeviceContext, selected: ExecutionPlan,
         mut result: Tensor[Self.rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         # Keepdims result: the selected axis has extent 1; all other axes
         # preserve input dimensions. Arbitrary signed strides are accepted.
         # Borrowed source/context must survive unknown GPU quiescence.
@@ -1530,7 +1545,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         var issuing = result.impl.storage.lifetime_context.value().copy()
         if ctx != issuing:
@@ -1538,12 +1553,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_gpu_reduce_axis_strided_fp32[
             Self.rank, axis, operation,
         ](
             issuing, selected, development_allow_runtime_compilation, result.impl.storage.buffer,
-            self.impl.storage.buffer,
+            rebind[DeviceStorage](self.impl.storage).buffer,
             output_check.payload.value(), input_check.payload.value(),
         )
         return result.impl.storage._complete_native_output_update(
@@ -1556,19 +1571,19 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var source: Self,
         mut result: Tensor[Self.rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         var outcome = source.unsafe_device_reduce_axis_strided_into[
             operation, axis,
         ](ctx, selected, result, development_allow_runtime_compilation)
         if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source)
+            forget_deinit(source^)
         return outcome
 
     def unsafe_device_reduce_axes_strided_into[operation: Int](
         ref self, ctx: DeviceContext, selected: ExecutionPlan,
         mut result: Tensor[Self.rank, DeviceStorage], axes_mask: Int,
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         # Runtime bitmask selects one or more axes of a statically known rank.
         # Every selected axis must be a size-one axis in the output mapping.
         # Inputs are BORROWED; the caller must preserve their lifetimes if
@@ -1591,7 +1606,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         var issuing = result.impl.storage.lifetime_context.value().copy()
         if ctx != issuing:
@@ -1599,12 +1614,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_gpu_reduce_axes_strided_fp32[
             Self.rank, operation,
         ](
             issuing, selected, development_allow_runtime_compilation,
-            result.impl.storage.buffer, self.impl.storage.buffer,
+            result.impl.storage.buffer, rebind[DeviceStorage](self.impl.storage).buffer,
             output_layout.payload.value(), source_layout.payload.value(),
             axes_mask,
         )
@@ -1617,20 +1632,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ctx: DeviceContext, selected: ExecutionPlan,
         var source: Self, mut result: Tensor[Self.rank, DeviceStorage],
         axes_mask: Int, development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         var outcome = source.unsafe_device_reduce_axes_strided_into[operation](
             ctx, selected, result, axes_mask,
             development_allow_runtime_compilation,
         )
         if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source)
+            forget_deinit(source^)
         return outcome
 
     def unsafe_device_scan_axis_strided_into[operation: Int, axis: Int](
         ref self, ctx: DeviceContext, selected: ExecutionPlan,
         mut result: Tensor[Self.rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         # Scan follows logical axis order regardless of positive/negative
         # physical strides. Borrowing remains unsafe on unproven quiescence.
         var input_check = self._checked_current_layout()
@@ -1651,7 +1666,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         var issuing = result.impl.storage.lifetime_context.value().copy()
         if ctx != issuing:
@@ -1659,12 +1674,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_gpu_scan_axis_strided_fp32[
             Self.rank, axis, operation,
         ](
             issuing, selected, development_allow_runtime_compilation, result.impl.storage.buffer,
-            self.impl.storage.buffer,
+            rebind[DeviceStorage](self.impl.storage).buffer,
             output_check.payload.value(), input_check.payload.value(),
         )
         return result.impl.storage._complete_native_output_update(
@@ -1677,19 +1692,19 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var source: Self,
         mut result: Tensor[Self.rank, DeviceStorage],
         development_allow_runtime_compilation: Bool = False,
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         var outcome = source.unsafe_device_scan_axis_strided_into[
             operation, axis,
         ](ctx, selected, result, development_allow_runtime_compilation)
         if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source)
+            forget_deinit(source^)
         return outcome
 
     def device_unary_into[operation: Int](
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: UnaryAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         comptime assert operation >= 0 and operation <= 8, "invalid unary opcode"
         var lhs_check = self._checked_current_layout()
         if not lhs_check.is_ok():
@@ -1724,7 +1739,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         var issuing = result.impl.storage.lifetime_context.value().copy()
         if ctx != issuing:
@@ -1732,10 +1747,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_bound_gpu_unary_fp32[operation](
             issuing, artifact, identity, target_arch, safe_plan,
-            result.impl.storage.buffer, self.impl.storage.buffer,
+            result.impl.storage.buffer, rebind[DeviceStorage](self.impl.storage).buffer,
         )
         # Rejected AOT identities, shapes and aliases never enqueue. Keep
         # an already-initialized out= owner readable on those errors. Only
@@ -1757,7 +1772,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         target_arch: Int,
         plan: ExecutionPlan,
         mut result: Tensor[Self.rank - 1, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         comptime if operation < 0 or operation > 4:
             return TensorStatus.UNSUPPORTED
         var source_proof = self._checked_current_layout()
@@ -1803,7 +1818,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         var issuing = result.impl.storage.lifetime_context.value().copy()
         if ctx != issuing:
@@ -1811,10 +1826,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_bound_gpu_reduce_rows_fp32[operation](
             issuing, artifact, identity, target_arch, safe_plan,
-            result.impl.storage.buffer, self.impl.storage.buffer, rows, cols,
+            result.impl.storage.buffer, rebind[DeviceStorage](self.impl.storage).buffer, rows, cols,
         )
         # Rejected AOT identities, shapes and aliases never enqueue. Keep
         # an already-initialized out= owner readable on those errors. Only
@@ -1829,7 +1844,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ReduceRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank - 1, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_reduce_last_axis_into[0](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1838,7 +1853,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ReduceRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank - 1, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_reduce_last_axis_into[1](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1847,7 +1862,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ReduceRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank - 1, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_reduce_last_axis_into[2](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1856,7 +1871,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ReduceRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank - 1, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_reduce_last_axis_into[3](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1865,7 +1880,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ReduceRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank - 1, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_reduce_last_axis_into[4](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1877,7 +1892,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ScanRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         comptime if operation < 0 or operation > 3:
             return TensorStatus.UNSUPPORTED
         var source_proof = self._checked_current_layout()
@@ -1920,7 +1935,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         var issuing = result.impl.storage.lifetime_context.value().copy()
         if ctx != issuing:
@@ -1928,10 +1943,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_bound_gpu_scan_rows_fp32[operation](
             issuing, artifact, identity, target_arch, snapshot,
-            result.impl.storage.buffer, self.impl.storage.buffer, rows, cols,
+            result.impl.storage.buffer, rebind[DeviceStorage](self.impl.storage).buffer, rows, cols,
         )
         # Rejected AOT identities, shapes and aliases never enqueue. Keep
         # an already-initialized out= owner readable on those errors. Only
@@ -1944,7 +1959,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ScanRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_scan_last_axis_into[0](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1953,7 +1968,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ScanRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_scan_last_axis_into[1](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1962,7 +1977,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ScanRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_scan_last_axis_into[2](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1971,7 +1986,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self, ctx: DeviceContext, artifact: DeviceExternalFunction,
         identity: ScanRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         return self.device_scan_last_axis_into[3](
             ctx, artifact, identity, target_arch, plan, result,
         )
@@ -1986,7 +2001,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         plan: ExecutionPlan,
         rhs: Tensor[2, DeviceStorage],
         mut result: Tensor[2, DeviceStorage],
-    ) -> TensorStatus where Self.rank == 2 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank == 2 and Self.S == DeviceStorage:
         # This operation consumes NO host memory and makes NO implicit copy.
         # A read-only borrow keeps both operands live until the event join.
         var lhs_check = self._checked_current_layout()
@@ -2029,7 +2044,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         if not rhs.impl.storage._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
@@ -2039,10 +2054,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_bound_gpu_gemm_fp32(
             issuing, artifact, identity, target_arch, math_mode, safe_plan,
-            result.impl.storage.buffer, self.impl.storage.buffer,
+            result.impl.storage.buffer, rebind[DeviceStorage](self.impl.storage).buffer,
             rhs.impl.storage.buffer, m, k, n,
         )
         # Rejected AOT identities, shapes and aliases never enqueue. Keep
@@ -2066,7 +2081,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         plan: ExecutionPlan,
         vector: Tensor[1, DeviceStorage],
         mut result: Tensor[1, DeviceStorage],
-    ) -> TensorStatus where Self.rank == 2 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank == 2 and Self.S == DeviceStorage:
         var matrix_proof = self._checked_current_layout()
         if not matrix_proof.is_ok():
             return matrix_proof.status
@@ -2106,7 +2121,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             or result.impl.storage.quiescence_unproven
             or result.impl.storage.quarantined_context):
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        if not self.impl.storage._shares_issuing_context(result.impl.storage):
+        if not rebind[DeviceStorage](self.impl.storage)._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
         if not vector.impl.storage._shares_issuing_context(result.impl.storage):
             return TensorStatus.DEVICE_MISMATCH
@@ -2116,10 +2131,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var update = result.impl.storage._begin_native_output_update()
         if not update.is_ok():
             return update.status
-        var write_ticket = update.payload.value()
+        var write_ticket = update.payload.take()
         var outcome = run_owned_bound_gpu_gemm_fp32(
             issuing, artifact, identity, target_arch, math_mode, frozen,
-            result.impl.storage.buffer, self.impl.storage.buffer,
+            result.impl.storage.buffer, rebind[DeviceStorage](self.impl.storage).buffer,
             vector.impl.storage.buffer, m, k, 1,
         )
         # Rejected AOT identities, shapes and aliases never enqueue. Keep
@@ -2144,13 +2159,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         selected: ExecutionPlan, var left: Self,
         var right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         var status = left.device_binary_into[operation](
             ctx, artifact, identity, target_arch, selected, right, result,
         )
         if status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(left)
-            forget_deinit(right)
+            forget_deinit(left^)
+            forget_deinit(right^)
         return status
 
     @staticmethod
@@ -2159,12 +2174,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: UnaryAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, var source: Self,
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         var status = source.device_unary_into[operation](
             ctx, artifact, identity, target_arch, plan, result,
         )
         if status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source)
+            forget_deinit(source^)
         return status
 
     @staticmethod
@@ -2173,12 +2188,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: ReduceRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, var source: Self,
         mut result: Tensor[Self.rank - 1, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         var status = source.device_reduce_last_axis_into[operation](
             ctx, artifact, identity, target_arch, plan, result,
         )
         if status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source)
+            forget_deinit(source^)
         return status
 
     @staticmethod
@@ -2187,12 +2202,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: ScanRowsAOTArtifactIdentity, target_arch: Int,
         plan: ExecutionPlan, var source: Self,
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where Self.rank >= 1 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank >= 1 and Self.S == DeviceStorage:
         var status = source.device_scan_last_axis_into[operation](
             ctx, artifact, identity, target_arch, plan, result,
         )
         if status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(source)
+            forget_deinit(source^)
         return status
 
     @staticmethod
@@ -2202,13 +2217,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         math_mode: Int, plan: ExecutionPlan, var left: Self,
         var right: Tensor[2, DeviceStorage],
         mut result: Tensor[2, DeviceStorage],
-    ) -> TensorStatus where Self.rank == 2 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank == 2 and Self.S == DeviceStorage:
         var status = left.device_mm_into(
             ctx, artifact, identity, target_arch, math_mode, plan, right, result,
         )
         if status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(left)
-            forget_deinit(right)
+            forget_deinit(left^)
+            forget_deinit(right^)
         return status
 
     @staticmethod
@@ -2218,13 +2233,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         math_mode: Int, plan: ExecutionPlan, var matrix: Self,
         var vector: Tensor[1, DeviceStorage],
         mut result: Tensor[1, DeviceStorage],
-    ) -> TensorStatus where Self.rank == 2 and identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.rank == 2 and Self.S == DeviceStorage:
         var status = matrix.device_gemv_into(
             ctx, artifact, identity, target_arch, math_mode, plan, vector, result,
         )
         if status == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-            forget_deinit(matrix)
-            forget_deinit(vector)
+            forget_deinit(matrix^)
+            forget_deinit(vector^)
         return status
 
     def device_add_into(
@@ -2232,7 +2247,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: BinaryAOTArtifactIdentity, target_arch: Int,
         selected: ExecutionPlan, right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         return self.device_binary_into[0](
             ctx, artifact, identity, target_arch, selected, right, result,
         )
@@ -2242,7 +2257,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: BinaryAOTArtifactIdentity, target_arch: Int,
         selected: ExecutionPlan, right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         return self.device_binary_into[1](
             ctx, artifact, identity, target_arch, selected, right, result,
         )
@@ -2252,7 +2267,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: BinaryAOTArtifactIdentity, target_arch: Int,
         selected: ExecutionPlan, right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         return self.device_binary_into[2](
             ctx, artifact, identity, target_arch, selected, right, result,
         )
@@ -2262,7 +2277,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: BinaryAOTArtifactIdentity, target_arch: Int,
         selected: ExecutionPlan, right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         return self.device_binary_into[3](
             ctx, artifact, identity, target_arch, selected, right, result,
         )
@@ -2272,7 +2287,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: BinaryAOTArtifactIdentity, target_arch: Int,
         selected: ExecutionPlan, right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         return self.device_binary_into[4](
             ctx, artifact, identity, target_arch, selected, right, result,
         )
@@ -2282,7 +2297,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         identity: BinaryAOTArtifactIdentity, target_arch: Int,
         selected: ExecutionPlan, right: Tensor[Self.rank, DeviceStorage],
         mut result: Tensor[Self.rank, DeviceStorage],
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         return self.device_binary_into[5](
             ctx, artifact, identity, target_arch, selected, right, result,
         )
@@ -2303,25 +2318,25 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def _checked_device_strided_write_layout(
         ref self,
-    ) -> TensorResult[TensorLayout[Self.rank]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[TensorLayout[Self.rank]] where Self.S == DeviceStorage:
         # A strided native writer may initialize an unreadable GPU owner only
         # when the validated UNIQUE layout covers every logical FP32 element
         # of that owner. Partial views require previously initialized memory;
         # otherwise they would publish unwritten, unspecified payload bytes.
         # This proof is a source-level bounds/coverage proof, NOT native
         # event/stream ordering. Native writes still need a joined completion.
-        if (self.impl.storage.quiescence_unproven
-            or self.impl.storage.quarantined_context
-            or self.impl.storage._native_update_pending
-            or not self.impl.storage.lifetime_context):
+        if (rebind[DeviceStorage](self.impl.storage).quiescence_unproven
+            or rebind[DeviceStorage](self.impl.storage).quarantined_context
+            or rebind[DeviceStorage](self.impl.storage)._native_update_pending
+            or not rebind[DeviceStorage](self.impl.storage).lifetime_context):
             return TensorResult[TensorLayout[Self.rank]](
                 TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
         var checked = self.impl.layout.validated_snapshot(
-            self.impl.storage.capacity()
+            rebind[DeviceStorage](self.impl.storage).capacity()
         )
         if not checked.is_ok():
-            return checked
+            return checked^
         var mapping = checked.payload.value()
         if not mapping.is_proven_unique():
             return TensorResult[TensorLayout[Self.rank]](
@@ -2329,33 +2344,33 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
         var writes_entire_owner = (
             mapping.is_exhaustive() and mapping.span_lo == 0
-            and mapping.shape.numel() == self.impl.storage.count
+            and mapping.shape.numel() == rebind[DeviceStorage](self.impl.storage).count
         )
-        if not writes_entire_owner and not self.impl.storage.is_initialized():
+        if not writes_entire_owner and not rebind[DeviceStorage](self.impl.storage).is_initialized():
             return TensorResult[TensorLayout[Self.rank]](
                 TensorStatus.UNINITIALIZED
             )
-        return checked
+        return checked^
 
     def _checked_device_complete_overwrite_layout(
         ref self,
-    ) -> TensorResult[TensorLayout[Self.rank]] where identical(Self.S, DeviceStorage):
+    ) -> TensorResult[TensorLayout[Self.rank]] where Self.S == DeviceStorage:
         # An out= kernel is a complete writer, not a reader of the previous
         # destination. Validate its structural and allocation proof without
         # demanding that the prior FP32 payload was initialized. Incomplete
         # or foreign-stream-quarantined owners are never writable this way.
-        if (self.impl.storage.quiescence_unproven
-            or self.impl.storage.quarantined_context
-            or self.impl.storage._native_update_pending
-            or not self.impl.storage.lifetime_context):
+        if (rebind[DeviceStorage](self.impl.storage).quiescence_unproven
+            or rebind[DeviceStorage](self.impl.storage).quarantined_context
+            or rebind[DeviceStorage](self.impl.storage)._native_update_pending
+            or not rebind[DeviceStorage](self.impl.storage).lifetime_context):
             return TensorResult[TensorLayout[Self.rank]](
                 TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
         var verified = self.impl.layout.validated_snapshot(
-            self.impl.storage.capacity()
+            rebind[DeviceStorage](self.impl.storage).capacity()
         )
         if not verified.is_ok():
-            return verified
+            return verified^
         var mapping = verified.payload.value()
         if not mapping.is_proven_unique():
             return TensorResult[TensorLayout[Self.rank]](
@@ -2368,13 +2383,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
         # The AOT writer must overwrite the entire *owner*, not merely a
         # view or prefix, before initialized_elements may become count.
-        if mapping.shape.numel() != self.impl.storage.count:
+        if mapping.shape.numel() != rebind[DeviceStorage](self.impl.storage).count:
             return TensorResult[TensorLayout[Self.rank]](
                 TensorStatus.SIZE_MISMATCH
             )
-        return verified
+        return verified^
 
-    def _finish_complete_overwrite(deinit self) -> TensorResult[Self] where identical(Self.S, HostStorage):
+    def _finish_complete_overwrite(deinit self) -> TensorResult[Self] where Self.S == HostStorage:
         # The only completion path for an INTERNAL allocation-only output.
         # Caller has written all elements in one of the checked CPU kernels.
         # This check is performed once outside any elementwise/matrix loop.
@@ -2386,10 +2401,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Self](TensorStatus.NOT_EXHAUSTIVE)
         if mapping.shape.numel() != self.impl.storage.capacity():
             return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-        var status = self.impl.storage._mark_complete_overwrite()
+        var status = rebind[HostStorage](self.impl.storage)._mark_complete_overwrite()
         if status != TensorStatus.OK:
             return TensorResult[Self](status)
-        return TensorResult[Self](self)
+        return TensorResult[Self](self^)
 
     def checked_layout(self) -> TensorResult[TensorLayout[Self.rank]]:
         # A public, validated COPY of the strided descriptor. No raw pointer,
@@ -2583,8 +2598,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 self.impl.storage._invalidate_after_failed_write()
         return outcome
 
-    def data_ptr(
-        ref self
+    def data_ptr[origin: Origin[mut=False]](
+        ref[origin] self
     ) -> TensorResult[Pointer[Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         # Borrow the pointer at the logical origin, not the allocation base.
         # Its origin ties the pointer lifetime to this Tensor owner.
@@ -2608,50 +2623,50 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             whole.unsafe_ptr().unsafe_offset(logical_origin)
         )
 
-    def as_c_span(
-        ref self
-    ) -> TensorResult[Span[False, Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+    def as_c_span[origin: Origin[mut=False]](
+        ref[origin] self
+    ) -> TensorResult[Span[Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         # Contiguous logical C-order view without allocation or hidden copy.
         # Rank zero contains exactly one Float32; an empty tensor returns an
         # empty borrowed Span, even though its owner has a physical sentinel.
         var checked_layout = self._checked_current_layout()
         if not checked_layout.is_ok():
-            return TensorResult[Span[False, Float32, origin_of(self.impl.storage)]](
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
                 checked_layout.status
             )
         var mapping = checked_layout.payload.value()
         if not mapping.is_c_contiguous() or not mapping.is_exhaustive():
-            return TensorResult[Span[False, Float32, origin_of(self.impl.storage)]](
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
                 TensorStatus.NOT_REPRESENTABLE
             )
         var whole = self.impl.storage.borrow_span()
         var begin = mapping.span_lo
-        return TensorResult[Span[False, Float32, origin_of(self.impl.storage)]](
+        return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
             whole[begin:begin + mapping.shape.numel()]
         )
 
     def as_mut_c_span(
         mut self
-    ) -> TensorResult[Span[True, Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[Span[Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         # A mutable contiguous borrow additionally requires injective mapping.
         # Do not expose writable broadcast/overlapping mappings.
         var checked_layout = self._checked_current_layout()
         if not checked_layout.is_ok():
-            return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
                 checked_layout.status
             )
         var mapping = checked_layout.payload.value()
         if not mapping.is_proven_unique():
-            return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
                 TensorStatus.OVERLAPPING
             )
         if not mapping.is_c_contiguous() or not mapping.is_exhaustive():
-            return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
                 TensorStatus.NOT_REPRESENTABLE
             )
         var whole = self.impl.storage.borrow_mut_span()
         var begin = mapping.span_lo
-        return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](
+        return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
             whole[begin:begin + mapping.shape.numel()]
         )
 
@@ -2664,239 +2679,279 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # views contiguous physical FP32 storage in F order (NOT logical C order).
     def as_static_flat_f_layout_tensor[extent: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout.row_major(extent), origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout.row_major(extent), Origin[mut=False](origin_of(self.impl.storage))]] where conforms_to(Self.S, HostSpanStorage):
         var source = self.view_checked()
         if not source.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout.row_major(extent), origin_of(self.impl.storage)]](source.status)
+            return TensorResult[LayoutTensor[DType.float32, Layout.row_major(extent), Origin[mut=False](origin_of(self.impl.storage))]](source.status)
         return try_as_static_flat_f_layout_tensor[Self.rank, extent](source.payload.take())
 
     def as_mut_static_flat_f_layout_tensor[extent: Int](
         mut self,
     ) -> TensorResult[LayoutTensor[DType.float32, Layout.row_major(extent), origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
-        var source = self.mut_view_checked()
+        var source = self.mut_view()
         if not source.is_ok():
             return TensorResult[LayoutTensor[DType.float32, Layout.row_major(extent), origin_of(self.impl.storage)]](source.status)
-        return try_as_mut_static_flat_f_layout_tensor[Self.rank, extent](source.payload.take())
+        var view = source.payload.take()
+        return try_as_mut_static_flat_f_layout_tensor[Self.rank, extent](view)
 
     def as_static_flat_f_tile_tensor[extent: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], Origin[mut=False](origin_of(self.impl.storage))]] where conforms_to(Self.S, HostSpanStorage):
         var source = self.view_checked()
         if not source.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]](source.status)
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], Origin[mut=False](origin_of(self.impl.storage))]](source.status)
         return try_as_static_flat_f_tile_tensor[Self.rank, extent](source.payload.take())
 
     def as_mut_static_flat_f_tile_tensor[extent: Int](
         mut self,
     ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
-        var source = self.mut_view_checked()
+        var source = self.mut_view()
         if not source.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]](source.status)
-        return try_as_mut_static_flat_f_tile_tensor[Self.rank, extent](source.payload.take())
+        var view = source.payload.take()
+        return try_as_mut_static_flat_f_tile_tensor[Self.rank, extent](view)
 
     # Native/MAX AOT layouts with statically supplied exact strides.
     def as_static_strided_layout_tensor_3d[d0: Int, d1: Int, d2: Int, s0: Int, s1: Int, s2: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2)), origin_of(self.impl.storage)]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_layout_tensor_3d[d0, d1, d2, s0, s1, s2](borrowed.payload.take())
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2)), Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_layout_tensor_3d[d0, d1, d2, s0, s1, s2](
+            rebind_var[TensorView[3, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_layout_tensor_3d[d0: Int, d1: Int, d2: Int, s0: Int, s1: Int, s2: Int](
         mut self,
     ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2)), origin_of(self.impl.storage)]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_layout_tensor_3d[d0, d1, d2, s0, s1, s2](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[3, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_3d[d0, d1, d2, s0, s1, s2](view)
 
     def as_static_strided_tile_tensor_3d[d0: Int, d1: Int, d2: Int, s0: Int, s1: Int, s2: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2))], origin_of(self.impl.storage)]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_tile_tensor_3d[d0, d1, d2, s0, s1, s2](borrowed.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2))], Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_tile_tensor_3d[d0, d1, d2, s0, s1, s2](
+            rebind_var[TensorView[3, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_tile_tensor_3d[d0: Int, d1: Int, d2: Int, s0: Int, s1: Int, s2: Int](
         mut self,
     ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2))], origin_of(self.impl.storage)]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2), IntTuple(s0, s1, s2))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_tile_tensor_3d[d0, d1, d2, s0, s1, s2](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[3, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_3d[d0, d1, d2, s0, s1, s2](view)
 
     def as_static_strided_layout_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int, s0: Int, s1: Int, s2: Int, s3: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3)), origin_of(self.impl.storage)]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_layout_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](borrowed.payload.take())
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3)), Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_layout_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](
+            rebind_var[TensorView[4, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_layout_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int, s0: Int, s1: Int, s2: Int, s3: Int](
         mut self,
     ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3)), origin_of(self.impl.storage)]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_layout_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[4, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](view)
 
     def as_static_strided_tile_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int, s0: Int, s1: Int, s2: Int, s3: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3))], origin_of(self.impl.storage)]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_tile_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](borrowed.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3))], Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_tile_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](
+            rebind_var[TensorView[4, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_tile_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int, s0: Int, s1: Int, s2: Int, s3: Int](
         mut self,
     ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3))], origin_of(self.impl.storage)]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3), IntTuple(s0, s1, s2, s3))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_tile_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[4, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_4d[d0, d1, d2, d3, s0, s1, s2, s3](view)
 
     def as_static_strided_layout_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4)), origin_of(self.impl.storage)]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_layout_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](borrowed.payload.take())
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4)), Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_layout_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](
+            rebind_var[TensorView[5, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_layout_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int](
         mut self,
     ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4)), origin_of(self.impl.storage)]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_layout_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[5, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](view)
 
     def as_static_strided_tile_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4))], origin_of(self.impl.storage)]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_tile_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](borrowed.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4))], Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_tile_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](
+            rebind_var[TensorView[5, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_tile_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int](
         mut self,
     ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4))], origin_of(self.impl.storage)]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4), IntTuple(s0, s1, s2, s3, s4))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_tile_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[5, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_5d[d0, d1, d2, d3, d4, s0, s1, s2, s3, s4](view)
 
     def as_static_strided_layout_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5)), origin_of(self.impl.storage)]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_layout_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](borrowed.payload.take())
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5)), Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_layout_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](
+            rebind_var[TensorView[6, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_layout_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int](
         mut self,
     ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5)), origin_of(self.impl.storage)]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_layout_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[6, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](view)
 
     def as_static_strided_tile_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5))], origin_of(self.impl.storage)]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_tile_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](borrowed.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5))], Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_tile_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](
+            rebind_var[TensorView[6, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_tile_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int](
         mut self,
     ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5))], origin_of(self.impl.storage)]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5), IntTuple(s0, s1, s2, s3, s4, s5))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_tile_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[6, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_6d[d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5](view)
 
     def as_static_strided_layout_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6)), origin_of(self.impl.storage)]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_layout_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](borrowed.payload.take())
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6)), Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_layout_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](
+            rebind_var[TensorView[7, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_layout_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int](
         mut self,
     ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6)), origin_of(self.impl.storage)]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_layout_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[7, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](view)
 
     def as_static_strided_tile_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6))], origin_of(self.impl.storage)]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](borrowed.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6))], Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](
+            rebind_var[TensorView[7, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_tile_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int](
         mut self,
     ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6))], origin_of(self.impl.storage)]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6), IntTuple(s0, s1, s2, s3, s4, s5, s6))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[7, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6, s0, s1, s2, s3, s4, s5, s6](view)
 
     def as_static_strided_layout_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int, s7: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7)), origin_of(self.impl.storage)]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_layout_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](borrowed.payload.take())
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7)), Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_layout_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](
+            rebind_var[TensorView[8, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_layout_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int, s7: Int](
         mut self,
     ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7)), origin_of(self.impl.storage)]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7)), origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_layout_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[8, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](view)
 
     def as_static_strided_tile_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int, s7: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7))], origin_of(self.impl.storage)]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view_checked()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_static_strided_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](borrowed.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7))], Origin[mut=False](origin_of(self.impl.storage))]](borrowed.status)
+        return try_as_static_strided_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](
+            rebind_var[TensorView[8, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
     def as_mut_static_strided_tile_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int, s0: Int, s1: Int, s2: Int, s3: Int, s4: Int, s5: Int, s6: Int, s7: Int](
         mut self,
     ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7))], origin_of(self.impl.storage)]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
-        var borrowed = self.mut_view_checked()
+        var borrowed = self.mut_view()
         if not borrowed.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(d0, d1, d2, d3, d4, d5, d6, d7), IntTuple(s0, s1, s2, s3, s4, s5, s6, s7))], origin_of(self.impl.storage)]](borrowed.status)
-        return try_as_mut_static_strided_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[8, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7, s0, s1, s2, s3, s4, s5, s6, s7](view)
 
 
     def as_static_strided_layout_tensor_1d[extent: Int, step: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(extent), IntTuple(step)), origin_of(self.impl.storage)]] where Self.rank == 1 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(extent), IntTuple(step)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 1 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(extent), IntTuple(step)), origin_of(self.impl.storage)]](
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(extent), IntTuple(step)), Origin[mut=False](origin_of(self.impl.storage))]](
                 borrowed.status
             )
-        return try_as_static_strided_layout_tensor_1d[extent, step](borrowed.payload.take())
+        return try_as_static_strided_layout_tensor_1d[extent, step](
+            rebind_var[TensorView[1, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
 
     def as_mut_static_strided_layout_tensor_1d[extent: Int, step: Int](
@@ -2907,18 +2962,21 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(extent), IntTuple(step)), origin_of(self.impl.storage)]](
                 borrowed.status
             )
-        return try_as_mut_static_strided_layout_tensor_1d[extent, step](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[1, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_1d[extent, step](view)
 
 
     def as_static_strided_tile_tensor_1d[extent: Int, step: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(extent), IntTuple(step))], origin_of(self.impl.storage)]] where Self.rank == 1 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(extent), IntTuple(step))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 1 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(extent), IntTuple(step))], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(extent), IntTuple(step))], Origin[mut=False](origin_of(self.impl.storage))]](
                 borrowed.status
             )
-        return try_as_static_strided_tile_tensor_1d[extent, step](borrowed.payload.take())
+        return try_as_static_strided_tile_tensor_1d[extent, step](
+            rebind_var[TensorView[1, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
 
     def as_mut_static_strided_tile_tensor_1d[extent: Int, step: Int](
@@ -2929,18 +2987,21 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(extent), IntTuple(step))], origin_of(self.impl.storage)]](
                 borrowed.status
             )
-        return try_as_mut_static_strided_tile_tensor_1d[extent, step](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[1, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_1d[extent, step](view)
 
 
     def as_static_strided_layout_tensor_2d[rows: Int, cols: Int, row_step: Int, col_step: Int](
         ref self,
-    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(rows, cols), IntTuple(row_step, col_step)), origin_of(self.impl.storage)]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(rows, cols), IntTuple(row_step, col_step)), Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view()
         if not borrowed.is_ok():
-            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(rows, cols), IntTuple(row_step, col_step)), origin_of(self.impl.storage)]](
+            return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(rows, cols), IntTuple(row_step, col_step)), Origin[mut=False](origin_of(self.impl.storage))]](
                 borrowed.status
             )
-        return try_as_static_strided_layout_tensor_2d[rows, cols, row_step, col_step](borrowed.payload.take())
+        return try_as_static_strided_layout_tensor_2d[rows, cols, row_step, col_step](
+            rebind_var[TensorView[2, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
 
     def as_mut_static_strided_layout_tensor_2d[rows: Int, cols: Int, row_step: Int, col_step: Int](
@@ -2951,18 +3012,21 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[LayoutTensor[DType.float32, Layout(IntTuple(rows, cols), IntTuple(row_step, col_step)), origin_of(self.impl.storage)]](
                 borrowed.status
             )
-        return try_as_mut_static_strided_layout_tensor_2d[rows, cols, row_step, col_step](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[2, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_layout_tensor_2d[rows, cols, row_step, col_step](view)
 
 
     def as_static_strided_tile_tensor_2d[rows: Int, cols: Int, row_step: Int, col_step: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(rows, cols), IntTuple(row_step, col_step))], origin_of(self.impl.storage)]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(rows, cols), IntTuple(row_step, col_step))], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
         var borrowed = self.view()
         if not borrowed.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(rows, cols), IntTuple(row_step, col_step))], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(rows, cols), IntTuple(row_step, col_step))], Origin[mut=False](origin_of(self.impl.storage))]](
                 borrowed.status
             )
-        return try_as_static_strided_tile_tensor_2d[rows, cols, row_step, col_step](borrowed.payload.take())
+        return try_as_static_strided_tile_tensor_2d[rows, cols, row_step, col_step](
+            rebind_var[TensorView[2, origin_of(self.impl.storage)]](borrowed.payload.take())
+        )
 
 
     def as_mut_static_strided_tile_tensor_2d[rows: Int, cols: Int, row_step: Int, col_step: Int](
@@ -2973,18 +3037,21 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout(IntTuple(rows, cols), IntTuple(row_step, col_step))], origin_of(self.impl.storage)]](
                 borrowed.status
             )
-        return try_as_mut_static_strided_tile_tensor_2d[rows, cols, row_step, col_step](borrowed.payload.take())
+        var view = rebind_var[TensorMutView[2, origin_of(self.impl.storage)]](borrowed.payload.take())
+        return try_as_mut_static_strided_tile_tensor_2d[rows, cols, row_step, col_step](view)
 
     # Rank-preserving static MAX TileTensor facade (same owning Tensor).
     def as_c_tile_tensor_1d[extent: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]] where Self.rank == 1 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 1 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], Origin[mut=False](origin_of(self.impl.storage))]](
                 proof.status
             )
-        return try_as_static_c_tile_tensor_1d[extent](proof.payload.take())
+        return try_as_static_c_tile_tensor_1d[extent](
+            rebind_var[TensorView[1, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_c_tile_tensor_1d[extent: Int](
         mut self,
@@ -2994,17 +3061,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]](
                 proof.status
             )
-        return try_as_mut_static_c_tile_tensor_1d[extent](proof.payload.take())
+        var view = rebind_var[TensorMutView[1, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_c_tile_tensor_1d[extent](view)
 
     def as_c_tile_tensor_3d[d0: Int, d1: Int, d2: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2)], origin_of(self.impl.storage)]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2)], Origin[mut=False](origin_of(self.impl.storage))]](
                 proof.status
             )
-        return try_as_static_c_tile_tensor_3d[d0, d1, d2](proof.payload.take())
+        return try_as_static_c_tile_tensor_3d[d0, d1, d2](
+            rebind_var[TensorView[3, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_c_tile_tensor_3d[d0: Int, d1: Int, d2: Int](
         mut self,
@@ -3014,17 +3084,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2)], origin_of(self.impl.storage)]](
                 proof.status
             )
-        return try_as_mut_static_c_tile_tensor_3d[d0, d1, d2](proof.payload.take())
+        var view = rebind_var[TensorMutView[3, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_c_tile_tensor_3d[d0, d1, d2](view)
 
     def as_c_tile_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3)], origin_of(self.impl.storage)]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3)], Origin[mut=False](origin_of(self.impl.storage))]](
                 proof.status
             )
-        return try_as_static_c_tile_tensor_4d[d0, d1, d2, d3](proof.payload.take())
+        return try_as_static_c_tile_tensor_4d[d0, d1, d2, d3](
+            rebind_var[TensorView[4, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_c_tile_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int](
         mut self,
@@ -3034,17 +3107,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3)], origin_of(self.impl.storage)]](
                 proof.status
             )
-        return try_as_mut_static_c_tile_tensor_4d[d0, d1, d2, d3](proof.payload.take())
+        var view = rebind_var[TensorMutView[4, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_c_tile_tensor_4d[d0, d1, d2, d3](view)
 
     def as_c_tile_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4)], origin_of(self.impl.storage)]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4)], Origin[mut=False](origin_of(self.impl.storage))]](
                 proof.status
             )
-        return try_as_static_c_tile_tensor_5d[d0, d1, d2, d3, d4](proof.payload.take())
+        return try_as_static_c_tile_tensor_5d[d0, d1, d2, d3, d4](
+            rebind_var[TensorView[5, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_c_tile_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int](
         mut self,
@@ -3054,17 +3130,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4)], origin_of(self.impl.storage)]](
                 proof.status
             )
-        return try_as_mut_static_c_tile_tensor_5d[d0, d1, d2, d3, d4](proof.payload.take())
+        var view = rebind_var[TensorMutView[5, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_c_tile_tensor_5d[d0, d1, d2, d3, d4](view)
 
     def as_c_tile_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5)], origin_of(self.impl.storage)]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5)], Origin[mut=False](origin_of(self.impl.storage))]](
                 proof.status
             )
-        return try_as_static_c_tile_tensor_6d[d0, d1, d2, d3, d4, d5](proof.payload.take())
+        return try_as_static_c_tile_tensor_6d[d0, d1, d2, d3, d4, d5](
+            rebind_var[TensorView[6, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_c_tile_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int](
         mut self,
@@ -3074,17 +3153,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5)], origin_of(self.impl.storage)]](
                 proof.status
             )
-        return try_as_mut_static_c_tile_tensor_6d[d0, d1, d2, d3, d4, d5](proof.payload.take())
+        var view = rebind_var[TensorMutView[6, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_c_tile_tensor_6d[d0, d1, d2, d3, d4, d5](view)
 
     def as_c_tile_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6)], origin_of(self.impl.storage)]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6)], Origin[mut=False](origin_of(self.impl.storage))]](
                 proof.status
             )
-        return try_as_static_c_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](proof.payload.take())
+        return try_as_static_c_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](
+            rebind_var[TensorView[7, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_c_tile_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int](
         mut self,
@@ -3094,17 +3176,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6)], origin_of(self.impl.storage)]](
                 proof.status
             )
-        return try_as_mut_static_c_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](proof.payload.take())
+        var view = rebind_var[TensorMutView[7, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_c_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](view)
 
     def as_c_tile_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6, d7)], origin_of(self.impl.storage)]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6, d7)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6, d7)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6, d7)], Origin[mut=False](origin_of(self.impl.storage))]](
                 proof.status
             )
-        return try_as_static_c_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](proof.payload.take())
+        return try_as_static_c_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](
+            rebind_var[TensorView[8, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_c_tile_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int](
         mut self,
@@ -3114,16 +3199,19 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(d0, d1, d2, d3, d4, d5, d6, d7)], origin_of(self.impl.storage)]](
                 proof.status
             )
-        return try_as_mut_static_c_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](proof.payload.take())
+        var view = rebind_var[TensorMutView[8, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_c_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](view)
 
     # Rank-preserving F-order MAX TileTensor bridges, preserving physical strides.
     def as_f_tile_tensor_3d[d0: Int, d1: Int, d2: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2)], origin_of(self.impl.storage)]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 3 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_static_f_tile_tensor_3d[d0, d1, d2](proof.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2)], Origin[mut=False](origin_of(self.impl.storage))]](proof.status)
+        return try_as_static_f_tile_tensor_3d[d0, d1, d2](
+            rebind_var[TensorView[3, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_f_tile_tensor_3d[d0: Int, d1: Int, d2: Int](
         mut self,
@@ -3131,15 +3219,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var proof = self.mut_view()
         if not proof.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_mut_static_f_tile_tensor_3d[d0, d1, d2](proof.payload.take())
+        var view = rebind_var[TensorMutView[3, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_f_tile_tensor_3d[d0, d1, d2](view)
 
     def as_f_tile_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3)], origin_of(self.impl.storage)]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 4 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_static_f_tile_tensor_4d[d0, d1, d2, d3](proof.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3)], Origin[mut=False](origin_of(self.impl.storage))]](proof.status)
+        return try_as_static_f_tile_tensor_4d[d0, d1, d2, d3](
+            rebind_var[TensorView[4, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_f_tile_tensor_4d[d0: Int, d1: Int, d2: Int, d3: Int](
         mut self,
@@ -3147,15 +3238,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var proof = self.mut_view()
         if not proof.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_mut_static_f_tile_tensor_4d[d0, d1, d2, d3](proof.payload.take())
+        var view = rebind_var[TensorMutView[4, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_f_tile_tensor_4d[d0, d1, d2, d3](view)
 
     def as_f_tile_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4)], origin_of(self.impl.storage)]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 5 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_static_f_tile_tensor_5d[d0, d1, d2, d3, d4](proof.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4)], Origin[mut=False](origin_of(self.impl.storage))]](proof.status)
+        return try_as_static_f_tile_tensor_5d[d0, d1, d2, d3, d4](
+            rebind_var[TensorView[5, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_f_tile_tensor_5d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int](
         mut self,
@@ -3163,15 +3257,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var proof = self.mut_view()
         if not proof.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_mut_static_f_tile_tensor_5d[d0, d1, d2, d3, d4](proof.payload.take())
+        var view = rebind_var[TensorMutView[5, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_f_tile_tensor_5d[d0, d1, d2, d3, d4](view)
 
     def as_f_tile_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5)], origin_of(self.impl.storage)]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 6 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_static_f_tile_tensor_6d[d0, d1, d2, d3, d4, d5](proof.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5)], Origin[mut=False](origin_of(self.impl.storage))]](proof.status)
+        return try_as_static_f_tile_tensor_6d[d0, d1, d2, d3, d4, d5](
+            rebind_var[TensorView[6, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_f_tile_tensor_6d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int](
         mut self,
@@ -3179,15 +3276,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var proof = self.mut_view()
         if not proof.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_mut_static_f_tile_tensor_6d[d0, d1, d2, d3, d4, d5](proof.payload.take())
+        var view = rebind_var[TensorMutView[6, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_f_tile_tensor_6d[d0, d1, d2, d3, d4, d5](view)
 
     def as_f_tile_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6)], origin_of(self.impl.storage)]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 7 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_static_f_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](proof.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6)], Origin[mut=False](origin_of(self.impl.storage))]](proof.status)
+        return try_as_static_f_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](
+            rebind_var[TensorView[7, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_f_tile_tensor_7d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int](
         mut self,
@@ -3195,15 +3295,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var proof = self.mut_view()
         if not proof.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_mut_static_f_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](proof.payload.take())
+        var view = rebind_var[TensorMutView[7, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_f_tile_tensor_7d[d0, d1, d2, d3, d4, d5, d6](view)
 
     def as_f_tile_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6, d7)], origin_of(self.impl.storage)]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6, d7)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 8 and conforms_to(Self.S, HostSpanStorage):
         var proof = self.view()
         if not proof.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6, d7)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_static_f_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](proof.payload.take())
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6, d7)], Origin[mut=False](origin_of(self.impl.storage))]](proof.status)
+        return try_as_static_f_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](
+            rebind_var[TensorView[8, origin_of(self.impl.storage)]](proof.payload.take())
+        )
 
     def as_mut_f_tile_tensor_8d[d0: Int, d1: Int, d2: Int, d3: Int, d4: Int, d5: Int, d6: Int, d7: Int](
         mut self,
@@ -3211,7 +3314,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var proof = self.mut_view()
         if not proof.is_ok():
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(d0, d1, d2, d3, d4, d5, d6, d7)], origin_of(self.impl.storage)]](proof.status)
-        return try_as_mut_static_f_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](proof.payload.take())
+        var view = rebind_var[TensorMutView[8, origin_of(self.impl.storage)]](proof.payload.take())
+        return try_as_mut_static_f_tile_tensor_8d[d0, d1, d2, d3, d4, d5, d6, d7](view)
 
     # MAX views are thin, zero-copy delegates on the canonical Tensor owner.
     # The general flattened form covers rank 0..8; the 2-D form preserves
@@ -3219,15 +3323,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # materialization is performed by these adapters.
     def as_flat_c_tile_tensor[extent: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], Origin[mut=False](origin_of(self.impl.storage))]] where conforms_to(Self.S, HostSpanStorage):
         var source = self.view()
         if not source.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], Origin[mut=False](origin_of(self.impl.storage))]](
                 source.status
             )
-        return try_as_static_flat_c_tile_tensor[Self.rank, extent](
-            source.payload.take()
-        )
+        return try_as_static_flat_c_tile_tensor[Self.rank, extent](source.payload.take())
 
     def as_mut_flat_c_tile_tensor[extent: Int](
         mut self,
@@ -3237,19 +3339,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(extent)], origin_of(self.impl.storage)]](
                 source.status
             )
-        return try_as_mut_static_flat_c_tile_tensor[Self.rank, extent](
-            source.payload.take()
-        )
+        var view = source.payload.take()
+        return try_as_mut_static_flat_c_tile_tensor[Self.rank, extent](view)
 
     def as_c_tile_tensor_2d[rows: Int, cols: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(rows, cols)], origin_of(self.impl.storage)]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(rows, cols)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
         var source = self.view()
         if not source.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(rows, cols)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(rows, cols)], Origin[mut=False](origin_of(self.impl.storage))]](
                 source.status
             )
-        return try_as_static_c_tile_tensor_2d[rows, cols](source.payload.take())
+        return try_as_static_c_tile_tensor_2d[rows, cols](
+            rebind_var[TensorView[2, origin_of(self.impl.storage)]](source.payload.take())
+        )
 
     def as_mut_c_tile_tensor_2d[rows: Int, cols: Int](
         mut self,
@@ -3259,19 +3362,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.row_major(rows, cols)], origin_of(self.impl.storage)]](
                 source.status
             )
-        return try_as_mut_static_c_tile_tensor_2d[rows, cols](
-            source.payload.take()
-        )
+        var view = rebind_var[TensorMutView[2, origin_of(self.impl.storage)]](source.payload.take())
+        return try_as_mut_static_c_tile_tensor_2d[rows, cols](view)
 
     def as_f_tile_tensor_2d[rows: Int, cols: Int](
         ref self,
-    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(rows, cols)], origin_of(self.impl.storage)]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(rows, cols)], Origin[mut=False](origin_of(self.impl.storage))]] where Self.rank == 2 and conforms_to(Self.S, HostSpanStorage):
         var source = self.view()
         if not source.is_ok():
-            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(rows, cols)], origin_of(self.impl.storage)]](
+            return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(rows, cols)], Origin[mut=False](origin_of(self.impl.storage))]](
                 source.status
             )
-        return try_as_static_f_tile_tensor_2d[rows, cols](source.payload.take())
+        return try_as_static_f_tile_tensor_2d[rows, cols](
+            rebind_var[TensorView[2, origin_of(self.impl.storage)]](source.payload.take())
+        )
 
     def as_mut_f_tile_tensor_2d[rows: Int, cols: Int](
         mut self,
@@ -3281,41 +3385,40 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[TileTensor[DType.float32, LTToTTLayout[Layout.col_major(rows, cols)], origin_of(self.impl.storage)]](
                 source.status
             )
-        return try_as_mut_static_f_tile_tensor_2d[rows, cols](
-            source.payload.take()
-        )
+        var view = rebind_var[TensorMutView[2, origin_of(self.impl.storage)]](source.payload.take())
+        return try_as_mut_static_f_tile_tensor_2d[rows, cols](view)
 
-    def as_f_span(
-        ref self
-    ) -> TensorResult[Span[False, Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+    def as_f_span[origin: Origin[mut=False]](
+        ref[origin] self
+    ) -> TensorResult[Span[Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         # Physical F-order Span: no materialization and no claim that its
         # iteration order matches C-order logical traversal.
         var proof = self._checked_current_layout()
         if not proof.is_ok():
-            return TensorResult[Span[False, Float32, origin_of(self.impl.storage)]](proof.status)
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](proof.status)
         var layout = proof.payload.value()
         if not layout.is_f_contiguous() or not layout.is_exhaustive():
-            return TensorResult[Span[False, Float32, origin_of(self.impl.storage)]](TensorStatus.NOT_REPRESENTABLE)
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](TensorStatus.NOT_REPRESENTABLE)
         var storage = self.impl.storage.borrow_span()
         var begin = layout.span_lo
-        return TensorResult[Span[False, Float32, origin_of(self.impl.storage)]](
+        return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
             storage[begin:begin + layout.shape.numel()]
         )
 
     def as_mut_f_span(
         mut self
-    ) -> TensorResult[Span[True, Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+    ) -> TensorResult[Span[Float32, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         var proof = self._checked_current_layout()
         if not proof.is_ok():
-            return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](proof.status)
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](proof.status)
         var layout = proof.payload.value()
         if not layout.is_proven_unique():
-            return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](TensorStatus.OVERLAPPING)
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](TensorStatus.OVERLAPPING)
         if not layout.is_f_contiguous() or not layout.is_exhaustive():
-            return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](TensorStatus.NOT_REPRESENTABLE)
+            return TensorResult[Span[Float32, origin_of(self.impl.storage)]](TensorStatus.NOT_REPRESENTABLE)
         var storage = self.impl.storage.borrow_mut_span()
         var begin = layout.span_lo
-        return TensorResult[Span[True, Float32, origin_of(self.impl.storage)]](
+        return TensorResult[Span[Float32, origin_of(self.impl.storage)]](
             storage[begin:begin + layout.shape.numel()]
         )
 
@@ -3405,9 +3508,9 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # Only HostStorage promises a borrowed contiguous Span. Other
         # MutableTensorStorage implementations satisfy the scalar trait API,
         # not the HostStorage-specific Span API.
-        comptime if identical(Self.S, HostStorage):
+        comptime if Self.S == HostStorage:
             if safe_layout.is_exhaustive():
-                var data = self.impl.storage.borrow_mut_span()
+                var data = rebind[HostStorage](self.impl.storage).borrow_mut_span()
                 var first = safe_layout.span_lo
                 var dense = data[first:first + safe_layout.shape.numel()]
                 _fill_fp32_contiguous[simd_width_of[DType.float32]()](dense, value)
@@ -3415,8 +3518,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # HostStorage has a known, previously validated physical span. Walk
         # an irregular but unique layout without allocating TensorResult or
         # revalidating every element. Borrowing ties the data to its owner.
-        comptime if identical(Self.S, HostStorage):
-            var host_data = self.impl.storage.borrow_mut_span()
+        comptime if Self.S == HostStorage:
+            var host_data = rebind[HostStorage](self.impl.storage).borrow_mut_span()
             var host_cursor = NDIndexIterator[Self.rank](safe_layout.shape)
             while not host_cursor.done():
                 var at = safe_layout.physical_offset_unchecked(host_cursor.coordinates)
@@ -3452,7 +3555,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # no operation switch, no dtype branch, and no runtime virtual dispatch.
     def unary_host[operation: Int](
         ref self
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         comptime assert operation >= 0 and operation <= 8, "invalid unary FP32 operation"
         var verified = self._checked_current_layout()
         if not verified.is_ok():
@@ -3462,7 +3565,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var output = allocated.payload.take()
-        var source = self.impl.storage.borrow_span()
+        var source = rebind[HostStorage](self.impl.storage).borrow_span()
         var destination = output.impl.storage.borrow_mut_span()
         if safe_layout.is_c_contiguous() and safe_layout.is_exhaustive():
             var start = safe_layout.span_lo
@@ -3472,7 +3575,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             ](run, destination)
             if unary_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, HostStorage]](unary_status)
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         var cursor = NDIndexIterator[Self.rank](safe_layout.shape)
         var linear = 0
         while not cursor.done():
@@ -3480,35 +3583,35 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             destination[linear] = cpu_unary_scalar_fp32[operation](source[at])
             linear += 1
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
-    def abs(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def abs(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[1]()
 
-    def sqrt(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def sqrt(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[2]()
 
-    def exp(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def exp(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[3]()
 
-    def log(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def log(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[4]()
 
-    def sin(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def sin(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[5]()
 
-    def cos(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def cos(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[6]()
 
-    def tanh(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def tanh(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[7]()
 
-    def reciprocal(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def reciprocal(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.unary_host[8]()
 
     def _scalar_binary_host[operation: Int](
         ref self, rhs: Float32
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         comptime assert operation >= 0 and operation <= 3, "invalid FP32 scalar arithmetic opcode"
         var checked = self._checked_current_layout()
         if not checked.is_ok():
@@ -3518,7 +3621,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var output = allocated.payload.take()
-        var src = self.impl.storage.borrow_span()
+        var src = rebind[HostStorage](self.impl.storage).borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         if mapping.is_c_contiguous() and mapping.is_exhaustive():
             var contiguous = src[mapping.span_lo:mapping.span_lo + mapping.shape.numel()]
@@ -3541,7 +3644,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 ](dst, contiguous, rhs)
             if scalar_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, HostStorage]](scalar_status)
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         var cursor = NDIndexIterator[Self.rank](mapping.shape)
         var linear = 0
         while not cursor.done():
@@ -3556,23 +3659,23 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 dst[linear] = x / rhs
             linear += 1
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
-    def add_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def add_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scalar_binary_host[0](value)
 
-    def sub_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def sub_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scalar_binary_host[1](value)
 
-    def mul_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def mul_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scalar_binary_host[2](value)
 
-    def div_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def div_scalar(ref self, value: Float32) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scalar_binary_host[3](value)
 
     def _binary_host[operation: Int](
         ref self, other: Tensor[Self.rank, HostStorage]
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         comptime assert operation >= 0 and operation <= 5, "invalid FP32 binary arithmetic opcode"
         var lhs_proof = self._checked_current_layout()
         if not lhs_proof.is_ok():
@@ -3601,7 +3704,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var result = allocated.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = other.impl.storage.borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         if a_layout.shape.same_extents(b_layout.shape):
@@ -3614,7 +3717,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     ](dst, aa, bb)
                     if leaf_status != TensorStatus.OK:
                         return TensorResult[Tensor[Self.rank, HostStorage]](leaf_status)
-                    return result._finish_complete_overwrite()
+                    return (result^)._finish_complete_overwrite()
         # Singleton-axis broadcasting is extremely common. A source with
         # exactly one FP32 element is a scalar even when its STATIC rank > 0;
         # the other operand may be an arbitrary 1..8D C-dense tensor. Eliminate
@@ -3630,7 +3733,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 ](dst, dense, lhs[a_layout.offset])
                 if leaf_status != TensorStatus.OK:
                     return TensorResult[Tensor[Self.rank, HostStorage]](leaf_status)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
             if (b_layout.shape.numel() == 1 and
                 a_layout.shape.numel() == output_count and
                 a_layout.is_c_contiguous() and a_layout.is_exhaustive()):
@@ -3640,7 +3743,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 ](dst, dense, rhs[b_layout.offset])
                 if leaf_status != TensorStatus.OK:
                     return TensorResult[Tensor[Self.rank, HostStorage]](leaf_status)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
         # Lower broadcasting into zero strides once, outside the hot loop.
         # Each output coordinate can then be used directly for both inputs;
         # there is no per-element axis test or temporary index array.
@@ -3676,19 +3779,21 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 dst[linear] = fp32_minimum(x, y)
             linear += 1
             cursor.advance()
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     # Right-aligned FP32 broadcasting is available from the primary Tensor API.
     # The output rank is static, never a runtime dtype/rank dispatch value.
     # All source layout checks and broadcast decisions precede the hot loop.
     def _binary_nd_host[operation: Int, other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         comptime assert operation >= 0 and operation <= 5, "invalid binary opcode"
         comptime assert other_rank >= 0 and other_rank <= 8, "invalid right operand rank"
         comptime assert out_rank == max(Self.rank, other_rank) and out_rank <= 8, "invalid output rank"
         comptime if other_rank == Self.rank:
-            return self._binary_host[operation](other)
+            return rebind_var[TensorResult[Tensor[out_rank, HostStorage]]](
+                self._binary_host[operation](rebind[Tensor[Self.rank, HostStorage]](other))
+            )
         var left_proof = self._checked_current_layout()
         if not left_proof.is_ok():
             return TensorResult[Tensor[out_rank, HostStorage]](left_proof.status)
@@ -3730,7 +3835,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[out_rank, HostStorage]](allocated.status)
         var result = allocated.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = other.impl.storage.borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         # For differently ranked operands, implicit leading singleton axes
@@ -3750,7 +3855,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 ](dst, dense_left, dense_right)
                 if leaf_status != TensorStatus.OK:
                     return TensorResult[Tensor[out_rank, HostStorage]](leaf_status)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
             if (left_layout.shape.numel() == 1 and
                 right_layout.shape.numel() == output_count and
                 right_layout.is_c_contiguous() and right_layout.is_exhaustive()):
@@ -3760,7 +3865,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 ](dst, dense, lhs[left_layout.offset])
                 if leaf_status != TensorStatus.OK:
                     return TensorResult[Tensor[out_rank, HostStorage]](leaf_status)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
             if (right_layout.shape.numel() == 1 and
                 left_layout.shape.numel() == output_count and
                 left_layout.is_c_contiguous() and left_layout.is_exhaustive()):
@@ -3770,7 +3875,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 ](dst, dense, rhs[right_layout.offset])
                 if leaf_status != TensorStatus.OK:
                     return TensorResult[Tensor[out_rank, HostStorage]](leaf_status)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
         var cursor = NDIndexIterator[out_rank](shape.payload.value())
         while not cursor.done():
             var lo = left_layout.offset
@@ -3794,36 +3899,36 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 dst[cursor.produced] = fp32_minimum(x, y)
             cursor.advance()
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     def add_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_nd_host[0, other_rank, out_rank](other)
 
     def sub_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_nd_host[1, other_rank, out_rank](other)
 
     def mul_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_nd_host[2, other_rank, out_rank](other)
 
     def div_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_nd_host[3, other_rank, out_rank](other)
 
     def maximum_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_nd_host[4, other_rank, out_rank](other)
 
     def minimum_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_nd_host[5, other_rank, out_rank](other)
 
 
@@ -3836,7 +3941,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     def fma(
         ref self, multiplier: Tensor[Self.rank, HostStorage],
         addend: Tensor[Self.rank, HostStorage], mode: Fp32MathMode = Fp32MathMode.STRICT_FP32,
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         if mode.code < 0 or mode.code > 3:
             return TensorResult[Tensor[Self.rank, HostStorage]](TensorStatus.UNSUPPORTED)
         var aa = self._checked_current_layout()
@@ -3876,7 +3981,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var output = allocated.payload.take()
         var dst = output.impl.storage.borrow_mut_span()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = multiplier.impl.storage.borrow_span()
         var acc = addend.impl.storage.borrow_span()
         var fused = allows_fma(mode)
@@ -3890,7 +3995,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     var leaf_status = cpu_fma_contiguous[simd_width_of[DType.float32]()](dst, left_run, right_run, add_run, fused)
                     if leaf_status != TensorStatus.OK:
                         return TensorResult[Tensor[Self.rank, HostStorage]](leaf_status)
-                    return output._finish_complete_overwrite()
+                    return (output^)._finish_complete_overwrite()
         var sa = a_layout.strides.copy()
         var sb = b_layout.strides.copy()
         var sc = c_layout.strides.copy()
@@ -3916,18 +4021,21 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 dst[cursor.produced] = lhs[pa] * rhs[pb] + acc[pc]
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     # Mixed-rank ternary broadcasting is static: out_rank is max of the
     # compile-time operand ranks, so rank=0 scalars work without a dispatcher.
     def fma_nd[brank: Int, crank: Int, out_rank: Int](
         ref self, multiplier: Tensor[brank, HostStorage],
         addend: Tensor[crank, HostStorage], mode: Fp32MathMode = Fp32MathMode.STRICT_FP32,
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         comptime assert brank >= 0 and brank <= 8 and crank >= 0 and crank <= 8, "rank 0..8 only"
         comptime assert out_rank == max(Self.rank, max(brank, crank)) and out_rank <= 8, "output rank mismatch"
         comptime if Self.rank == brank and Self.rank == crank:
-            return self.fma(multiplier, addend, mode)
+            return rebind_var[TensorResult[Tensor[out_rank, HostStorage]]](self.fma(
+                rebind[Tensor[Self.rank, HostStorage]](multiplier),
+                rebind[Tensor[Self.rank, HostStorage]](addend), mode,
+            ))
         if mode.code < 0 or mode.code > 3:
             return TensorResult[Tensor[out_rank, HostStorage]](TensorStatus.UNSUPPORTED)
         var aa = self._checked_current_layout()
@@ -3987,7 +4095,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[out_rank, HostStorage]](allocated.status)
         var output = allocated.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = multiplier.impl.storage.borrow_span()
         var acc = addend.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
@@ -4007,18 +4115,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 dst[cursor.produced] = lhs[pa] * rhs[pb] + acc[pc]
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     # Comparison masks use a separate auxiliary representation, not a bool Tensor.
     # Rank-zero is scalar and emits exactly one predicate byte.
     def _compare_nd_host[relation: Int, other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[TensorMask[out_rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[out_rank]] where Self.S == HostStorage:
         comptime assert relation >= 0 and relation <= 5, "invalid predicate"
         comptime assert other_rank >= 0 and other_rank <= 8, "invalid input rank"
         comptime assert out_rank == max(Self.rank, other_rank) and out_rank <= 8, "invalid output rank"
         comptime if other_rank == Self.rank:
-            return self._compare_host[relation](other)
+            return rebind_var[TensorResult[TensorMask[out_rank]]](
+                self._compare_host[relation](rebind[Tensor[Self.rank, HostStorage]](other))
+            )
         var left_proof = self._checked_current_layout()
         if not left_proof.is_ok():
             return TensorResult[TensorMask[out_rank]](left_proof.status)
@@ -4060,7 +4170,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not created.is_ok():
             return TensorResult[TensorMask[out_rank]](created.status)
         var mask = created.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = other.impl.storage.borrow_span()
         var cursor = NDIndexIterator[out_rank](shape.payload.value())
         while not cursor.done():
@@ -4090,54 +4200,54 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 mask.bytes[cursor.produced] = 0
             cursor.advance()
-        return TensorResult[TensorMask[out_rank]](mask)
+        return TensorResult[TensorMask[out_rank]](mask^)
 
     def eq_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[TensorMask[out_rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[out_rank]] where Self.S == HostStorage:
         return self._compare_nd_host[0, other_rank, out_rank](other)
 
     def ne_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[TensorMask[out_rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[out_rank]] where Self.S == HostStorage:
         return self._compare_nd_host[1, other_rank, out_rank](other)
 
     def lt_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[TensorMask[out_rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[out_rank]] where Self.S == HostStorage:
         return self._compare_nd_host[2, other_rank, out_rank](other)
 
     def le_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[TensorMask[out_rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[out_rank]] where Self.S == HostStorage:
         return self._compare_nd_host[3, other_rank, out_rank](other)
 
     def gt_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[TensorMask[out_rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[out_rank]] where Self.S == HostStorage:
         return self._compare_nd_host[4, other_rank, out_rank](other)
 
     def ge_nd[other_rank: Int, out_rank: Int](
         ref self, other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[TensorMask[out_rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[out_rank]] where Self.S == HostStorage:
         return self._compare_nd_host[5, other_rank, out_rank](other)
 
-    def add(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def add(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_host[0](other)
 
-    def sub(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def sub(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_host[1](other)
 
-    def mul(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def mul(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_host[2](other)
 
-    def div(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def div(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_host[3](other)
 
-    def maximum(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def maximum(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_host[4](other)
 
-    def minimum(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def minimum(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._binary_host[5](other)
 
 
@@ -4145,7 +4255,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # an alternative Tensor dtype. Only fixed rank and Float32 are supported.
     def _compare_host[relation: Int](
         ref self, other: Tensor[Self.rank, HostStorage]
-    ) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         comptime assert relation >= 0 and relation <= 5, "invalid FP32 predicate"
         var left_proof = self._checked_current_layout()
         if not left_proof.is_ok():
@@ -4180,7 +4290,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not created.is_ok():
             return TensorResult[TensorMask[Self.rank]](created.status)
         var mask = created.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = other.impl.storage.borrow_span()
         var cursor = NDIndexIterator[Self.rank](shape.payload.value())
         while not cursor.done():
@@ -4210,27 +4320,27 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 mask.bytes[cursor.produced] = 0
             cursor.advance()
-        return TensorResult[TensorMask[Self.rank]](mask)
+        return TensorResult[TensorMask[Self.rank]](mask^)
 
-    def eq(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def eq(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._compare_host[0](other)
 
-    def ne(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def ne(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._compare_host[1](other)
 
-    def lt(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def lt(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._compare_host[2](other)
 
-    def le(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def le(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._compare_host[3](other)
 
-    def gt(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def gt(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._compare_host[4](other)
 
-    def ge(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def ge(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._compare_host[5](other)
 
-    def _predicate_host[kind: Int](ref self) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def _predicate_host[kind: Int](ref self) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         comptime assert kind >= 0 and kind <= 2, "invalid FP32 unary predicate"
         var proof = self._checked_current_layout()
         if not proof.is_ok():
@@ -4240,7 +4350,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not created.is_ok():
             return TensorResult[TensorMask[Self.rank]](created.status)
         var mask = created.payload.take()
-        var source = self.impl.storage.borrow_span()
+        var source = rebind[HostStorage](self.impl.storage).borrow_span()
         var cursor = NDIndexIterator[Self.rank](safe.shape)
         while not cursor.done():
             var value = source[safe.physical_offset_unchecked(cursor.coordinates)]
@@ -4256,18 +4366,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 mask.bytes[cursor.produced] = 0
             cursor.advance()
-        return TensorResult[TensorMask[Self.rank]](mask)
+        return TensorResult[TensorMask[Self.rank]](mask^)
 
-    def isnan(ref self) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def isnan(ref self) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._predicate_host[0]()
 
-    def isinf(ref self) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def isinf(ref self) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._predicate_host[1]()
 
-    def isfinite(ref self) -> TensorResult[TensorMask[Self.rank]] where identical(Self.S, HostStorage):
+    def isfinite(ref self) -> TensorResult[TensorMask[Self.rank]] where Self.S == HostStorage:
         return self._predicate_host[2]()
 
-    def where(ref self, mask: TensorMask[Self.rank], other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def where(ref self, mask: TensorMask[Self.rank], other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # The result is a NEW complete overwrite; a malformed mask aborts
         # without mutating either input or exposing an incomplete result.
         var valid = mask.metadata_status()
@@ -4297,7 +4407,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not created.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](created.status)
         var result = created.payload.take()
-        var left_data = self.impl.storage.borrow_span()
+        var left_data = rebind[HostStorage](self.impl.storage).borrow_span()
         var right_data = other.impl.storage.borrow_span()
         var out = result.impl.storage.borrow_mut_span()
         var cursor = NDIndexIterator[Self.rank](mask.shape)
@@ -4316,17 +4426,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 out[cursor.produced] = right_data[at_b]
             cursor.advance()
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     # Mixed-rank where is materialized through the owning Tensor facade.
     # The mask fixes the output rank; operands broadcast from the right.
     def where_nd[other_rank: Int, out_rank: Int](
         ref self, mask: TensorMask[out_rank], other: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage:
         comptime assert other_rank >= 0 and other_rank <= 8, "invalid RHS rank"
         comptime assert out_rank >= Self.rank and out_rank >= other_rank and out_rank <= 8, "invalid mask rank"
         comptime if Self.rank == out_rank and other_rank == out_rank:
-            return self.where(mask, other)
+            return rebind_var[TensorResult[Tensor[out_rank, HostStorage]]](self.where(
+                rebind[TensorMask[Self.rank]](mask),
+                rebind[Tensor[Self.rank, HostStorage]](other),
+            ))
         var checked_mask = mask.metadata_status()
         if checked_mask != TensorStatus.OK:
             return TensorResult[Tensor[out_rank, HostStorage]](checked_mask)
@@ -4363,7 +4476,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not created.is_ok():
             return TensorResult[Tensor[out_rank, HostStorage]](created.status)
         var output = created.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = other.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         var cursor = NDIndexIterator[out_rank](output_shape.payload.value())
@@ -4382,9 +4495,9 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             else:
                 dst[cursor.produced] = rhs[bi]
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
-    def masked_fill(mut self, mask: TensorMask[Self.rank], value: Float32) -> TensorStatus where identical(Self.S, HostStorage):
+    def masked_fill(mut self, mask: TensorMask[Self.rank], value: Float32) -> TensorStatus where Self.S == HostStorage:
         # In-place mutation is atomic w.r.t. invalid mask/shape/overlap:
         # validate ALL predicates before the first write.
         var mask_status = mask.validated()
@@ -4398,7 +4511,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorStatus.SIZE_MISMATCH
         if not safe.is_proven_unique():
             return TensorStatus.OVERLAPPING
-        var data = self.impl.storage.borrow_mut_span()
+        var data = rebind[HostStorage](self.impl.storage).borrow_mut_span()
         var cursor = NDIndexIterator[Self.rank](safe.shape)
         while not cursor.done():
             if mask.bytes[cursor.produced] == 1:
@@ -4409,24 +4522,24 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # Operators on the single public owning type remain checked and always
     # return TensorResult. They never implicitly transfer, mutate inputs,
     # erase FP32 metadata, or allocate an untracked intermediate.
-    def __add__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def __add__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.add(other)
 
-    def __sub__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def __sub__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.sub(other)
 
-    def __mul__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def __mul__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.mul(other)
 
-    def __truediv__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def __truediv__(ref self, other: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.div(other)
 
-    def neg(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def neg(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # Unary sign flip is not multiplication by -1: preserve IEEE-754
         # signed zeros, infinities and NaN sign in the chosen FP32 mode.
         return self.unary_host[0]()
 
-    def __neg__(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def __neg__(ref self) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self.neg()
 
     # The primary Tensor API owns the rank-2 HostStorage GEMM path. The
@@ -4434,7 +4547,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # No implicit CPU/GPU transfer, second dtype, or hidden reshape.
     def mm(
         ref self, right: Tensor[2, HostStorage]
-    ) -> TensorResult[Tensor[2, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[2, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         var checked_left = self._checked_current_layout()
         if not checked_left.is_ok():
             return TensorResult[Tensor[2, HostStorage]](checked_left.status)
@@ -4460,7 +4573,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[2, HostStorage]](allocated.status)
         var output = allocated.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = right.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         if left_layout.is_c_contiguous() and right_layout.is_c_contiguous():
@@ -4476,7 +4589,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 ](dst, left_run, right_run, m, k, n)
                 if selected_kernel != TensorStatus.OK:
                     return TensorResult[Tensor[2, HostStorage]](selected_kernel)
-                return output._finish_complete_overwrite()
+                return (output^)._finish_complete_overwrite()
         # A layout may be signed-stride or transposed while still mapping
         # uniquely. Address proofs above cover the entire K-reduction span.
         var row_stride_a = left_layout.strides.get(0)
@@ -4493,7 +4606,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                         right_col + depth * depth_stride_b
                     ]
                 dst[row * n + col] = acc
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     # Allocation-free repeated GEMM into an EXISTING initialized Host Tensor.
     # The caller explicitly owns both the destination and the FP32 scratch
@@ -4505,8 +4618,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     def mm_into_workspace[workspace_origin: Origin[mut=True]](
         ref self, right: Tensor[2, HostStorage],
         mut destination: Tensor[2, HostStorage],
-        mut workspace: Span[True, Float32, workspace_origin],
-    ) -> TensorStatus where identical(Self.S, HostStorage) and Self.rank == 2:
+        mut workspace: Span[Float32, workspace_origin],
+    ) -> TensorStatus where Self.S == HostStorage and Self.rank == 2:
         var left_checked = self._checked_current_layout()
         if not left_checked.is_ok():
             return left_checked.status
@@ -4537,7 +4650,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorStatus.NOT_REPRESENTABLE
         # All products below are validated through canonical TensorShape
         # metadata and the owning HostStorage capacity proofs above.
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = right.impl.storage.borrow_span()
         var dst = destination.impl.storage.borrow_mut_span()
         var a_start = left_layout.span_lo
@@ -4575,7 +4688,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def vecmat(
         ref self, matrix: Tensor[2, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 1:
         var vector_checked = self._checked_current_layout()
         if not vector_checked.is_ok():
             return TensorResult[Tensor[1, HostStorage]](vector_checked.status)
@@ -4598,7 +4711,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocation.is_ok():
             return TensorResult[Tensor[1, HostStorage]](allocation.status)
         var output = allocation.payload.take()
-        var vec = self.impl.storage.borrow_span()
+        var vec = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = matrix.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         if vector_layout.is_c_contiguous() and matrix_layout.is_c_contiguous():
@@ -4614,7 +4727,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 )
                 if fast_status != TensorStatus.OK:
                     return TensorResult[Tensor[1, HostStorage]](fast_status)
-                return output._finish_complete_overwrite()
+                return (output^)._finish_complete_overwrite()
         var vector_stride = vector_layout.strides.get(0)
         var row_stride = matrix_layout.strides.get(0)
         var col_stride = matrix_layout.strides.get(1)
@@ -4626,11 +4739,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     rhs_col + inner * row_stride
                 ]
             dst[col] = acc
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     def outer(
         ref self, other: Tensor[1, HostStorage]
-    ) -> TensorResult[Tensor[2, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Tensor[2, HostStorage]] where Self.S == HostStorage and Self.rank == 1:
         var left_checked = self._checked_current_layout()
         if not left_checked.is_ok():
             return TensorResult[Tensor[2, HostStorage]](left_checked.status)
@@ -4654,7 +4767,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Tensor[2, HostStorage]](allocation.status)
         var result = allocation.payload.take()
         var dst = result.impl.storage.borrow_mut_span()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = other.impl.storage.borrow_span()
         if left_layout.is_c_contiguous() and right_layout.is_c_contiguous():
             if left_layout.is_exhaustive() and right_layout.is_exhaustive():
@@ -4666,7 +4779,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 )
                 if fast_status != TensorStatus.OK:
                     return TensorResult[Tensor[2, HostStorage]](fast_status)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
         var left_stride = left_layout.strides.get(0)
         var right_stride = right_layout.strides.get(0)
         for row in range(m):
@@ -4675,39 +4788,41 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 dst[row * n + col] = scalar * rhs[
                     right_layout.offset + col * right_stride
                 ]
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     # Mojo's matrix multiplication operator is a zero-overhead alias of the
     # existing rank-specialized owning Tensor kernels. No extra allocation,
     # shape traversal, layout change or CPU/GPU migration is introduced.
     def __matmul__(
         ref self, right: Tensor[2, HostStorage]
-    ) -> TensorResult[Tensor[2, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[2, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         return self.mm(right)
 
     def __matmul__(
         ref self, right: Tensor[1, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         return self.gemv(right)
 
     def __matmul__(
         ref self, right: Tensor[1, HostStorage]
-    ) -> TensorResult[Float32] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Float32] where Self.S == HostStorage and Self.rank == 1:
         return self.dot(right)
 
     def __matmul__(
         ref self, right: Tensor[2, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 1:
         return self.vecmat(right)
 
     def __matmul__(
         ref self, right: Tensor[Self.rank, HostStorage]
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 3:
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage and Self.rank >= 3:
+        comptime assert Self.rank >= 2
         return self.matmul_nd(right)
 
     def matmul(
         ref self, right: Tensor[Self.rank, HostStorage]
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 3:
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage and Self.rank >= 3:
+        comptime assert Self.rank >= 2
         return self.matmul_nd(right)
 
     # General batched matmul with DIFFERENT static input ranks (2..8).
@@ -4717,9 +4832,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # microkernels per broadcasted batch for standard contiguous layouts.
     def matmul_mixed[other_rank: Int, out_rank: Int](
         ref self, right: Tensor[other_rank, HostStorage]
-    ) -> TensorResult[Tensor[out_rank, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 2 and other_rank >= 2 and other_rank <= 8 and out_rank == max(Self.rank, other_rank):
+    ) -> TensorResult[Tensor[out_rank, HostStorage]] where Self.S == HostStorage and Self.rank >= 2 and other_rank >= 2 and other_rank <= 8 and out_rank == max(Self.rank, other_rank):
         comptime if Self.rank == other_rank:
-            return self.matmul_nd(right)
+            return rebind_var[TensorResult[Tensor[out_rank, HostStorage]]](
+                self.matmul_nd(rebind[Tensor[Self.rank, HostStorage]](right))
+            )
         var checked_a = self._checked_current_layout()
         if not checked_a.is_ok():
             return TensorResult[Tensor[out_rank, HostStorage]](checked_a.status)
@@ -4765,8 +4882,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Tensor[out_rank, HostStorage]](made.status)
         var output = made.payload.take()
         if output.numel() == 0:
-            return output._finish_complete_overwrite()
-        var lhs = self.impl.storage.borrow_span()
+            return (output^)._finish_complete_overwrite()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = right.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         var a_depth = a_layout.strides.get(Self.rank - 1)
@@ -4811,7 +4928,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     )
                     if selected_kernel != TensorStatus.OK:
                         return TensorResult[Tensor[out_rank, HostStorage]](selected_kernel)
-                return output._finish_complete_overwrite()
+                return (output^)._finish_complete_overwrite()
         # Arbitrary positive/negative/zero-stride layouts retain exact
         # right-aligned broadcasting and a single physical bounds proof.
         var cursor = NDIndexIterator[out_rank](shape.payload.value())
@@ -4839,11 +4956,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 total += lhs[a_base + inner * a_depth] * rhs[b_base + inner * b_depth]
             dst[cursor.produced] = total
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     # Strict rank-three BMM has no implicit batch broadcasting.
     # Both contiguous operands reuse the rank-two SIMD microkernel per batch.
-    def bmm(ref self, right: Tensor[3, HostStorage]) -> TensorResult[Tensor[3, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 3:
+    def bmm(ref self, right: Tensor[3, HostStorage]) -> TensorResult[Tensor[3, HostStorage]] where Self.S == HostStorage and Self.rank == 3:
         var left_proof = self._checked_current_layout()
         if not left_proof.is_ok():
             return TensorResult[Tensor[3, HostStorage]](left_proof.status)
@@ -4873,8 +4990,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Tensor[3, HostStorage]](made.status)
         var result = made.payload.take()
         if result.numel() == 0:
-            return result._finish_complete_overwrite()
-        var lhs = self.impl.storage.borrow_span()
+            return (result^)._finish_complete_overwrite()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = right.impl.storage.borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         if al.is_c_contiguous() and bl.is_c_contiguous():
@@ -4894,7 +5011,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     ](c_run, a_run, b_run, m, k, n)
                     if selected_kernel != TensorStatus.OK:
                         return TensorResult[Tensor[3, HostStorage]](selected_kernel)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
         var a_batch = al.strides.get(0)
         var a_row = al.strides.get(1)
         var a_k = al.strides.get(2)
@@ -4912,13 +5029,15 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     for inner in range(k):
                         total += lhs[row_at + inner * a_k] * rhs[col_at + inner * b_k]
                     dst[(batch * m + row) * n + col] = total
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     # Same-rank N-D matmul supports rank 2..8 and singleton batch broadcasting.
     # This reference lowering stays CPU-only; GPU requires an AOT artifact.
-    def matmul_nd(ref self, right: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 2:
+    def matmul_nd(ref self, right: Tensor[Self.rank, HostStorage]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage and Self.rank >= 2:
         comptime if Self.rank == 2:
-            return self.mm(right)
+            return rebind_var[TensorResult[Tensor[Self.rank, HostStorage]]](
+                self.mm(rebind[Tensor[2, HostStorage]](right))
+            )
         var left_proof = self._checked_current_layout()
         if not left_proof.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](left_proof.status)
@@ -4951,7 +5070,9 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Tensor[Self.rank, HostStorage]](shape.status)
         comptime if Self.rank == 3:
             if al.shape.dims.get(0) == bl.shape.dims.get(0):
-                return self.bmm(right)
+                return rebind_var[TensorResult[Tensor[Self.rank, HostStorage]]](
+                    self.bmm(rebind[Tensor[3, HostStorage]](right))
+                )
         if k == 0:
             return Tensor[Self.rank, HostStorage].zeros_checked(shape.payload.value())
         var allocated = Tensor[Self.rank, HostStorage]._empty_for_complete_overwrite_checked(shape.payload.value())
@@ -4959,8 +5080,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var result = allocated.payload.take()
         if result.numel() == 0:
-            return result._finish_complete_overwrite()
-        var lhs = self.impl.storage.borrow_span()
+            return (result^)._finish_complete_overwrite()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = right.impl.storage.borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         # When batch axes match, entire contiguous batches can reuse the
@@ -4989,7 +5110,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     ](c_run, a_run, b_run, m, k, n)
                     if selected_kernel != TensorStatus.OK:
                         return TensorResult[Tensor[Self.rank, HostStorage]](selected_kernel)
-                return result._finish_complete_overwrite()
+                return (result^)._finish_complete_overwrite()
         var a_k = al.strides.get(Self.rank - 1)
         var b_k = bl.strides.get(Self.rank - 2)
         var cursor = NDIndexIterator[Self.rank](shape.payload.value())
@@ -5010,35 +5131,35 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 total += lhs[a_base + inner * a_k] * rhs[b_base + inner * b_k]
             dst[cursor.produced] = total
             cursor.advance()
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     def matmul(
         ref self, right: Tensor[2, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 1:
         return self.vecmat(right)
 
     def matmul(
         ref self, right: Tensor[1, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         return self.gemv(right)
 
     def matmul(
         ref self, right: Tensor[1, HostStorage]
-    ) -> TensorResult[Float32] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Float32] where Self.S == HostStorage and Self.rank == 1:
         return self.dot(right)
 
     # Rank-2 matrix-vector multiplication: strict default K-order; caller
     # may explicitly select gemv_fast() for SIMD horizontal reduction.
     def matmul(
         ref self, right: Tensor[2, HostStorage]
-    ) -> TensorResult[Tensor[2, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[2, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         # Rank-2 Tensor method uses the same GEMM path as mm().
         # N-D batched matmul is also exposed through self.matmul_nd().
         return self.mm(right)
 
     def _gemv_with_math_policy[fast_tree: Bool](
         ref self, vector: Tensor[1, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         var matrix_proof = self._checked_current_layout()
         if not matrix_proof.is_ok():
             return TensorResult[Tensor[1, HostStorage]](matrix_proof.status)
@@ -5061,7 +5182,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[1, HostStorage]](allocated.status)
         var output = allocated.payload.take()
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var vec = vector.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         # The SIMD K-axis horizontal reduction reassociates additions.
@@ -5079,7 +5200,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 )
                 if fast_status != TensorStatus.OK:
                     return TensorResult[Tensor[1, HostStorage]](fast_status)
-                return output._finish_complete_overwrite()
+                return (output^)._finish_complete_overwrite()
         var matrix_row_stride = matrix_layout.strides.get(0)
         var matrix_col_stride = matrix_layout.strides.get(1)
         var vector_stride = vector_layout.strides.get(0)
@@ -5091,23 +5212,23 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     vector_layout.offset + col * vector_stride
                 ]
             dst[row] = acc
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     def gemv(
         ref self, vector: Tensor[1, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         # Default: C-order accumulation in the K axis, no reassociation.
         return self._gemv_with_math_policy[False](vector)
 
     def gemv_fast(
         ref self, vector: Tensor[1, HostStorage]
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 2:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 2:
         # Explicit opt-in: SIMD horizontal reduction may change last bits.
         return self._gemv_with_math_policy[True](vector)
 
     def _dot_with_math_policy[fast_tree: Bool](
         ref self, other: Tensor[1, HostStorage]
-    ) -> TensorResult[Float32] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Float32] where Self.S == HostStorage and Self.rank == 1:
         # Matrix/vector primitives are public methods of Tensor as well as
         # convenient functions in ops/matrix. One checked layout proof per
         # operand; only explicit fast-tree mode uses the tuned SIMD dot,
@@ -5123,7 +5244,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var count = a.shape.numel()
         if count != b.shape.numel():
             return TensorResult[Float32](TensorStatus.SIZE_MISMATCH)
-        var lhs = self.impl.storage.borrow_span()
+        var lhs = rebind[HostStorage](self.impl.storage).borrow_span()
         var rhs = other.impl.storage.borrow_span()
         # Only explicit fast-tree mode uses SIMD lane reduction; the default
         # dot() follows the same scalar K order for contiguous and strided.
@@ -5141,18 +5262,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def dot(
         ref self, other: Tensor[1, HostStorage]
-    ) -> TensorResult[Float32] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Float32] where Self.S == HostStorage and Self.rank == 1:
         return self._dot_with_math_policy[False](other)
 
     def dot_fast(
         ref self, other: Tensor[1, HostStorage]
-    ) -> TensorResult[Float32] where identical(Self.S, HostStorage) and Self.rank == 1:
+    ) -> TensorResult[Float32] where Self.S == HostStorage and Self.rank == 1:
         # Explicit opt-in for SIMD reassociation without changing Float32.
         return self._dot_with_math_policy[True](other)
 
     def _scan_host[operation: Int](
         ref self, axis: Int
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # One FP32 prefix-scan implementation for all four operations. The
         # opcode/rank/storage are AOT-specialized and source bounds are
         # validated once. This is an axis-wise ordered scan, not a reduction.
@@ -5169,7 +5290,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var out = allocated.payload.take()
-        var src = self.impl.storage.borrow_span()
+        var src = rebind[HostStorage](self.impl.storage).borrow_span()
         var dst = out.impl.storage.borrow_mut_span()
         # Delegate the ordered, rank-static prefix recurrence to the CPU
         # kernel layer. The facade only validates, allocates and publishes.
@@ -5180,62 +5301,62 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
             if scan_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, HostStorage]](scan_status)
-            return out._finish_complete_overwrite()
+            return (out^)._finish_complete_overwrite()
         else:
             # A scalar has no scan axis; normalization already rejected it.
             return TensorResult[Tensor[Self.rank, HostStorage]](TensorStatus.INVALID_AXIS)
 
-    def cumsum(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def cumsum(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scan_host[0](axis)
 
-    def cumprod(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def cumprod(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scan_host[1](axis)
 
-    def cummin(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def cummin(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scan_host[2](axis)
 
-    def cummax(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def cummax(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scan_host[3](axis)
 
     # Exclusive prefix scans write the identity first on each line. They
     # share the same allocation and stride-specialized kernel as inclusive
     # scans: no temporary inclusive result or shift/copy is materialized.
-    def exclusive_cumsum(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def exclusive_cumsum(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scan_host[4](axis)
 
-    def exclusive_cumprod(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def exclusive_cumprod(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._scan_host[5](axis)
 
     # Public Tensor-centric scalar reduction spelling. The old *_all
     # methods remain available and own the algorithm and numerical policy.
-    def sum(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def sum(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self.sum_all()
 
-    def mean(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def mean(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self.mean_all()
 
-    def prod(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def prod(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self.prod_all()
 
-    def min(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def min(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self.min_all()
 
-    def max(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def max(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self.max_all()
 
-    def argmin(self) -> TensorResult[Int] where identical(Self.S, HostStorage):
+    def argmin(self) -> TensorResult[Int] where Self.S == HostStorage:
         return self.argmin_all()
 
-    def argmax(self) -> TensorResult[Int] where identical(Self.S, HostStorage):
+    def argmax(self) -> TensorResult[Int] where Self.S == HostStorage:
         return self.argmax_all()
 
     def _sum_from_validated_layout_fast(
         ref self, mapping: TensorLayout[Self.rank]
-    ) -> Float32 where identical(Self.S, HostStorage):
+    ) -> Float32 where Self.S == HostStorage:
         # INTERNAL: only a canonical owner-validated mapping may enter. This
         # unchecked leaf is shared by sum_all_fast and mean_all_fast; no redundant
         # descriptor proof or TensorResult is built in the hot reduction.
-        var source = self.impl.storage.borrow_span()
+        var source = rebind[HostStorage](self.impl.storage).borrow_span()
         if mapping.is_exhaustive():
             if mapping.is_c_contiguous() or mapping.is_f_contiguous():
                 var run = source[mapping.span_lo:mapping.span_lo + mapping.shape.numel()]
@@ -5267,10 +5388,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def _sum_from_validated_layout_strict(
         ref self, mapping: TensorLayout[Self.rank]
-    ) -> Float32 where identical(Self.S, HostStorage):
+    ) -> Float32 where Self.S == HostStorage:
         # INTERNAL: logical C-index order, with no SIMD tree reassociation.
         # Strict compiler FP reassociation policy is a separate AOT contract.
-        var source = self.impl.storage.borrow_span()
+        var source = rebind[HostStorage](self.impl.storage).borrow_span()
         if mapping.is_c_contiguous() and mapping.is_exhaustive():
             return cpu_sum_c_strict_fp32(
                 source, mapping.span_lo, mapping.shape.numel(),
@@ -5282,27 +5403,27 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             cursor.advance()
         return total
 
-    def sum_all(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def sum_all(self) -> TensorResult[Float32] where Self.S == HostStorage:
         # Consistent with default_fp32_math_mode(): STRICT_FP32 is the default.
         return self.sum_all_strict()
 
-    def sum_all_fast(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def sum_all_fast(self) -> TensorResult[Float32] where Self.S == HostStorage:
         # Explicit opt-in; parallel/SIMD tree may change reduction association.
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Float32](proof.status)
         return TensorResult[Float32](self._sum_from_validated_layout_fast(proof.payload.value()))
 
-    def sum_all_strict(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def sum_all_strict(self) -> TensorResult[Float32] where Self.S == HostStorage:
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Float32](proof.status)
         return TensorResult[Float32](self._sum_from_validated_layout_strict(proof.payload.value()))
 
-    def mean_all(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def mean_all(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self.mean_all_strict()
 
-    def mean_all_fast(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def mean_all_fast(self) -> TensorResult[Float32] where Self.S == HostStorage:
         # The faster tree is a caller-selected precision/association policy.
         var proof = self._checked_current_layout()
         if not proof.is_ok():
@@ -5315,7 +5436,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             self._sum_from_validated_layout_fast(trusted) / Float32(count)
         )
 
-    def mean_all_strict(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def mean_all_strict(self) -> TensorResult[Float32] where Self.S == HostStorage:
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Float32](proof.status)
@@ -5331,12 +5452,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # element, and rank-1..8 use the same checked fixed-rank cursor. These
     # methods are also the canonical fast HostStorage implementations used
     # by ops/reduction; no second reduction loop is needed in the public API.
-    def prod_all(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def prod_all(self) -> TensorResult[Float32] where Self.S == HostStorage:
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Float32](proof.status)
         var mapping = proof.payload.value()
-        var values = self.impl.storage.borrow_span()
+        var values = rebind[HostStorage](self.impl.storage).borrow_span()
         if mapping.is_c_contiguous() and mapping.is_exhaustive():
             return TensorResult[Float32](cpu_prod_c_fp32(
                 values, mapping.span_lo, mapping.shape.numel(),
@@ -5348,14 +5469,14 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             cursor.advance()
         return TensorResult[Float32](result)
 
-    def _extremum_all[find_min: Bool](self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def _extremum_all[find_min: Bool](self) -> TensorResult[Float32] where Self.S == HostStorage:
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Float32](proof.status)
         var mapping = proof.payload.value()
         if mapping.shape.numel() == 0:
             return TensorResult[Float32](TensorStatus.SIZE_MISMATCH)
-        var data = self.impl.storage.borrow_span()
+        var data = rebind[HostStorage](self.impl.storage).borrow_span()
         if mapping.is_c_contiguous() and mapping.is_exhaustive():
             return TensorResult[Float32](cpu_extremum_c_fp32[find_min](
                 data, mapping.span_lo, mapping.shape.numel(),
@@ -5376,20 +5497,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             cursor.advance()
         return TensorResult[Float32](best)
 
-    def min_all(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def min_all(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self._extremum_all[True]()
 
-    def max_all(self) -> TensorResult[Float32] where identical(Self.S, HostStorage):
+    def max_all(self) -> TensorResult[Float32] where Self.S == HostStorage:
         return self._extremum_all[False]()
 
-    def _arg_extremum_all[find_min: Bool](self) -> TensorResult[Int] where identical(Self.S, HostStorage):
+    def _arg_extremum_all[find_min: Bool](self) -> TensorResult[Int] where Self.S == HostStorage:
         var proof = self._checked_current_layout()
         if not proof.is_ok():
             return TensorResult[Int](proof.status)
         var mapping = proof.payload.value()
         if mapping.shape.numel() == 0:
             return TensorResult[Int](TensorStatus.SIZE_MISMATCH)
-        var data = self.impl.storage.borrow_span()
+        var data = rebind[HostStorage](self.impl.storage).borrow_span()
         if mapping.is_c_contiguous() and mapping.is_exhaustive():
             return TensorResult[Int](cpu_argextremum_c_fp32[find_min](
                 data, mapping.span_lo, mapping.shape.numel(),
@@ -5417,10 +5538,10 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             cursor.advance()
         return TensorResult[Int](best_index)
 
-    def argmin_all(self) -> TensorResult[Int] where identical(Self.S, HostStorage):
+    def argmin_all(self) -> TensorResult[Int] where Self.S == HostStorage:
         return self._arg_extremum_all[True]()
 
-    def argmax_all(self) -> TensorResult[Int] where identical(Self.S, HostStorage):
+    def argmax_all(self) -> TensorResult[Int] where Self.S == HostStorage:
         return self._arg_extremum_all[False]()
 
     # Rank-preserving axis reductions live on the owning Tensor facade.
@@ -5430,7 +5551,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # means have no result. Rank zero has no valid reduction axis.
     def _reduce_axis_keepdims_host[operation: Int](
         ref self, axis: Int
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         comptime assert operation >= 0 and operation <= 4, "FP32 axis reduction opcode must be 0..4"
         var proof = self._checked_current_layout()
         if not proof.is_ok():
@@ -5464,8 +5585,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # Do not calculate those products in the dense fast path: the
         # already-checked zero-element owner is complete without a kernel.
         if result_shape.payload.value().numel() == 0:
-            return result._finish_complete_overwrite()
-        var source_data = self.impl.storage.borrow_span()
+            return (result^)._finish_complete_overwrite()
+        var source_data = rebind[HostStorage](self.impl.storage).borrow_span()
         var output_data = result.impl.storage.borrow_mut_span()
         if source_layout.is_c_contiguous() and source_layout.is_exhaustive():
             var outer = 1
@@ -5481,7 +5602,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
             if kernel_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, HostStorage]](kernel_status)
-            return result._finish_complete_overwrite()
+            return (result^)._finish_complete_overwrite()
         var cursor = NDIndexIterator[Self.rank](result_shape.payload.value())
         var reduced_pitch = source_layout.strides.get(reduced)
         while not cursor.done():
@@ -5494,7 +5615,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
             output_data[cursor.produced] = acc
             cursor.advance()
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     # Shape-specialized rank-reducing FP32 reductions. Every resulting rank
     # is known at compile time (0..8); no dynamic-rank Tensor exists. Axis
@@ -5503,7 +5624,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # operation on the existing owning Tensor type, not a secondary executor.
     def _reduce_axes_removed_host[operation: Int, axes_count: Int](
         ref self, axes: StaticRankArray[axes_count]
-    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where Self.S == HostStorage:
         comptime assert operation >= 0 and operation <= 4, "invalid FP32 reduction"
         comptime assert axes_count >= 0 and axes_count <= Self.rank, "invalid reduction rank"
         var checked_source = self._checked_current_layout()
@@ -5523,7 +5644,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             axes_normalized.set(i, axis)
         # Zero selected axes mean an identity *copy*, never a borrowed alias.
         comptime if axes_count == 0:
-            return self.clone()
+            var cloned = rebind[Tensor[Self.rank, HostStorage]](self).clone()
+            return rebind_var[TensorResult[Tensor[Self.rank - axes_count, HostStorage]]](cloned^)
         var dims = StaticRankArray[Self.rank - axes_count](0)
         var out_axis = 0
         comptime for src_axis in range(Self.rank):
@@ -5577,12 +5699,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 return TensorResult[Tensor[Self.rank - axes_count, HostStorage]](dense.status)
             var reduced = dense.payload.take()
             var kernel_status = cpu_reduce_c_trailing_axes_fp32[operation](
-                self.impl.storage.borrow_span(), reduced.impl.storage.borrow_mut_span(),
+                rebind[HostStorage](self.impl.storage).borrow_span(), reduced.impl.storage.borrow_mut_span(),
                 layout.span_lo, output_shape.numel(), count,
             )
             if kernel_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank - axes_count, HostStorage]](kernel_status)
-            return reduced._finish_complete_overwrite()
+            return (reduced^)._finish_complete_overwrite()
         # Consecutive reduced axes form one C-order reduction block even
         # when retained axes follow them (leading/middle-axis reductions).
         # Rank is fixed, axes were normalized, output cells are disjoint, and
@@ -5611,28 +5733,28 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 return TensorResult[Tensor[Self.rank - axes_count, HostStorage]](created.status)
             var output = created.payload.take()
             var kernel_status = cpu_reduce_c_axis_block_fp32[operation](
-                self.impl.storage.borrow_span(), output.impl.storage.borrow_mut_span(),
+                rebind[HostStorage](self.impl.storage).borrow_span(), output.impl.storage.borrow_mut_span(),
                 layout.span_lo, outer, count, inner,
             )
             if kernel_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank - axes_count, HostStorage]](kernel_status)
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         # For exactly one selected nontrailing axis, accumulate locally per
         # output cell and avoid repeated read/modify/write of the output.
         comptime if axes_count == 1:
-            var allocated = Tensor[Self.rank - 1, HostStorage]._empty_for_complete_overwrite_checked(output_shape)
+            var allocated = Tensor[Self.rank - axes_count, HostStorage]._empty_for_complete_overwrite_checked(output_shape)
             if not allocated.is_ok():
-                return TensorResult[Tensor[Self.rank - 1, HostStorage]](allocated.status)
+                return TensorResult[Tensor[Self.rank - axes_count, HostStorage]](allocated.status)
             var output = allocated.payload.take()
-            var source = self.impl.storage.borrow_span()
+            var source = rebind[HostStorage](self.impl.storage).borrow_span()
             var destination = output.impl.storage.borrow_mut_span()
             var axis = axes_normalized.get(0)
             var axis_stride = layout.strides.get(axis)
-            var cursor = NDIndexIterator[Self.rank - 1](output_shape)
+            var cursor = NDIndexIterator[Self.rank - axes_count](output_shape)
             while not cursor.done():
                 var origin = layout.offset
                 var source_axis = 0
-                comptime for j in range(Self.rank - 1):
+                comptime for j in range(Self.rank - axes_count):
                     if source_axis == axis:
                         source_axis += 1
                     origin += cursor.coordinates.get(j) * layout.strides.get(source_axis)
@@ -5642,7 +5764,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 )
                 destination[cursor.produced] = accumulator
                 cursor.advance()
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         # Multiple selected axes: initialize each output cell to the reduction
         # identity and traverse the source exactly once in logical C order.
         var identity = Float32(0.0)
@@ -5654,9 +5776,9 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             identity = -Float32(FloatLiteral.infinity)
         var allocated = Tensor[Self.rank - axes_count, HostStorage].full_checked(output_shape, identity)
         if not allocated.is_ok():
-            return allocated
+            return allocated^
         var output = allocated.payload.take()
-        var source = self.impl.storage.borrow_span()
+        var source = rebind[HostStorage](self.impl.storage).borrow_span()
         var destination = output.impl.storage.borrow_mut_span()
         var target_layout = output.impl.layout
         var cursor = NDIndexIterator[Self.rank](layout.shape)
@@ -5682,73 +5804,73 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             var denominator = Float32(count)
             for i in range(output_shape.numel()):
                 destination[i] /= denominator
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     def sum_axes[axes_count: Int](
         ref self, axes: StaticRankArray[axes_count]
-    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_removed_host[0, axes_count](axes)
 
     def prod_axes[axes_count: Int](
         ref self, axes: StaticRankArray[axes_count]
-    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_removed_host[1, axes_count](axes)
 
     def min_axes[axes_count: Int](
         ref self, axes: StaticRankArray[axes_count]
-    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_removed_host[2, axes_count](axes)
 
     def max_axes[axes_count: Int](
         ref self, axes: StaticRankArray[axes_count]
-    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_removed_host[3, axes_count](axes)
 
     def mean_axes[axes_count: Int](
         ref self, axes: StaticRankArray[axes_count]
-    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank - axes_count, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_removed_host[4, axes_count](axes)
 
-    def sum_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 1:
+    def sum_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where Self.S == HostStorage and Self.rank >= 1:
         var axes = StaticRankArray[1](axis)
         return self.sum_axes[1](axes)
 
-    def prod_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 1:
+    def prod_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where Self.S == HostStorage and Self.rank >= 1:
         var axes = StaticRankArray[1](axis)
         return self.prod_axes[1](axes)
 
-    def min_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 1:
+    def min_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where Self.S == HostStorage and Self.rank >= 1:
         var axes = StaticRankArray[1](axis)
         return self.min_axes[1](axes)
 
-    def max_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 1:
+    def max_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where Self.S == HostStorage and Self.rank >= 1:
         var axes = StaticRankArray[1](axis)
         return self.max_axes[1](axes)
 
-    def mean_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 1:
+    def mean_axis(ref self, axis: Int) -> TensorResult[Tensor[Self.rank - 1, HostStorage]] where Self.S == HostStorage and Self.rank >= 1:
         var axes = StaticRankArray[1](axis)
         return self.mean_axes[1](axes)
 
-    def sum_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def sum_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axis_keepdims_host[0](axis)
 
-    def prod_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def prod_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axis_keepdims_host[1](axis)
 
-    def min_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def min_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axis_keepdims_host[2](axis)
 
-    def max_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def max_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axis_keepdims_host[3](axis)
 
-    def mean_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def mean_axis_keepdims(ref self, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axis_keepdims_host[4](axis)
 
     # Multi-axis rank-preserving reduction, with static axis count and
     # runtime-validated axes. Does not create a dynamic-rank Tensor family.
     def _reduce_axes_keepdims_host[operation: Int, axes_count: Int](
         ref self, axes: StaticRankArray[axes_count]
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         comptime assert operation >= 0 and operation <= 4, "invalid FP32 reduction"
         comptime assert axes_count >= 0 and axes_count <= Self.rank, "axis count exceeds static rank"
         var proof = self._checked_current_layout()
@@ -5766,6 +5888,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             selected[k] = True
             normalized.set(i, k)
         comptime if axes_count == 0:
+            comptime assert conforms_to(Self.S, HostSpanStorage)
             return self.clone()
         comptime if axes_count == 1:
             return self._reduce_axis_keepdims_host[operation](normalized.get(0))
@@ -5815,12 +5938,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 return TensorResult[Tensor[Self.rank, HostStorage]](prepared.status)
             var result = prepared.payload.take()
             var kernel_status = cpu_reduce_c_trailing_axes_fp32[operation](
-                self.impl.storage.borrow_span(), result.impl.storage.borrow_mut_span(),
+                rebind[HostStorage](self.impl.storage).borrow_span(), result.impl.storage.borrow_mut_span(),
                 safe.span_lo, out_shape.numel(), reduce_count,
             )
             if kernel_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, HostStorage]](kernel_status)
-            return result._finish_complete_overwrite()
+            return (result^)._finish_complete_overwrite()
         # The exact same block lowering applies to keepdims because the
         # reduced axes have size 1 in the output; its physical order matches
         # the shape with reduced axes removed.
@@ -5848,12 +5971,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 return TensorResult[Tensor[Self.rank, HostStorage]](created.status)
             var output = created.payload.take()
             var kernel_status = cpu_reduce_c_axis_block_fp32[operation](
-                self.impl.storage.borrow_span(), output.impl.storage.borrow_mut_span(),
+                rebind[HostStorage](self.impl.storage).borrow_span(), output.impl.storage.borrow_mut_span(),
                 safe.span_lo, outer, reduce_count, inner,
             )
             if kernel_status != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, HostStorage]](kernel_status)
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         var initial = Float32(0.0)
         comptime if operation == 1:
             initial = Float32(1.0)
@@ -5865,7 +5988,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not built.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](built.status)
         var result = built.payload.take()
-        var src = self.impl.storage.borrow_span()
+        var src = rebind[HostStorage](self.impl.storage).borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         var out_layout = result.impl.layout
         var cursor = NDIndexIterator[Self.rank](safe.shape)
@@ -5888,21 +6011,21 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             var scale = Float32(reduce_count)
             for i in range(out_shape.numel()):
                 dst[i] /= scale
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
-    def sum_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def sum_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_keepdims_host[0, axes_count](axes)
 
-    def prod_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def prod_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_keepdims_host[1, axes_count](axes)
 
-    def min_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def min_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_keepdims_host[2, axes_count](axes)
 
-    def max_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def max_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_keepdims_host[3, axes_count](axes)
 
-    def mean_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def mean_axes_keepdims[axes_count: Int](ref self, axes: StaticRankArray[axes_count]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._reduce_axes_keepdims_host[4, axes_count](axes)
 
     def size(self, axis: Int) -> TensorResult[Int]:
@@ -5927,7 +6050,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def sliced_regions_disjoint(
         ref self, axis: Int, first: SliceSpec, second: SliceSpec,
-    ) -> TensorResult[Bool] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Bool] where Self.S == HostStorage:
         # Both slices are derived from THIS Tensor and hence the very same
         # live HostStorage owner; this proof cannot be forged with two arbitrary
         # StorageProvenance IDs. Even with irregular/negative strides, a true
@@ -5944,12 +6067,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not rhs.is_ok():
             return TensorResult[Bool](rhs.status)
         return _owner_bound_mapping_disjoint[Self.rank, Self.rank](
-            self.impl.storage, lhs.payload.value(), rhs.payload.value()
+            rebind[HostStorage](self.impl.storage), lhs.payload.value(), rhs.payload.value()
         )
 
     def storage_regions_disjoint[other_rank: Int](
         ref self, ref other: Tensor[other_rank, HostStorage],
-    ) -> TensorResult[Bool] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Bool] where Self.S == HostStorage:
         # Cross-Tensor proof derived from the two live host allocation owners.
         # No caller-controllable allocation ID grants noalias here. A true
         # answer is suitable for conservative copy/split strategy selection,
@@ -5961,7 +6084,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not right.is_ok():
             return TensorResult[Bool](right.status)
         return _two_owner_mappings_disjoint[Self.rank, other_rank](
-            self.impl.storage, left.payload.value(),
+            rebind[HostStorage](self.impl.storage), left.payload.value(),
             other.impl.storage, right.payload.value(),
         )
 
@@ -6002,11 +6125,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             # A zero-term index is an identity view, including rank-0 scalars.
             # Avoid constructing an unsupported zero-length fixed Array.
             comptime assert out_rank == Self.rank, "identity index must preserve rank"
-            return self.view()
+            return rebind_var[TensorResult[TensorView[out_rank, origin_of(self.impl.storage)]]](self.view())
         else:
             var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
             comptime for i in range(count):
-                packed[i] = as_basic_index(terms[i])
+                packed[i] = _pack_basic_index(terms[i])
             return self.index_view[out_rank, count](packed)
 
     # The preferred typed-index API infers the result rank at AOT compile
@@ -6018,16 +6141,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     ) -> TensorResult[TensorView[inferred_basic_index_rank[Self.rank, *IndexTypes](), origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         comptime out_rank = inferred_basic_index_rank[Self.rank, *IndexTypes]()
         comptime assert out_rank >= 0 and out_rank <= 8, "invalid heterogeneous index signature"
-        comptime count = terms.__len__()
-        comptime assert count <= 17, "basic index pack must have at most 17 terms"
-        comptime if count == 0:
-            # Valid for every rank, including rank 0, and never materializes.
-            return self.view()
-        else:
-            var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
-            comptime for i in range(count):
-                packed[i] = as_basic_index(terms[i])
-            return self.index_view[out_rank, count](packed)
+        return self.index_basic_as[out_rank](*terms)
 
     # Heterogeneous basic slicing is available directly from Tensor. The
     # integer-only __getitem__ overloads still return scalar FP32 results;
@@ -6036,17 +6150,17 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     def __getitem__(
         ref self, spec: SliceSpec,
     ) -> TensorResult[TensorView[Self.rank, origin_of(self.impl.storage)]] where Self.rank >= 1 and conforms_to(Self.S, HostSpanStorage):
-        return self.index_basic(spec)
+        return self.index_basic_as[Self.rank](spec)
 
     def __getitem__(
         ref self, spec: EllipsisIndex,
     ) -> TensorResult[TensorView[Self.rank, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
-        return self.index_basic(spec)
+        return self.index_basic_as[Self.rank](spec)
 
     def __getitem__(
         ref self, spec: NewAxis,
     ) -> TensorResult[TensorView[Self.rank + 1, origin_of(self.impl.storage)]] where Self.rank < 8 and conforms_to(Self.S, HostSpanStorage):
-        return self.index_basic(spec)
+        return self.index_basic_as[Self.rank + 1](spec)
 
     # Partial integer indexing reduces rank by one for ranks 2..8. The
     # existing full-arity integer overloads still read/write a Float32 scalar.
@@ -6055,12 +6169,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     def __getitem__(
         ref self, index: Int,
     ) -> TensorResult[TensorView[Self.rank - 1, origin_of(self.impl.storage)]] where Self.rank >= 2 and conforms_to(Self.S, HostSpanStorage):
-        return self.index_basic(index)
+        return self.index_basic_as[Self.rank - 1](index)
 
     def __setitem__(
         mut self, index: Int, value: Float32,
     ) -> TensorStatus where Self.rank >= 2 and conforms_to(Self.S, HostSpanStorage):
-        var selected = self.index_basic_mut(index)
+        var selected = self._index_basic_mut_as[Self.rank - 1](index)
         if not selected.is_ok():
             return selected.status
         var writable = selected.payload.take()
@@ -6072,7 +6186,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     def __setitem__(
         mut self, spec: SliceSpec, value: Float32,
     ) -> TensorStatus where Self.rank >= 1 and conforms_to(Self.S, HostSpanStorage):
-        var selected = self.index_basic_mut(spec)
+        var selected = self._index_basic_mut_as[Self.rank](spec)
         if not selected.is_ok():
             return selected.status
         var writable = selected.payload.take()
@@ -6104,20 +6218,26 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             )
         )
 
+    def _index_basic_mut_as[out_rank: Int, *IndexTypes: AnyType](
+        mut self, *terms: *IndexTypes,
+    ) -> TensorResult[TensorMutView[out_rank, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
+        comptime count = terms.__len__()
+        comptime assert count <= 17, "basic index pack must have at most 17 terms"
+        comptime if count == 0:
+            comptime assert out_rank == Self.rank, "identity index must preserve rank"
+            return rebind_var[TensorResult[TensorMutView[out_rank, origin_of(self.impl.storage)]]](self.mut_view())
+        else:
+            var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
+            comptime for i in range(count):
+                packed[i] = _pack_basic_index(terms[i])
+            return self.index_mut_view[out_rank, count](packed)
+
     def index_basic_mut[*IndexTypes: AnyType](
         mut self, *terms: *IndexTypes,
     ) -> TensorResult[TensorMutView[inferred_basic_index_rank[Self.rank, *IndexTypes](), origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         comptime out_rank = inferred_basic_index_rank[Self.rank, *IndexTypes]()
         comptime assert out_rank >= 0 and out_rank <= 8, "invalid mutable basic index signature"
-        comptime count = terms.__len__()
-        comptime assert count <= 17, "basic index pack must have at most 17 terms"
-        comptime if count == 0:
-            return self.mut_view()
-        else:
-            var packed = Array[BasicIndex, count](fill=BasicIndex.full_slice())
-            comptime for i in range(count):
-                packed[i] = as_basic_index(terms[i])
-            return self.index_mut_view[out_rank, count](packed)
+        return self._index_basic_mut_as[out_rank](*terms)
 
     def item_checked(self) -> TensorResult[Float32]:
         return self.item()
@@ -6157,7 +6277,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     src=logical_source.unsafe_ptr(),
                     count=count,
                 )
-            return target._finish_complete_overwrite()
+            return (target^)._finish_complete_overwrite()
         if count > 0 and safe_source.is_exhaustive() and is_reverse_c_contiguous(safe_source):
             # Reverse-dense FP32 data has a single physical run in the
             # opposite logical C order. Complete-overwrite allocation and
@@ -6167,7 +6287,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             var last_source = safe_source.span_lo + count - 1
             for linear in range(count):
                 dp.unsafe_store(linear, sp.unsafe_load(last_source - linear)[0])
-            return target._finish_complete_overwrite()
+            return (target^)._finish_complete_overwrite()
         # The input layout was checked, so its affine address calculation is
         # safe without building TensorResult for each copied FP32 element.
         var cursor = NDIndexIterator[Self.rank](safe_source.shape)
@@ -6177,7 +6297,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             dest_span[linear] = source_span[at]
             linear += 1
             cursor.advance()
-        return target._finish_complete_overwrite()
+        return (target^)._finish_complete_overwrite()
 
     def contiguous_copy(
         ref self
@@ -6187,7 +6307,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def contiguous_f_copy(
         ref self
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # Always allocate an independent column-major owner, including for
         # already F-contiguous sources; never return a borrowed temporary.
         var proof = self._checked_current_layout()
@@ -6204,14 +6324,14 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var output = Tensor[Self.rank, HostStorage]._from_parts_unchecked(
             buffer.payload.take(), output_layout.payload.value()
         )
-        var src = self.impl.storage.borrow_span()
+        var src = rebind[HostStorage](self.impl.storage).borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         if mapping.is_f_contiguous() and mapping.is_exhaustive():
             if count > 0:
                 var first = mapping.span_lo
                 var source_run = src[first:first + count]
                 unsafe_memcpy(dest=dst.unsafe_ptr(), src=source_run.unsafe_ptr(), count=count)
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         if count > 0 and mapping.is_exhaustive() and is_reverse_f_contiguous(mapping):
             # F-order materialization of a fully reversed F-dense mapping.
             # Avoid N-D cursor/physical-offset overhead on every element.
@@ -6220,7 +6340,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             var last_source = mapping.span_lo + count - 1
             for linear in range(count):
                 dp.unsafe_store(linear, sp.unsafe_load(last_source - linear)[0])
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         var cursor = NDIndexIterator[Self.rank](mapping.shape)
         var target = output_layout.payload.value()
         while not cursor.done():
@@ -6228,13 +6348,14 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             var dst_at = target.physical_offset_unchecked(cursor.coordinates)
             dst[dst_at] = src[src_at]
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     def contiguous_copy_order(
         ref self, order: ContiguousOrder
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # Unlike ensure-contiguous APIs, this explicit method always deep copies.
         if order == ContiguousOrder.C:
+            comptime assert conforms_to(Self.S, HostSpanStorage)
             return self.clone()
         if order == ContiguousOrder.F:
             return self.contiguous_f_copy()
@@ -6242,7 +6363,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def contiguous(
         ref self, order: ContiguousOrder
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # Explicit materialization, not a view-or-copy API. Shared engine:
         # C/F implementation performs exactly one allocation and data copy.
         return self.contiguous_copy_order(order)
@@ -6251,17 +6372,17 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # copy writes only its selected elements; it must NEVER restore a whole-
     # allocation readability certificate.  A full unique map may do so even
     # when it is F-order or a reversed permutation of the physical owner.
-    def _finish_host_copy_from(mut self, dst: TensorLayout[Self.rank]) -> TensorStatus where identical(Self.S, HostStorage):
+    def _finish_host_copy_from(mut self, dst: TensorLayout[Self.rank]) -> TensorStatus where Self.S == HostStorage:
         if (dst.is_exhaustive() and dst.span_lo == 0
             and dst.shape.numel() == self.impl.storage.capacity()):
-            var published = self.impl.storage._mark_complete_overwrite()
+            var published = rebind[HostStorage](self.impl.storage)._mark_complete_overwrite()
             if published != TensorStatus.OK:
-                self.impl.storage._invalidate_after_failed_write()
+                rebind[HostStorage](self.impl.storage)._invalidate_after_failed_write()
             return published
         return TensorStatus.OK
 
     # Direct copies between proven-disjoint owning host allocations.
-    def copy_from(mut self, ref source: Tensor[Self.rank, HostStorage]) -> TensorStatus where identical(Self.S, HostStorage):
+    def copy_from(mut self, ref source: Tensor[Self.rank, HostStorage]) -> TensorStatus where Self.S == HostStorage:
         # Copying FROM an owner requires initialized data; copying TO a full
         # destination does not.  Rebuilding its descriptor/capacity proof
         # allows the copy to restore an owner poisoned by a failed Hybrid
@@ -6305,7 +6426,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             if matching_dense_c or matching_dense_f or matching_reverse_c or matching_reverse_f:
                 # The two disjoint owners expose corresponding physical runs.
                 # Subviews can start at distinct nonzero storage offsets.
-                var dst_span = self.impl.storage.borrow_mut_span()
+                var dst_span = rebind[HostStorage](self.impl.storage).borrow_mut_span()
                 var src_span = source.impl.storage.borrow_span()
                 var dst_first = dst_layout.span_lo
                 var src_first = src_layout.span_lo
@@ -6337,7 +6458,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             if opposite_dense_c or opposite_dense_f:
                 var count = dst_layout.shape.numel()
                 if count > 0:
-                    var dst_span = self.impl.storage.borrow_mut_span()
+                    var dst_span = rebind[HostStorage](self.impl.storage).borrow_mut_span()
                     var src_span = source.impl.storage.borrow_span()
                     var dst_ptr = dst_span.unsafe_ptr()
                     var src_ptr = src_span.unsafe_ptr()
@@ -6348,7 +6469,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 return self._finish_host_copy_from(dst_layout)
         # Unique independent owners permit direct affine traversal without
         # duplicate per-element status allocation or overlap checks.
-        var dst_span = self.impl.storage.borrow_mut_span()
+        var dst_span = rebind[HostStorage](self.impl.storage).borrow_mut_span()
         var src_span = source.impl.storage.borrow_span()
         var cursor = NDIndexIterator[Self.rank](dst_layout.shape)
         while not cursor.done():
@@ -6362,16 +6483,18 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # stride traversal, alias checks, and C-order copy rules in access/span.
     # No output materialization or implicit host/device movement occurs.
     def copy_to_span[dst_origin: Origin[mut=True]](
-        ref self, mut destination: Span[True, Float32, dst_origin],
-    ) -> TensorStatus where identical(Self.S, HostStorage):
+        ref self, mut destination: Span[Float32, dst_origin],
+    ) -> TensorStatus where Self.S == HostStorage:
+        comptime assert conforms_to(Self.S, HostSpanStorage)
         var borrowed = self.view()
         if not borrowed.is_ok():
             return borrowed.status
         return access_copy_to_span(borrowed.payload.value(), destination)
 
     def copy_from_span[src_origin: Origin](
-        mut self, source: Span[False, Float32, src_origin],
-    ) -> TensorStatus where identical(Self.S, HostStorage):
+        mut self, source: Span[Float32, src_origin],
+    ) -> TensorStatus where Self.S == HostStorage:
+        comptime assert conforms_to(Self.S, HostSpanStorage)
         var borrowed = self.mut_view()
         if borrowed.is_ok():
             # Normal initialized destination: retain the proven alias-safe
@@ -6386,7 +6509,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 return TensorStatus.SIZE_MISMATCH
             var copied = access_copy_from_span(target, source)
             if copied != TensorStatus.OK:
-                self.impl.storage._invalidate_after_failed_write()
+                rebind[HostStorage](self.impl.storage)._invalidate_after_failed_write()
             return copied
         if borrowed.status != TensorStatus.UNINITIALIZED:
             return borrowed.status
@@ -6406,7 +6529,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return TensorStatus.UNINITIALIZED
         if len(source) != mapping.shape.numel():
             return TensorStatus.SIZE_MISMATCH
-        var destination = self.impl.storage.borrow_mut_span()
+        var destination = rebind[HostStorage](self.impl.storage).borrow_mut_span()
         if not host_output_disjoint_from_input(destination, source):
             # An aliased source could read poisoned bytes from this owner.
             # Do not use memmove to fabricate a readability certificate.
@@ -6416,11 +6539,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         )
         var copied = access_copy_from_span(writable, source)
         if copied != TensorStatus.OK:
-            self.impl.storage._invalidate_after_failed_write()
+            rebind[HostStorage](self.impl.storage)._invalidate_after_failed_write()
             return copied
-        var published = self.impl.storage._mark_complete_overwrite()
+        var published = rebind[HostStorage](self.impl.storage)._mark_complete_overwrite()
         if published != TensorStatus.OK:
-            self.impl.storage._invalidate_after_failed_write()
+            rebind[HostStorage](self.impl.storage)._invalidate_after_failed_write()
         return published
 
     def __getitem__(self, indices: StaticRankArray[Self.rank]) -> TensorResult[Float32]:
@@ -6502,11 +6625,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var dst = result.as_mut_c_span()
         if not dst.is_ok():
             return dst.status
+        var output_span = dst.payload.take()
         var outcome = unsafe_execute_host_unary_fp32[
             operation, static_gpu_capacity,
         ](
             ctx, native_unary, identity, target_arch, plan,
-            src.payload.take(), dst.payload.take(),
+            src.payload.take(), output_span,
         )
         if outcome != TensorStatus.OK:
             # Earlier CPU/GPU windows can have committed before a late
@@ -6566,12 +6690,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # by all CPU_ONLY/GPU_ONLY/HYBRID_SPLIT/HYBRID_CPU_ASSIST/PIPELINE
         # paths. The borrowed owner and its native Context remain in scope
         # until the adapter returns; no independent Tensor implementation.
+        var output_span = c_span.payload.take()
         var outcome = execute_host_binary_fp32[
             static_gpu_capacity, operation,
         ](
             ctx, native_binary, identity, target_arch, plan,
             a_span.payload.take(), b_span.payload.take(),
-            c_span.payload.take(),
+            output_span,
         )
         if outcome != TensorStatus.OK:
             # A late *structural* error can follow successful earlier GPU
@@ -6602,7 +6727,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         )
         if not geometry.is_ok():
             return TensorResult[ExecutionPlan](geometry.status)
-        var counts = geometry.payload.value()
+        var counts = geometry.payload.value().copy()
         return choose_host_reduce_rows_split_plan_for_capacity(
             counts.rows, counts.columns, gpu_row_capacity,
             operation, profile, gpu_enabled,
@@ -6686,7 +6811,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         )
         if not geometry.is_ok():
             return geometry.status
-        var counts = geometry.payload.value()
+        var counts = geometry.payload.value().copy()
         if output_mapping.shape.numel() != counts.rows:
             return TensorStatus.SHAPE_MISMATCH
         # The output shape preserves exactly the unreduced prefix axes.
@@ -6706,11 +6831,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             return dst.status
         # The checked source owner and result owner remain in scope through
         # the CPU/GPU event join; GPU may only own disjoint output rows.
+        var output_span = dst.payload.take()
         var outcome = unsafe_execute_hybrid_reduce_rows_fp32[
             operation, static_gpu_row_capacity,
         ](
             ctx, artifact, identity, target_arch, plan, counts.columns,
-            src.payload.take(), dst.payload.take(),
+            src.payload.take(), output_span,
         )
         if outcome != TensorStatus.OK:
             # The native adapter may have written CPU rows before a late GPU
@@ -6757,11 +6883,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var dst_span = result.as_mut_c_span()
         if not dst_span.is_ok():
             return dst_span.status
+        var output_span = dst_span.payload.take()
         var outcome = unsafe_execute_hybrid_reduce_rows_fp32[
             operation, static_gpu_row_capacity,
         ](
             ctx, artifact, identity, target_arch, plan, columns,
-            src_span.payload.take(), dst_span.payload.take(),
+            src_span.payload.take(), output_span,
         )
         # CPU rows can already have been committed before a GPU completion
         # event fails. Even a late structural rejection may follow partial
@@ -6824,12 +6951,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var c_span = result.as_mut_c_span()
         if not c_span.is_ok():
             return c_span.status
+        var output_span = c_span.payload.take()
         var outcome = unsafe_execute_hybrid_gemm_rows_fp32[
             static_gpu_row_capacity,
         ](
             ctx, artifact, identity, target_arch, plan,
             m, k, n, a_span.payload.take(),
-            b_span.payload.take(), c_span.payload.take(),
+            b_span.payload.take(), output_span,
         )
         # The CPU lane may have written result rows even if the accelerator
         # subsequently reports a failed event/launch. Hide the ENTIRE host
@@ -6840,28 +6968,28 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             result.impl.storage._invalidate_after_failed_write()
         return outcome
 
-    def unsafe_recover_device_default_stream(mut self) -> TensorStatus where identical(Self.S, DeviceStorage):
+    def unsafe_recover_device_default_stream(mut self) -> TensorStatus where Self.S == DeviceStorage:
         # The same Tensor remains the public owner. Only a caller who can
         # prove EXCLUSIVE use of the poisoned allocation on its retained
         # default stream may recover it. No GPU payload is reinitialized.
         # Cross-stream/foreign producer recovery is deliberately unsupported.
-        return self.impl.storage.unsafe_recover_quarantined_default_stream()
+        return rebind[DeviceStorage](self.impl.storage).unsafe_recover_quarantined_default_stream()
 
     def unsafe_recover_and_reinitialize_entire_device(
         mut self, value: Float32,
-    ) -> TensorStatus where identical(Self.S, DeviceStorage):
+    ) -> TensorStatus where Self.S == DeviceStorage:
         # Explicit owner-preserving recovery from a FAILED native GPU writer.
         # UNSAFE caller proof: every outstanding use belongs to the retained
         # default stream, and no foreign queue/caller may touch this allocation.
         # A stream fence is insufficient for unknown foreign GPU producers.
         # The existing owner stays unreadable until a complete FP32 overwrite
         # is enqueued, joined and committed by the canonical write transaction.
-        var recovered = self.impl.storage.unsafe_recover_quarantined_default_stream()
+        var recovered = rebind[DeviceStorage](self.impl.storage).unsafe_recover_quarantined_default_stream()
         if recovered != TensorStatus.OK:
             return recovered
-        if not self.impl.storage.lifetime_context:
+        if not rebind[DeviceStorage](self.impl.storage).lifetime_context:
             return TensorStatus.GPU_QUIESCENCE_UNPROVEN
-        var retained = self.impl.storage.lifetime_context.value().copy()
+        var retained = rebind[DeviceStorage](self.impl.storage).lifetime_context.value().copy()
         # fill_device validates full-span C layout, count, exact issuing
         # context, allocation capacity, event completion and publish ticket.
         # Never set initialized/initialized_elements at this boundary.
@@ -6950,12 +7078,12 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         # A zero-element allocation carries a valid empty initialization
         # proof. The uniform owner gate still checks its actual layout.
         if transposed_shape.payload.value().numel() == 0:
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         var dst = output.impl.storage.borrow_mut_span()
         var step0 = mapping.strides.get(0)
         var step1 = mapping.strides.get(1)
-        comptime if identical(Self.S, HostStorage):
-            var src = self.impl.storage.borrow_span()
+        comptime if Self.S == HostStorage:
+            var src = rebind[HostStorage](self.impl.storage).borrow_span()
             var transpose_status = cpu_transpose_copy2_strided(
                 src, dst, rows, columns, mapping.offset, step0, step1,
             )
@@ -6975,7 +7103,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     if not element.is_ok():
                         return TensorResult[Tensor[2, HostStorage]](element.status)
                     dst[destination_row + i] = element.payload.value()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     def transpose(ref self, a: Int, b: Int) -> TensorResult[TensorView[Self.rank, origin_of(self.impl.storage)]] where conforms_to(Self.S, HostSpanStorage):
         var checked_source = self._checked_current_layout()
@@ -7029,6 +7157,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var checked_source = self._checked_current_layout()
         if not checked_source.is_ok():
             return TensorResult[TensorView[new_rank, origin_of(self.impl.storage)]](checked_source.status)
+        comptime assert Self.rank >= 0
         var changed = broadcast_layout[Self.rank, new_rank](checked_source.payload.value(), target, self.impl.storage.capacity())
         if not changed.is_ok():
             return TensorResult[TensorView[new_rank, origin_of(self.impl.storage)]](changed.status)
@@ -7189,7 +7318,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # including empty, F-contiguous and arbitrary checked negative strides.
     def reshape_copy[new_rank: Int](
         ref self, target: TensorShape[new_rank]
-    ) -> TensorResult[Tensor[new_rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[new_rank, HostStorage]] where Self.S == HostStorage:
         comptime assert new_rank >= 0 and new_rank <= 8, "result rank must be 0..8"
         var source_check = self._checked_current_layout()
         if not source_check.is_ok():
@@ -7211,8 +7340,8 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var output = allocated.payload.take()
         var count = final_shape.numel()
         if count == 0:
-            return output._finish_complete_overwrite()
-        var input_data = self.impl.storage.borrow_span()
+            return (output^)._finish_complete_overwrite()
+        var input_data = rebind[HostStorage](self.impl.storage).borrow_span()
         var output_data = output.impl.storage.borrow_mut_span()
         if source_layout.is_c_contiguous() and source_layout.is_exhaustive():
             var start = source_layout.span_lo
@@ -7221,7 +7350,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             unsafe_memcpy(
                 dest=output_data.unsafe_ptr(), src=logical.unsafe_ptr(), count=count
             )
-            return output._finish_complete_overwrite()
+            return (output^)._finish_complete_overwrite()
         # Flatten source values in their logical C index order, regardless
         # of physical source strides, then reinterpret in the target shape.
         var cursor = NDIndexIterator[Self.rank](source_layout.shape)
@@ -7232,11 +7361,11 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             ]
             position += 1
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     def flatten_scalar_copy(
         ref self
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank == 0:
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage and Self.rank == 0:
         # A scalar has one logical FP32 value; rank-changing copy is explicit.
         var one = TensorShape[1].checked(StaticRankArray[1](1))
         if not one.is_ok():
@@ -7245,7 +7374,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
 
     def ravel_copy(
         ref self
-    ) -> TensorResult[Tensor[1, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[1, HostStorage]] where Self.S == HostStorage:
         var dims = StaticRankArray[1](self.numel())
         var target = TensorShape[1].checked(dims)
         if not target.is_ok():
@@ -7256,7 +7385,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         ref self
     ) -> TensorResult[
         Tensor[Self.rank - (end_dim - start_dim), HostStorage]
-    ] where identical(Self.S, HostStorage) and Self.rank >= 1:
+    ] where Self.S == HostStorage and Self.rank >= 1:
         # One canonical checked shape-transform invariant for both copy and
         # zero-copy flatten, including empty dimensions and overflow.
         comptime assert start_dim >= 0 and end_dim >= start_dim and end_dim < Self.rank, "invalid flatten axis interval"
@@ -7342,6 +7471,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var checked_source = self._checked_current_layout()
         if not checked_source.is_ok():
             return TensorResult[TensorView[Self.rank + 1, origin_of(self.impl.storage)]](checked_source.status)
+        comptime assert Self.rank >= 0 and Self.rank < 8 and axis >= 0 and axis <= Self.rank
         var layout = unsqueeze_layout[Self.rank, axis](checked_source.payload.value(), self.impl.storage.capacity())
         if not layout.is_ok():
             return TensorResult[TensorView[Self.rank + 1, origin_of(self.impl.storage)]](layout.status)
@@ -7358,6 +7488,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var checked_source = self._checked_current_layout()
         if not checked_source.is_ok():
             return TensorResult[TensorView[Self.rank - 1, origin_of(self.impl.storage)]](checked_source.status)
+        comptime assert Self.rank >= 1 and Self.rank <= 8 and axis >= 0 and axis < Self.rank
         var layout = squeeze_axis_layout[Self.rank, axis](checked_source.payload.value(), self.impl.storage.capacity())
         if not layout.is_ok():
             return TensorResult[TensorView[Self.rank - 1, origin_of(self.impl.storage)]](layout.status)
@@ -7376,6 +7507,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         var checked_source = self._checked_current_layout()
         if not checked_source.is_ok():
             return TensorResult[TensorView[Self.rank - count, origin_of(self.impl.storage)]](checked_source.status)
+        comptime assert Self.rank >= 0 and Self.rank <= 8 and count >= 0 and count <= Self.rank
         var reduced = squeeze_axes_layout[Self.rank, count](
             checked_source.payload.value(), axes, self.impl.storage.capacity(),
         )
@@ -7484,7 +7616,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 return TensorResult[Array[TensorView[Self.rank, origin_of(self.impl.storage)], parts]](piece.status)
             result[i] = piece.payload.take()
             start += sections[i]
-        return TensorResult[Array[TensorView[Self.rank, origin_of(self.impl.storage)], parts]](result)
+        return TensorResult[Array[TensorView[Self.rank, origin_of(self.impl.storage)], parts]](result^)
 
     # Exactly `parts` near-equal zero-copy views, including empty trailing
     # views when the selected extent is smaller than the static part count.
@@ -7521,7 +7653,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # Both are explicit allocations; neither silently returns a zero-copy view.
     def _repeat_or_tile_axis_host[tile_mode: Bool](
         ref self, axis: Int, copies: Int
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         if copies < 0:
             return TensorResult[Tensor[Self.rank, HostStorage]](TensorStatus.INVALID_SHAPE)
         var source_proof = self._checked_current_layout()
@@ -7544,7 +7676,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var result = allocated.payload.take()
-        var src = self.impl.storage.borrow_span()
+        var src = rebind[HostStorage](self.impl.storage).borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         var source_extent = source_layout.shape.dims.get(a)
         var cursor = NDIndexIterator[Self.rank](shaped.payload.value())
@@ -7558,13 +7690,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 coord.set(a, coord.get(a) // copies)
             dst[cursor.produced] = src[source_layout.physical_offset_unchecked(coord)]
             cursor.advance()
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     # Gather is an explicitly materializing, rank-preserving indexing primitive.
     # All index values are validated before allocating any output.
-    def gather[origin: Origin](
-        ref self, axis: Int, indices: Span[False, Int, origin]
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def gather[origin: Origin[mut=False]](
+        ref self, axis: Int, indices: Span[mut=False, Int, origin]
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         var source_result = self._checked_current_layout()
         if not source_result.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](source_result.status)
@@ -7587,7 +7719,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var result = allocated.payload.take()
-        var src = self.impl.storage.borrow_span()
+        var src = rebind[HostStorage](self.impl.storage).borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         # A borrowed Int index view must not alias this fresh Float32 output
         # even through an unsafe external reinterpretation of memory.
@@ -7598,14 +7730,14 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         )
         if gathered != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, HostStorage]](gathered)
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     # Scatter uses stable sequential last-write semantics for repeated indices.
     # Validate every shape/target/index before modifying the destination.
-    def scatter_from[origin: Origin](
-        mut self, axis: Int, indices: Span[False, Int, origin],
+    def scatter_from[origin: Origin[mut=False]](
+        mut self, axis: Int, indices: Span[mut=False, Int, origin],
         ref source: Tensor[Self.rank, HostStorage], conflict_code: Int = 0,
-    ) -> TensorStatus where identical(Self.S, HostStorage):
+    ) -> TensorStatus where Self.S == HostStorage:
         if conflict_code != 0:
             return TensorStatus.UNSUPPORTED
         var dst_result = self._checked_current_layout()
@@ -7655,7 +7787,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if src_layout.shape.numel() == 0:
             return TensorStatus.OK
         var src = source.impl.storage.borrow_span()
-        var dst = self.impl.storage.borrow_mut_span()
+        var dst = rebind[HostStorage](self.impl.storage).borrow_mut_span()
         # Both Float32 source AND the Int index vector must be independent
         # of the writable destination. Otherwise a write could corrupt a
         # future unread value or even alter its own address computation.
@@ -7672,20 +7804,20 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             # destination element.  Conservatively revoke its whole-owner
             # readability certificate; an invalid index is checked above
             # before this call and cannot trigger such invalidation.
-            self.impl.storage._invalidate_after_failed_write()
+            rebind[HostStorage](self.impl.storage)._invalidate_after_failed_write()
         return scattered
 
-    def repeat_axis(ref self, axis: Int, copies: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def repeat_axis(ref self, axis: Int, copies: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._repeat_or_tile_axis_host[False](axis, copies)
 
-    def repeat(ref self, repeats: Int, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def repeat(ref self, repeats: Int, axis: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # Repeat materializes the output; split/chunk never do.
         return self.repeat_axis(axis, repeats)
 
-    def tile_axis(ref self, axis: Int, copies: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def tile_axis(ref self, axis: Int, copies: Int) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         return self._repeat_or_tile_axis_host[True](axis, copies)
 
-    def tile(ref self, reps: StaticRankArray[Self.rank]) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage):
+    def tile(ref self, reps: StaticRankArray[Self.rank]) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage:
         # All axes repeat as complete blocks. The scalar (rank 0) has a
         # well-defined empty repetition tuple and remains a scalar.
         var proof = self._checked_current_layout()
@@ -7708,7 +7840,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not allocated.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](allocated.status)
         var result = allocated.payload.take()
-        var src = self.impl.storage.borrow_span()
+        var src = rebind[HostStorage](self.impl.storage).borrow_span()
         var dst = result.impl.storage.borrow_mut_span()
         var cursor = NDIndexIterator[Self.rank](shaped.payload.value())
         while not cursor.done():
@@ -7717,7 +7849,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                 coord.set(i, coord.get(i) % source_layout.shape.dims.get(i))
             dst[cursor.produced] = src[source_layout.physical_offset_unchecked(coord)]
             cursor.advance()
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
 
     def flatten_scalar_view(
         ref self
@@ -7761,7 +7893,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
     # is a fresh, fully overwritten Float32 allocation.
     def concatenate(
         ref self, ref other: Tensor[Self.rank, HostStorage], axis: Int
-    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where identical(Self.S, HostStorage) and Self.rank >= 1:
+    ) -> TensorResult[Tensor[Self.rank, HostStorage]] where Self.S == HostStorage and Self.rank >= 1:
         var left_proof = self._checked_current_layout()
         if not left_proof.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](left_proof.status)
@@ -7789,7 +7921,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not made.is_ok():
             return TensorResult[Tensor[Self.rank, HostStorage]](made.status)
         var output = made.payload.take()
-        var src_left = self.impl.storage.borrow_span()
+        var src_left = rebind[HostStorage](self.impl.storage).borrow_span()
         var src_right = other.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         # Dense C-order owners have contiguous slices on BOTH sides of any
@@ -7799,7 +7931,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             if left.is_exhaustive() and right.is_exhaustive():
                 var total = output.impl.layout.shape.numel()
                 if total == 0:
-                    return output._finish_complete_overwrite()
+                    return (output^)._finish_complete_overwrite()
                 var suffix = 1
                 comptime for i in range(Self.rank):
                     if i > ax:
@@ -7823,7 +7955,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                         var right_run = src_right[source:source + right_per_slab]
                         var right_dst = dst[start:start + right_per_slab]
                         unsafe_memcpy(dest=right_dst.unsafe_ptr(), src=right_run.unsafe_ptr(), count=right_per_slab)
-                return output._finish_complete_overwrite()
+                return (output^)._finish_complete_overwrite()
         var out_layout = output.impl.layout
         var cursor_left = NDIndexIterator[Self.rank](left.shape)
         while not cursor_left.done():
@@ -7839,13 +7971,13 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             var dst_offset = out_layout.physical_offset_unchecked(out_coord)
             dst[dst_offset] = src_right[src_offset]
             cursor_right.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
     # A two-input stack inserts a size-two axis. The output is rank+1 at
     # compile time; rank-0 scalars and rank-7 inputs are fully supported.
     def stack(
         ref self, ref other: Tensor[Self.rank, HostStorage], axis: Int
-    ) -> TensorResult[Tensor[Self.rank + 1, HostStorage]] where identical(Self.S, HostStorage) and Self.rank < 8:
+    ) -> TensorResult[Tensor[Self.rank + 1, HostStorage]] where Self.S == HostStorage and Self.rank < 8:
         var left_proof = self._checked_current_layout()
         if not left_proof.is_ok():
             return TensorResult[Tensor[Self.rank + 1, HostStorage]](left_proof.status)
@@ -7875,7 +8007,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
         if not made.is_ok():
             return TensorResult[Tensor[Self.rank + 1, HostStorage]](made.status)
         var output = made.payload.take()
-        var src_left = self.impl.storage.borrow_span()
+        var src_left = rebind[HostStorage](self.impl.storage).borrow_span()
         var src_right = other.impl.storage.borrow_span()
         var dst = output.impl.storage.borrow_mut_span()
         # Stacking on ANY axis of two C-contiguous tensors consists of
@@ -7885,7 +8017,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             if left.is_exhaustive() and right.is_exhaustive():
                 var total_source = left.shape.numel()
                 if total_source == 0:
-                    return output._finish_complete_overwrite()
+                    return (output^)._finish_complete_overwrite()
                 var elements_per_slab = 1
                 comptime for i in range(Self.rank):
                     if i >= ax:
@@ -7901,7 +8033,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
                     var second_dst = dst[out_at + elements_per_slab:out_at + 2 * elements_per_slab]
                     unsafe_memcpy(dest=first_dst.unsafe_ptr(), src=first.unsafe_ptr(), count=elements_per_slab)
                     unsafe_memcpy(dest=second_dst.unsafe_ptr(), src=second.unsafe_ptr(), count=elements_per_slab)
-                return output._finish_complete_overwrite()
+                return (output^)._finish_complete_overwrite()
         var out_layout = output.impl.layout
         var cursor = NDIndexIterator[Self.rank](left.shape)
         var output_coord = StaticRankArray[Self.rank + 1](0)
@@ -7918,7 +8050,7 @@ struct Tensor[rank: Int, S: TensorStorage = HostStorage](Movable):
             output_coord.set(ax, 1)
             dst[out_layout.physical_offset_unchecked(output_coord)] = src_right[right_offset]
             cursor.advance()
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
 
 
 # This is an ALLOCATION/INITIALIZATION CAPABILITY, not another readable Tensor
@@ -7932,7 +8064,7 @@ struct UninitializedHostTensor[rank: Int](Movable):
 
     def __init__(out self, var storage: HostStorage, layout: TensorLayout[Self.rank]):
         comptime assert Self.rank >= 0 and Self.rank <= 8, "uninitialized rank must be 0..8"
-        self._storage = storage
+        self._storage = storage^
         self._layout = layout
 
     @staticmethod
@@ -7975,11 +8107,11 @@ struct UninitializedHostTensor[rank: Int](Movable):
         if filled != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, HostStorage]](filled)
         return Tensor[Self.rank, HostStorage].from_parts_checked(
-            self._storage, verified.payload.value()
+            self._storage^, verified.payload.value()
         )
 
     def initialize_from_physical_span[origin: Origin](
-        deinit self, source: Span[False, Float32, origin]
+        deinit self, source: Span[Float32, origin]
     ) -> TensorResult[Tensor[Self.rank, HostStorage]]:
         # Complete physical-order initialization, also valid for F-order.
         # Since this fresh allocation has never been exposed as a Span,
@@ -8000,7 +8132,7 @@ struct UninitializedHostTensor[rank: Int](Movable):
         if copied != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, HostStorage]](copied)
         return Tensor[Self.rank, HostStorage].from_parts_checked(
-            self._storage, verified.payload.value()
+            self._storage^, verified.payload.value()
         )
 
 
@@ -8014,7 +8146,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
 
     def __init__(out self, var storage: DeviceStorage, layout: TensorLayout[Self.rank]):
         comptime assert Self.rank >= 0 and Self.rank <= 8, "device rank must be 0..8"
-        self._storage = storage
+        self._storage = storage^
         self._layout = layout
 
     def _checked_full_owner_output_layout(ref self) -> TensorResult[TensorLayout[Self.rank]]:
@@ -8114,8 +8246,8 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         )
         if outcome != TensorStatus.OK:
             if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-                forget_deinit(left)
-                forget_deinit(right)
+                forget_deinit(left^)
+                forget_deinit(right^)
             self._storage._invalidate_after_failed_write(
                 issuing, outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
@@ -8124,7 +8256,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         if ready != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](ready)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            self._storage, target
+            self._storage^, target
         )
 
     def initialize_strided_unary[operation: Int](
@@ -8165,7 +8297,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         )
         if outcome != TensorStatus.OK:
             if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-                forget_deinit(source)
+                forget_deinit(source^)
             self._storage._invalidate_after_failed_write(
                 issuing, outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
@@ -8174,7 +8306,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         if ready != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](ready)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            self._storage, target
+            self._storage^, target
         )
 
     def initialize_strided_reduce_axis[operation: Int, axis: Int](
@@ -8217,7 +8349,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         )
         if outcome != TensorStatus.OK:
             if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-                forget_deinit(source)
+                forget_deinit(source^)
             self._storage._invalidate_after_failed_write(
                 issuing, outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
@@ -8226,7 +8358,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         if ready != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](ready)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            self._storage, target
+            self._storage^, target
         )
 
     def initialize_strided_reduce_axes[operation: Int](
@@ -8270,7 +8402,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         )
         if outcome != TensorStatus.OK:
             if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-                forget_deinit(source)
+                forget_deinit(source^)
             self._storage._invalidate_after_failed_write(
                 issuing, outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
@@ -8279,7 +8411,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         if ready != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](ready)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            self._storage, target
+            self._storage^, target
         )
 
     def initialize_strided_scan_axis[operation: Int, axis: Int](
@@ -8322,7 +8454,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         )
         if outcome != TensorStatus.OK:
             if outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN:
-                forget_deinit(source)
+                forget_deinit(source^)
             self._storage._invalidate_after_failed_write(
                 issuing, outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
@@ -8331,7 +8463,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         if ready != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](ready)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            self._storage, target
+            self._storage^, target
         )
 
     def initialize_binary[operation: Int](
@@ -8395,7 +8527,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         var checked_plan = selected.checked_native_device_snapshot()
         if not checked_plan.is_ok():
             return TensorResult[Tensor[Self.rank, DeviceStorage]](checked_plan.status)
-        var plan = checked_plan.payload.value()
+        var plan = checked_plan.payload.value().copy()
         if plan.total_items != target.shape.numel():
             return TensorResult[Tensor[Self.rank, DeviceStorage]](TensorStatus.SIZE_MISMATCH)
         var outcome = run_owned_bound_gpu_binary_fp32[operation](
@@ -8407,8 +8539,8 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
                 # The consuming initializer owns both input allocations.
                 # A GPU without completion proof may still read them even
                 # after the function returns, so retain those owners too.
-                forget_deinit(left)
-                forget_deinit(right)
+                forget_deinit(left^)
+                forget_deinit(right^)
             self._storage._invalidate_after_failed_write(
                 issuing, outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
@@ -8417,7 +8549,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         if completed != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](completed)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            self._storage, target,
+            self._storage^, target,
         )
 
     def initialize_unary[operation: Int](
@@ -8470,7 +8602,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         var checked_plan = selected.checked_native_device_snapshot()
         if not checked_plan.is_ok():
             return TensorResult[Tensor[Self.rank, DeviceStorage]](checked_plan.status)
-        var plan = checked_plan.payload.value()
+        var plan = checked_plan.payload.value().copy()
         if plan.total_items != target.shape.numel():
             return TensorResult[Tensor[Self.rank, DeviceStorage]](TensorStatus.SIZE_MISMATCH)
         var outcome = run_owned_bound_gpu_unary_fp32[operation](
@@ -8482,7 +8614,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
                 # The consuming initializer owns its source Tensor. A
                 # failed event and stream fence leave that input potentially
                 # in flight: do not free it while the native GPU can read.
-                forget_deinit(source)
+                forget_deinit(source^)
             self._storage._invalidate_after_failed_write(
                 issuing, outcome == TensorStatus.GPU_QUIESCENCE_UNPROVEN
             )
@@ -8491,7 +8623,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
         if completed != TensorStatus.OK:
             return TensorResult[Tensor[Self.rank, DeviceStorage]](completed)
         return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-            self._storage, target,
+            self._storage^, target,
         )
 
     def initialize_fill(
@@ -8531,7 +8663,7 @@ struct UninitializedDeviceTensor[rank: Int](Movable):
             if sealed != TensorStatus.OK:
                 return TensorResult[Tensor[Self.rank, DeviceStorage]](sealed)
             return Tensor[Self.rank, DeviceStorage].from_parts_checked(
-                self._storage, verified.payload.value()
+                self._storage^, verified.payload.value()
             )
         except:
             try:

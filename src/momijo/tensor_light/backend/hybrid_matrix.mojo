@@ -100,7 +100,8 @@
 from std.collections import Span, Optional
 from std.memory import forget_deinit
 from std.sys.info import simd_width_of
-from max.gpu.host import DeviceContext, DeviceBuffer, HostBuffer, DeviceExternalFunction
+from max.gpu.host import DeviceContext, DeviceBuffer, HostBuffer
+from max.gpu.host.device_context import DeviceExternalFunction
 from ..internal.status import TensorStatus
 from ..execution.execution_plan import ExecutionPlan, ExecutionPlacement
 from ..dispatch.specialization import GemmAOTArtifactIdentity
@@ -217,7 +218,7 @@ struct _HybridGemmRowOwners(Movable):
 
 def unsafe_execute_hybrid_gemm_rows_fp32[
     static_gpu_row_capacity: Int,
-    left_origin: Origin, right_origin: Origin,
+    left_origin: Origin[mut=False], right_origin: Origin[mut=False],
     result_origin: Origin[mut=True],
 ](
     ctx: DeviceContext,
@@ -226,9 +227,9 @@ def unsafe_execute_hybrid_gemm_rows_fp32[
     target_arch: Int,
     plan: ExecutionPlan,
     m: Int, k: Int, n: Int,
-    left: Span[False, Float32, left_origin],
-    right: Span[False, Float32, right_origin],
-    mut result: Span[True, Float32, result_origin],
+    left: Span[mut=False, Float32, left_origin],
+    right: Span[mut=False, Float32, right_origin],
+    mut result: Span[mut=True, Float32, result_origin],
 ) -> TensorStatus:
     # Work-item units are OUTPUT ROWS, not M*N FP32 output elements.
     # GPU receives A[gpu rows,K], the ENTIRE shared B[K,N], and produces
@@ -237,7 +238,7 @@ def unsafe_execute_hybrid_gemm_rows_fp32[
     var verified = plan.checked_host_gemm_rows_split_snapshot(k, n)
     if not verified.is_ok():
         return verified.status
-    var selected = verified.payload.value()
+    var selected = verified.payload.value().copy()
     if selected.total_items != m:
         return TensorStatus.SIZE_MISMATCH
     if m <= 1 or k <= 0 or n <= 0:

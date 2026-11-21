@@ -110,8 +110,8 @@ from ..internal.status import TensorStatus, TensorResult
 def mm[SA: TensorStorage, SB: TensorStorage](a: Tensor[2, SA], b: Tensor[2, SB]) -> TensorResult[Tensor[2, HostStorage]]:
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[2, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.mm(b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.mm(rebind[Tensor[2, HostStorage]](b))
     var a_valid = a._checked_current_layout()
     if not a_valid.is_ok():
         return TensorResult[Tensor[2, HostStorage]](a_valid.status)
@@ -157,7 +157,7 @@ def mm[SA: TensorStorage, SB: TensorStorage](a: Tensor[2, SA], b: Tensor[2, SB])
                     return TensorResult[Tensor[2, HostStorage]](rhs.status)
                 acc += lhs.payload.value() * rhs.payload.value()
             output_span[i * n + j] = acc
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 # A rank-1 dot produces a Float32 scalar. It never creates an integer Tensor.
@@ -166,8 +166,8 @@ def dot[SA: TensorStorage, SB: TensorStorage](a: Tensor[1, SA], b: Tensor[1, SB]
         return TensorResult[Float32](TensorStatus.BACKEND_UNAVAILABLE)
     # For the canonical owning CPU tensor, forward to the public Tensor
     # method so there is only one checked SIMD/strided implementation.
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.dot(b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.dot(rebind[Tensor[1, HostStorage]](b))
     var checked_a = a._checked_current_layout()
     if not checked_a.is_ok():
         return TensorResult[Float32](checked_a.status)
@@ -195,8 +195,8 @@ def dot[SA: TensorStorage, SB: TensorStorage](a: Tensor[1, SA], b: Tensor[1, SB]
 def gemv[SA: TensorStorage, SB: TensorStorage](a: Tensor[2, SA], x: Tensor[1, SB]) -> TensorResult[Tensor[1, HostStorage]]:
     if not a.impl.storage.is_host_accessible() or not x.impl.storage.is_host_accessible():
         return TensorResult[Tensor[1, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.gemv(x)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.gemv(rebind[Tensor[1, HostStorage]](x))
     var checked_a = a._checked_current_layout()
     if not checked_a.is_ok():
         return TensorResult[Tensor[1, HostStorage]](checked_a.status)
@@ -234,7 +234,7 @@ def gemv[SA: TensorStorage, SB: TensorStorage](a: Tensor[2, SA], x: Tensor[1, SB
                 return TensorResult[Tensor[1, HostStorage]](xv.status)
             acc += av.payload.value() * xv.payload.value()
         dst[i] = acc
-    return result._finish_complete_overwrite()
+    return (result^)._finish_complete_overwrite()
 
 
 # Vector @ matrix, complementary to GEMV (matrix @ vector). The rank-1
@@ -244,8 +244,8 @@ def vecmat[SA: TensorStorage, SB: TensorStorage](
 ) -> TensorResult[Tensor[1, HostStorage]]:
     if not x.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[1, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return x.vecmat(b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return x.vecmat(rebind[Tensor[2, HostStorage]](b))
     var checked_x = x._checked_current_layout()
     if not checked_x.is_ok():
         return TensorResult[Tensor[1, HostStorage]](checked_x.status)
@@ -286,15 +286,15 @@ def vecmat[SA: TensorStorage, SB: TensorStorage](
                 return TensorResult[Tensor[1, HostStorage]](bv.status)
             accumulator += xv.payload.value() * bv.payload.value()
         dst[column] = accumulator
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 # Outer product has shape (len(a), len(b)), including empty vectors.
 def outer[SA: TensorStorage, SB: TensorStorage](a: Tensor[1, SA], b: Tensor[1, SB]) -> TensorResult[Tensor[2, HostStorage]]:
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[2, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.outer(b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.outer(rebind[Tensor[1, HostStorage]](b))
     var checked_a = a._checked_current_layout()
     if not checked_a.is_ok():
         return TensorResult[Tensor[2, HostStorage]](checked_a.status)
@@ -335,7 +335,7 @@ def outer[SA: TensorStorage, SB: TensorStorage](a: Tensor[1, SA], b: Tensor[1, S
             if not bv.is_ok():
                 return TensorResult[Tensor[2, HostStorage]](bv.status)
             dst[dst_row + j] = av.payload.value() * bv.payload.value()
-    return result._finish_complete_overwrite()
+    return (result^)._finish_complete_overwrite()
 
 
 # Strict rank-3 batched matrix multiplication. One output per batch; no
@@ -345,8 +345,8 @@ def bmm[SA: TensorStorage, SB: TensorStorage](
 ) -> TensorResult[Tensor[3, HostStorage]]:
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[3, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.bmm(b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.bmm(rebind[Tensor[3, HostStorage]](b))
     var checked_a = a._checked_current_layout()
     if not checked_a.is_ok():
         return TensorResult[Tensor[3, HostStorage]](checked_a.status)
@@ -375,7 +375,7 @@ def bmm[SA: TensorStorage, SB: TensorStorage](
     if batches == 0:
         # Avoid constructing matrix-element products for an empty batch.
         # Its other extents can be huge even though zero bytes are accessed.
-        return result._finish_complete_overwrite()
+        return (result^)._finish_complete_overwrite()
     # Generic host-readable storage needs checked scalar loads, but the
     # affine shapes/strides and disjoint output were already validated once.
     var al = checked_a.payload.value()
@@ -404,7 +404,7 @@ def bmm[SA: TensorStorage, SB: TensorStorage](
                         return TensorResult[Tensor[3, HostStorage]](bv.status)
                     accumulator += av.payload.value() * bv.payload.value()
                 dst[(batch * m + row) * n + col] = accumulator
-    return result._finish_complete_overwrite()
+    return (result^)._finish_complete_overwrite()
 
 
 # Rank-specialized matmul overloads preserve the canonical Tensor API.
@@ -448,8 +448,8 @@ def matmul_nd[rank: Int, SA: TensorStorage, SB: TensorStorage](
     a: Tensor[rank, SA], b: Tensor[rank, SB]
 ) -> TensorResult[Tensor[rank, HostStorage]]:
     comptime assert rank >= 2 and rank <= 8, "batched matmul rank must be 2..8"
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.matmul_nd(b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.matmul_nd(rebind[Tensor[rank, HostStorage]](b))
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
     var checked_a = a._checked_current_layout()
@@ -460,7 +460,9 @@ def matmul_nd[rank: Int, SA: TensorStorage, SB: TensorStorage](
         return TensorResult[Tensor[rank, HostStorage]](checked_b.status)
     comptime if rank == 2:
         # The existing SIMD GEMM already handles the non-batched case.
-        return mm(a, b)
+        return rebind_var[TensorResult[Tensor[rank, HostStorage]]](
+            mm(rebind[Tensor[2, SA]](a), rebind[Tensor[2, SB]](b))
+        )
     var m = checked_a.payload.value().shape.dims.get(rank - 2)
     var k = checked_a.payload.value().shape.dims.get(rank - 1)
     if k != checked_b.payload.value().shape.dims.get(rank - 2):
@@ -492,7 +494,7 @@ def matmul_nd[rank: Int, SA: TensorStorage, SB: TensorStorage](
         return TensorResult[Tensor[rank, HostStorage]](made.status)
     var out = made.payload.take()
     if out.numel() == 0:
-        return out._finish_complete_overwrite()
+        return (out^)._finish_complete_overwrite()
     # AOT host-owner lowering: both affine mappings were checked once above.
     # Do not allocate TensorResult or repeat storage bounds checks per FMA.
     # NDIndexIterator walks the new C-order output in strictly linear order.
@@ -528,7 +530,7 @@ def matmul_nd[rank: Int, SA: TensorStorage, SB: TensorStorage](
         # All logical output elements are written once in strict C-order.
         output_data[cursor.produced] = acc
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 # Explicit mixed-rank batched matmul, including (2D, ND) and (ND, 2D).
@@ -546,8 +548,8 @@ def matmul_mixed[rank_a: Int, rank_b: Int, out_rank: Int,
         return TensorResult[Tensor[out_rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
     # One owning HostStorage implementation in Tensor, not a second
     # free-function GEMM path with independently changing semantics.
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.matmul_mixed[rank_b, out_rank](b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.matmul_mixed[rank_b, out_rank](rebind[Tensor[rank_b, HostStorage]](b))
     var left_check = a._checked_current_layout()
     if not left_check.is_ok():
         return TensorResult[Tensor[out_rank, HostStorage]](left_check.status)
@@ -590,7 +592,7 @@ def matmul_mixed[rank_a: Int, rank_b: Int, out_rank: Int,
         return TensorResult[Tensor[out_rank, HostStorage]](created_output.status)
     var output = created_output.payload.take()
     if output.numel() == 0:
-        return output._finish_complete_overwrite()
+        return (output^)._finish_complete_overwrite()
     # Generic host-accessible storages keep the explicitly checked fallback.
     var output_data = output.impl.storage.borrow_mut_span()
     var a_step = left_layout.strides.get(rank_a - 1)
@@ -626,4 +628,4 @@ def matmul_mixed[rank_a: Int, rank_b: Int, out_rank: Int,
             accumulator += av.payload.value() * bv.payload.value()
         output_data[cursor.produced] = accumulator
         cursor.advance()
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()

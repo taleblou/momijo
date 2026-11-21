@@ -144,8 +144,8 @@ def plan_staging(
     var proof = plan.checked_snapshot()
     if not proof.is_ok():
         return TensorResult[StagingPlan](proof.status)
-    var selected = proof.payload.value()
-    if selected.placement == ExecutionPlacement.CPU_ONLY or source_on_gpu:
+    var selected = proof.payload.value().copy()
+    if selected.placement == materialize[ExecutionPlacement.CPU_ONLY]() or source_on_gpu:
         return StagingPlan.checked(0, 0, 0, False, False)
     var count = selected.gpu_end - selected.gpu_begin
     if count == 0:
@@ -173,7 +173,7 @@ def validate_staging_capacity(plan: StagingPlan, physical_elements: Int) -> Tens
     var proof = plan.checked_snapshot()
     if not proof.is_ok():
         return proof.status
-    var selected = proof.payload.value()
+    var selected = proof.payload.value().copy()
     if not selected.transfer_to_gpu:
         return TensorStatus.OK
     # Checking only required_bytes <= physical_bytes is insufficient for a
@@ -198,7 +198,7 @@ def validate_staging_source_layout[rank: Int](
     if not checked_source.is_ok():
         return checked_source.status
     var trusted = checked_source.payload.value()
-    var plan = stage_check.payload.value()
+    var plan = stage_check.payload.value().copy()
     if not plan.transfer_to_gpu:
         return TensorStatus.OK
     if trusted.offset != 0 or not trusted.is_c_contiguous():

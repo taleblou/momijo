@@ -102,14 +102,17 @@
 # Each lane writes a different row. All column reads stay in that row.
 from max.gpu import global_idx
 from max.gpu.primitives import warp
-from layout import TileTensor
+from layout import TileTensor, TensorLayout as MaxTensorLayout
 from ...dtype.fp32 import fp32_minimum, fp32_maximum
 from std.memory import Pointer
 
-def gpu_reduce_rows_fp32[LO: AnyType, LI: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_reduce_rows_fp32[LO: MaxTensorLayout, LI: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     inp: TileTensor[DType.float32, LI, MutAnyOrigin],
     rows_abi: Int32, cols_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
@@ -121,7 +124,7 @@ def gpu_reduce_rows_fp32[LO: AnyType, LI: AnyType](
         var row_begin = row * cols
         for col in range(cols):
             total += inp[row_begin + col]
-        out[row] = total
+        output[row] = total
 
 
 # Native FP32 one-writer-per-row reduction baseline. This extends the
@@ -131,10 +134,13 @@ def gpu_reduce_rows_fp32[LO: AnyType, LI: AnyType](
 # for min/max/mean and validates rows*cols before kernel enqueue.
 # Fast-tree/cooperative versions remain independent AOT variants.
 
-def gpu_reduce_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_reduce_rows_op_fp32[operation: Int, LO: MaxTensorLayout, LI: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     inp: TileTensor[DType.float32, LI, MutAnyOrigin],
     rows_abi: Int32, cols_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
@@ -149,12 +155,12 @@ def gpu_reduce_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
                 accumulator += inp[base + col]
             comptime if operation == 4:
                 accumulator /= Float32(cols)
-            out[row] = accumulator
+            output[row] = accumulator
         elif operation == 1:
             var product = Float32(1.0)
             for col in range(cols):
                 product *= inp[base + col]
-            out[row] = product
+            output[row] = product
         else:
             # PRECONDITION: cols > 0 for min/max and one distinct output.
             var extreme = inp[base]
@@ -163,7 +169,7 @@ def gpu_reduce_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
                     extreme = fp32_minimum(extreme, inp[base + col])
                 else:
                     extreme = fp32_maximum(extreme, inp[base + col])
-            out[row] = extreme
+            output[row] = extreme
 
 # Four fixed-FP32 row-wise inclusive scans. One thread owns exactly one
 # contiguous row: every output is written once, in column order. This simple
@@ -171,10 +177,13 @@ def gpu_reduce_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
 # MAX layouts and all positive column counts; an AOT warp scan can replace
 # it without changing the public ABI. No implicit host copy or dtype cast.
 # opcode: 0 CUMSUM, 1 CUMPROD, 2 CUMMIN, 3 CUMMAX.
-def gpu_scan_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_scan_rows_op_fp32[operation: Int, LO: MaxTensorLayout, LI: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     inp: TileTensor[DType.float32, LI, MutAnyOrigin],
     rows_abi: Int32, cols_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
@@ -184,7 +193,7 @@ def gpu_scan_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
     if row < rows and cols > 0:
         var start = row * cols
         var prefix = inp[start]
-        out[start] = prefix
+        output[start] = prefix
         for column in range(1, cols):
             var next = inp[start + column]
             comptime if operation == 0:
@@ -195,7 +204,7 @@ def gpu_scan_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
                 prefix = fp32_minimum(prefix, next)
             else:
                 prefix = fp32_maximum(prefix, next)
-            out[start + column] = prefix
+            output[start + column] = prefix
 
 
 # Generic fixed-FP32 axis-reduction FALLBACK for strided rank 1..8 tensors.
@@ -206,7 +215,7 @@ def gpu_scan_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
 # For long contiguous reductions the row/warp-specialized AOT kernel wins.
 
 def gpu_reduce_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
-    out: Pointer[Float32, MutUnsafeAnyOrigin],
+    output: Pointer[Float32, MutUnsafeAnyOrigin],
     source: Pointer[Float32, MutUnsafeAnyOrigin],
     output_dims: SIMD[DType.int64, 8],
     out_steps: SIMD[DType.int64, 8],
@@ -237,12 +246,12 @@ def gpu_reduce_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
             accumulator += source.unsafe_load(physical_input + index * axis_step)[0]
         comptime if operation == 4:
             accumulator /= Float32(Int(reduction_size))
-        out.unsafe_store(physical_output, accumulator)
+        output.unsafe_store(physical_output, accumulator)
     elif operation == 1:
         var product = Float32(1.0)
         for index in range(Int(reduction_size)):
             product *= source.unsafe_load(physical_input + index * axis_step)[0]
-        out.unsafe_store(physical_output, product)
+        output.unsafe_store(physical_output, product)
     else:
         # PRECONDITION: the checked host boundary rejects empty extrema.
         var extreme = source.unsafe_load(physical_input)[0]
@@ -252,7 +261,7 @@ def gpu_reduce_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
                 extreme = fp32_minimum(extreme, value)
             else:
                 extreme = fp32_maximum(extreme, value)
-        out.unsafe_store(physical_output, extreme)
+        output.unsafe_store(physical_output, extreme)
 
 
 # Axis-generic inclusive FP32 scan fallback. Each lane owns one independent
@@ -260,7 +269,7 @@ def gpu_reduce_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
 # The direction is logical 0->extent-1, even with negative physical strides.
 # Native warp/block scans remain preferred for long contiguous inner axes.
 def gpu_scan_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
-    out: Pointer[Float32, MutUnsafeAnyOrigin],
+    output: Pointer[Float32, MutUnsafeAnyOrigin],
     source: Pointer[Float32, MutUnsafeAnyOrigin],
     dimensions: SIMD[DType.int64, 8],
     out_steps: SIMD[DType.int64, 8],
@@ -279,7 +288,7 @@ def gpu_scan_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
     var source_base = Int(source_origin)
     comptime for step in range(rank):
         var current_axis = rank - 1 - step
-        comptime if current_axis != axis:
+        if current_axis != axis:
             var extent = Int(dimensions[current_axis])
             var coordinate = remainder % extent
             remainder //= extent
@@ -288,7 +297,7 @@ def gpu_scan_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
     var output_step = Int(out_steps[axis])
     var source_step = Int(source_steps[axis])
     var prefix = source.unsafe_load(source_base)[0]
-    out.unsafe_store(output_base, prefix)
+    output.unsafe_store(output_base, prefix)
     for index in range(1, Int(scan_length)):
         var next = source.unsafe_load(source_base + index * source_step)[0]
         comptime if operation == 0:
@@ -299,7 +308,7 @@ def gpu_scan_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
             prefix = fp32_minimum(prefix, next)
         else:
             prefix = fp32_maximum(prefix, next)
-        out.unsafe_store(output_base + index * output_step, prefix)
+        output.unsafe_store(output_base + index * output_step, prefix)
 
 
 # Rank-1..8 MULTI-AXIS keepdims FP32 reduction fallback. The single-axis
@@ -314,7 +323,7 @@ def gpu_scan_axis_strided_fp32[operation: Int, rank: Int, axis: Int](
 # The production UASDEA loader must bind a PRECOMPILED artifact separately:
 # source enqueue is opt-in development-only and may compile at runtime.
 def gpu_reduce_axes_strided_fp32[operation: Int, rank: Int](
-    out: Pointer[Float32, MutUnsafeAnyOrigin],
+    output: Pointer[Float32, MutUnsafeAnyOrigin],
     source: Pointer[Float32, MutUnsafeAnyOrigin],
     source_dims: SIMD[DType.int64, 8],
     output_dims: SIMD[DType.int64, 8],
@@ -370,7 +379,7 @@ def gpu_reduce_axes_strided_fp32[operation: Int, rank: Int](
                     accumulator = fp32_maximum(accumulator, value)
     comptime if operation == 4:
         accumulator /= Float32(Int(reduction_count))
-    out.unsafe_store(destination, accumulator)
+    output.unsafe_store(destination, accumulator)
 
 
 # Optional AOT warp variants for FAST_TREE mode only. Reassociation differs
@@ -379,11 +388,14 @@ def gpu_reduce_axes_strided_fp32[operation: Int, rank: Int](
 # For a CTA with 256 threads, exactly eight independent 32-lane warps each
 # process one C-contiguous row. Final idle warps participate in collectives.
 def gpu_reduce_rows_warp32_fast_fp32[
-    operation: Int, LO: AnyType, LI: AnyType,
+    operation: Int, LO: MaxTensorLayout, LI: MaxTensorLayout,
 ](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     inp: TileTensor[DType.float32, LI, MutAnyOrigin],
     rows_abi: Int32, cols_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
@@ -401,16 +413,19 @@ def gpu_reduce_rows_warp32_fast_fp32[
         comptime if operation == 4:
             # Host rejects mean(cols=0) before launch.
             total /= Float32(cols)
-        out[row] = total
+        output[row] = total
 
 
 # Single-warp inclusive row scan for the common 1..32 column case. Every
 # lane participates even for partial rows; inactive lanes contribute zero.
 # This changes Float32 summation association and requires FAST_TREE opt-in.
-def gpu_scan_rows_warp32_sum_fast_fp32[LO: AnyType, LI: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_scan_rows_warp32_sum_fast_fp32[LO: MaxTensorLayout, LI: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     inp: TileTensor[DType.float32, LI, MutAnyOrigin],
     rows_abi: Int32, cols_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
@@ -424,4 +439,4 @@ def gpu_scan_rows_warp32_sum_fast_fp32[LO: AnyType, LI: AnyType](
         value = inp[row * cols + lane]
     var prefix = warp.prefix_sum(value)
     if row < rows and lane < cols:
-        out[row * cols + lane] = prefix
+        output[row * cols + lane] = prefix

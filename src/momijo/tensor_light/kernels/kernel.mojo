@@ -157,8 +157,8 @@ def kernel_signature_matches(a: KernelSignature, b: KernelSignature) -> Bool:
     var checked_b = b.checked_snapshot()
     if not checked_b.is_ok():
         return False
-    var x = checked_a.payload.value()
-    var y = checked_b.payload.value()
+    var x = checked_a.payload.value().copy()
+    var y = checked_b.payload.value().copy()
     return (
         x.operation == y.operation and x.rank == y.rank
         and x.math_mode == y.math_mode and x.target_kind == y.target_kind

@@ -90,7 +90,7 @@ from ..shape.shape import TensorShape
 from ..shape.shape_storage import StaticRankArray
 from ..internal.status import TensorResult, TensorStatus
 
-struct NDIndexIterator[rank: Int]:
+struct NDIndexIterator[rank: Int](Copyable):
     var coordinates: StaticRankArray[Self.rank]
     var shape: TensorShape[Self.rank]
     var produced: Int

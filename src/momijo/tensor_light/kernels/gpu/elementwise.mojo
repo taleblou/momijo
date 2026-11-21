@@ -98,7 +98,7 @@
 # Matching logical shapes do NOT imply identical native TileTensor layouts.
 
 from max.gpu import global_idx
-from layout import TileTensor
+from layout import TileTensor, TensorLayout as MaxTensorLayout
 from ...dtype.fp32 import fp32_minimum, fp32_maximum
 from std.math import fma as math_fma
 from std.math import sqrt as math_sqrt, exp as math_exp, log as math_log
@@ -106,46 +106,67 @@ from std.math import sin as math_sin, cos as math_cos, tanh as math_tanh
 from std.math import abs as math_abs
 from std.memory import Pointer
 
-def gpu_add_fp32[LO: AnyType, LA: AnyType, LB: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32):
+def gpu_add_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = a[idx] + b[idx]
+        output[idx] = a[idx] + b[idx]
 
-def gpu_mul_fp32[LO: AnyType, LA: AnyType, LB: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32):
+def gpu_mul_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = a[idx] * b[idx]
+        output[idx] = a[idx] * b[idx]
 
-def gpu_sub_fp32[LO: AnyType, LA: AnyType, LB: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32):
+def gpu_sub_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = a[idx] - b[idx]
+        output[idx] = a[idx] - b[idx]
 
 
-def gpu_div_fp32[LO: AnyType, LA: AnyType, LB: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32):
+def gpu_div_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = a[idx] / b[idx]
+        output[idx] = a[idx] / b[idx]
 
 
 # This is the fused FP32 ternary primitive, not a multiply followed by an
 # independently rounded addition. The public FP32 math policy must select
 # this AOT kernel only in a mode that explicitly permits fused arithmetic.
 # STRICT_FP32 code requiring separate rounding uses a distinct compiled ABI.
-def gpu_fma_fp32[LO: AnyType, LA: AnyType, LB: AnyType, LC: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], c: TileTensor[DType.float32, LC, MutAnyOrigin], count_abi: Int32):
+def gpu_fma_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout, LC: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], c: TileTensor[DType.float32, LC, MutAnyOrigin], count_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = math_fma(a[idx], b[idx], c[idx])
+        output[idx] = math_fma(a[idx], b[idx], c[idx])
 
 
 # Single GPU unary family, compiled separately for every supported FP32 opcode.
@@ -153,10 +174,13 @@ def gpu_fma_fp32[LO: AnyType, LA: AnyType, LB: AnyType, LC: AnyType](out: TileTe
 # adapter at the boundary; no device/host transfers are performed here.
 
 
-def gpu_unary_fp32[operation: Int, LO: AnyType, LI: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_unary_fp32[operation: Int, LO: MaxTensorLayout, LI: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     source: TileTensor[DType.float32, LI, MutAnyOrigin],
     count_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
@@ -165,51 +189,59 @@ def gpu_unary_fp32[operation: Int, LO: AnyType, LI: AnyType](
     if i < count:
         var value = source[i]
         comptime if operation == 0:
-            out[i] = -value
+            output[i] = -value
         elif operation == 1:
-            out[i] = math_abs(value)
+            output[i] = math_abs(value)
         elif operation == 2:
-            out[i] = math_sqrt(value)
+            output[i] = math_sqrt(value)
         elif operation == 3:
-            out[i] = math_exp(value)
+            output[i] = math_exp(value)
         elif operation == 4:
-            out[i] = math_log(value)
+            output[i] = math_log(value)
         elif operation == 5:
-            out[i] = math_sin(value)
+            output[i] = math_sin(value)
         elif operation == 6:
-            out[i] = math_cos(value)
+            output[i] = math_cos(value)
         elif operation == 7:
-            out[i] = math_tanh(value)
+            output[i] = math_tanh(value)
         else:
-            out[i] = Float32(1.0) / value
+            output[i] = Float32(1.0) / value
 
 
 # GPU SIMD lane semantics are identical to the CPU's FP32 extrema policy:
 # propagate NaNs and prefer -0 for minimum, +0 for maximum.
 # This flat kernel performs no dtype promotion and requires independent,
 # representable, non-overlapping output/input storage bounds at the launcher.
-def gpu_maximum_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_maximum_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = fp32_maximum(a[idx], b[idx])
+        output[idx] = fp32_maximum(a[idx], b[idx])
 
 
-def gpu_minimum_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_minimum_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin], count_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[idx] = fp32_minimum(a[idx], b[idx])
+        output[idx] = fp32_minimum(a[idx], b[idx])
 
 
 # Rank-static, arbitrary-stride GPU fallback for FP32 binary operations.
@@ -221,7 +253,7 @@ def gpu_minimum_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
 # Metadata uses 8 fixed Int64 lanes, never a heap-allocated device array.
 
 def gpu_binary_strided_fp32[operation: Int, rank: Int, dense: Bool](
-    out: Pointer[Float32, MutUnsafeAnyOrigin],
+    output: Pointer[Float32, MutUnsafeAnyOrigin],
     left: Pointer[Float32, MutUnsafeAnyOrigin],
     right: Pointer[Float32, MutUnsafeAnyOrigin],
     extents: SIMD[DType.int64, 8],
@@ -260,24 +292,24 @@ def gpu_binary_strided_fp32[operation: Int, rank: Int, dense: Bool](
     var a = left.unsafe_load(physical_left)[0]
     var b = right.unsafe_load(physical_right)[0]
     comptime if operation == 0:
-        out.unsafe_store(physical_out, a + b)
+        output.unsafe_store(physical_out, a + b)
     elif operation == 1:
-        out.unsafe_store(physical_out, a - b)
+        output.unsafe_store(physical_out, a - b)
     elif operation == 2:
-        out.unsafe_store(physical_out, a * b)
+        output.unsafe_store(physical_out, a * b)
     elif operation == 3:
-        out.unsafe_store(physical_out, a / b)
+        output.unsafe_store(physical_out, a / b)
     elif operation == 4:
-        out.unsafe_store(physical_out, fp32_maximum(a, b))
+        output.unsafe_store(physical_out, fp32_maximum(a, b))
     else:
-        out.unsafe_store(physical_out, fp32_minimum(a, b))
+        output.unsafe_store(physical_out, fp32_minimum(a, b))
 
 
 # Unary companion to the generic-stride binary fallback. Shapes are equal;
 # physical traversal orders may differ and may use negative strides.
 # Fused arithmetic/TF32 policy is not changed by this metadata-only lowering.
 def gpu_unary_strided_fp32[operation: Int, rank: Int, dense: Bool](
-    out: Pointer[Float32, MutUnsafeAnyOrigin],
+    output: Pointer[Float32, MutUnsafeAnyOrigin],
     source: Pointer[Float32, MutUnsafeAnyOrigin],
     extents: SIMD[DType.int64, 8],
     out_strides: SIMD[DType.int64, 8],
@@ -305,20 +337,20 @@ def gpu_unary_strided_fp32[operation: Int, rank: Int, dense: Bool](
             physical_source += position * Int(source_strides[axis])
     var value = source.unsafe_load(physical_source)[0]
     comptime if operation == 0:
-        out.unsafe_store(physical_out, -value)
+        output.unsafe_store(physical_out, -value)
     elif operation == 1:
-        out.unsafe_store(physical_out, math_abs(value))
+        output.unsafe_store(physical_out, math_abs(value))
     elif operation == 2:
-        out.unsafe_store(physical_out, math_sqrt(value))
+        output.unsafe_store(physical_out, math_sqrt(value))
     elif operation == 3:
-        out.unsafe_store(physical_out, math_exp(value))
+        output.unsafe_store(physical_out, math_exp(value))
     elif operation == 4:
-        out.unsafe_store(physical_out, math_log(value))
+        output.unsafe_store(physical_out, math_log(value))
     elif operation == 5:
-        out.unsafe_store(physical_out, math_sin(value))
+        output.unsafe_store(physical_out, math_sin(value))
     elif operation == 6:
-        out.unsafe_store(physical_out, math_cos(value))
+        output.unsafe_store(physical_out, math_cos(value))
     elif operation == 7:
-        out.unsafe_store(physical_out, math_tanh(value))
+        output.unsafe_store(physical_out, math_tanh(value))
     else:
-        out.unsafe_store(physical_out, Float32(1.0) / value)
+        output.unsafe_store(physical_out, Float32(1.0) / value)

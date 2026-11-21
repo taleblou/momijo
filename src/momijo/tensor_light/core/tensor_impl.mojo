@@ -99,8 +99,12 @@ struct TensorImpl[rank: Int, S: TensorStorage](Movable):
     var layout: TensorLayout[Self.rank]
 
     def __init__(out self, var owned: Self.S, layout: TensorLayout[Self.rank]):
-        self.storage = owned
+        self.storage = owned^
         self.layout = layout
+
+    def _take_storage(deinit self) -> Self.S:
+        (self.layout^).__deinit__()
+        return self.storage^
 
     # Every native/borrowed projection gets its proof from this owner rather
     # than trusting a caller-mutable TensorLayout or cached span flags.

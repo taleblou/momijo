@@ -97,7 +97,7 @@ from .offset import checked_physical_span
 from .strides import make_broadcast_strides
 from .contiguity import InternalOverlapKind, internal_overlap_kind, is_c_contiguous, is_f_contiguous
 
-struct TensorLayout[rank: Int](Copyable):
+struct TensorLayout[rank: Int](ImplicitlyCopyable):
     var shape: TensorShape[Self.rank]
     var strides: StaticRankArray[Self.rank]
     var offset: Int
@@ -158,13 +158,13 @@ struct TensorLayout[rank: Int](Copyable):
         # allocation capacity. Cached span and overlap flags are not authority.
         var rebuilt = Self.checked(self.shape, self.strides, self.offset, capacity)
         if not rebuilt.is_ok():
-            return rebuilt
+            return rebuilt^
         var canonical = rebuilt.payload.value()
         if canonical.span_lo != self.span_lo or canonical.span_hi != self.span_hi:
             return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
         if canonical.overlap != self.overlap:
             return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
-        return rebuilt
+        return rebuilt^
 
     @staticmethod
     def c_contiguous(shape: TensorShape[Self.rank], capacity: Int) -> TensorResult[Self]:

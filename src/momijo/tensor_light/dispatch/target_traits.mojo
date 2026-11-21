@@ -174,16 +174,16 @@ def checked_nvidia_fp32_feature(
     if not recognized_nvidia_sm_aot_target(capabilities):
         return TensorResult[Bool](False)
     var sm = capabilities.architecture_id
-    if family == NvidiaInstructionFamily.SIMT_FP32:
+    if family == materialize[NvidiaInstructionFamily.SIMT_FP32]():
         return TensorResult[Bool](True)
-    if family == NvidiaInstructionFamily.CP_ASYNC:
+    if family == materialize[NvidiaInstructionFamily.CP_ASYNC]():
         # The target must also have a confirmed asynchronous-copy lowering.
         return TensorResult[Bool](capabilities.supports_async_copy)
-    if family == NvidiaInstructionFamily.TF32_MMA:
+    if family == materialize[NvidiaInstructionFamily.TF32_MMA]():
         return TensorResult[Bool](
             fp32_math_mode >= 2 and capabilities.supports_tf32()
         )
-    if family == NvidiaInstructionFamily.HOPPER_WGMMA:
+    if family == materialize[NvidiaInstructionFamily.HOPPER_WGMMA]():
         return TensorResult[Bool](
             sm == 90 and fp32_math_mode >= 2 and capabilities.supports_wgmma()
         )

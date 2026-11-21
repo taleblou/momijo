@@ -458,13 +458,13 @@ struct DeviceStorage(Movable, TensorStorage):
                 return TensorResult[Self](TensorStatus.TRANSFER_UNAVAILABLE)
             var validated = Self._unsafe_from_completed_buffer_checked(buffer, count, ctx)
             if not validated.is_ok():
-                return validated
+                return validated^
             var owner = validated.payload.take()
             if initialize or count == 0:
                 var status = owner._mark_complete_overwrite()
                 if status != TensorStatus.OK:
                     return TensorResult[Self](status)
-            return TensorResult[Self](owner)
+            return TensorResult[Self](owner^)
         except:
             # If allocation itself failed, no completed buffer owner was
             # returned. The context handles its internal pending resources.

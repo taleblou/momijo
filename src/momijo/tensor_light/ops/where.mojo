@@ -101,8 +101,8 @@ from ..internal.status import TensorStatus, TensorResult
 from .mask import TensorMask
 
 def where[rank: Int, SA: TensorStorage, SB: TensorStorage](mask: TensorMask[rank], a: Tensor[rank, SA], b: Tensor[rank, SB]) -> TensorResult[Tensor[rank, HostStorage]]:
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.where(mask, b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.where(mask, rebind[Tensor[rank, HostStorage]](b))
     var valid = mask.metadata_status()
     if valid != TensorStatus.OK:
         return TensorResult[Tensor[rank, HostStorage]](valid)
@@ -167,7 +167,7 @@ def where[rank: Int, SA: TensorStorage, SB: TensorStorage](mask: TensorMask[rank
             destination[linear] = right.payload.value()
         linear += 1
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 # Mixed-rank variant. The mask provides a static-rank destination, and both
@@ -179,9 +179,9 @@ def where_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStora
 ) -> TensorResult[Tensor[out_rank, HostStorage]]:
     comptime assert ra >= 0 and ra <= out_rank and rb >= 0 and rb <= out_rank and out_rank <= 8, "invalid static broadcast ranks"
     comptime if ra == out_rank and rb == out_rank:
-        return where(mask, a, b)
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.where_nd[rb, out_rank](mask, b)
+        return where(mask, rebind[Tensor[out_rank, SA]](a), rebind[Tensor[out_rank, SB]](b))
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.where_nd[rb, out_rank](mask, rebind[Tensor[rb, HostStorage]](b))
     var status = mask.metadata_status()
     if status != TensorStatus.OK:
         return TensorResult[Tensor[out_rank, HostStorage]](status)
@@ -236,10 +236,10 @@ def where_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorStora
                 return TensorResult[Tensor[out_rank, HostStorage]](right.status)
             dst[cursor.produced] = right.payload.value()
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 def masked_fill[rank: Int, S: MutableTensorStorage](mut dst: Tensor[rank, S], mask: TensorMask[rank], value: Float32) -> TensorStatus:
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return dst.masked_fill(mask, value)
     var valid = mask.validated()
     if valid != TensorStatus.OK:

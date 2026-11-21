@@ -91,7 +91,7 @@
 # Order vocabulary is separate from concrete stride values.
 from ..internal.status import TensorResult, TensorStatus
 @fieldwise_init
-struct ContiguousOrder(Copyable, Equatable):
+struct ContiguousOrder(ImplicitlyCopyable, Equatable):
     var code: Int
     comptime C = Self(0)
     comptime F = Self(1)
@@ -107,14 +107,14 @@ struct MemoryFormat(Copyable):
 
 
 def default_memory_format() -> MemoryFormat:
-    return MemoryFormat.CONTIGUOUS_C
+    return materialize[MemoryFormat.CONTIGUOUS_C]()
 
 
 def memory_format_from_order(order: ContiguousOrder) -> TensorResult[MemoryFormat]:
     if order == ContiguousOrder.C:
-        return TensorResult[MemoryFormat](MemoryFormat.CONTIGUOUS_C)
+        return TensorResult[MemoryFormat](materialize[MemoryFormat.CONTIGUOUS_C]())
     if order == ContiguousOrder.F:
-        return TensorResult[MemoryFormat](MemoryFormat.CONTIGUOUS_F)
+        return TensorResult[MemoryFormat](materialize[MemoryFormat.CONTIGUOUS_F]())
     return TensorResult[MemoryFormat](TensorStatus.INVALID_LAYOUT)
 
 
@@ -125,4 +125,4 @@ def is_contiguous_format(format: MemoryFormat) -> Bool:
 def normalize_memory_format(format: MemoryFormat) -> TensorResult[MemoryFormat]:
     if format.code < 0 or format.code > 2:
         return TensorResult[MemoryFormat](TensorStatus.INVALID_LAYOUT)
-    return TensorResult[MemoryFormat](format)
+    return TensorResult[MemoryFormat](format.copy())

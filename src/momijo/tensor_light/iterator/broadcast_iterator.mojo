@@ -96,7 +96,7 @@ from ..shape.shape_storage import StaticRankArray
 from ..iterator.nd_iterator import NDIndexIterator
 from ..internal.status import TensorStatus, TensorResult
 
-struct BroadcastCursor[rank: Int]:
+struct BroadcastCursor[rank: Int](Copyable):
     var out: NDIndexIterator[Self.rank]
     var left: TensorShape[Self.rank]
     var right: TensorShape[Self.rank]

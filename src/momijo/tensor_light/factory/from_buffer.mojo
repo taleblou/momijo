@@ -105,7 +105,7 @@ from ..internal.status import TensorResult, TensorStatus
 from ..iterator.nd_iterator import NDIndexIterator
 
 
-def from_copy_span[rank: Int, origin: Origin](source: Span[False, Float32, origin], shape: TensorShape[rank]) -> TensorResult[Tensor[rank, HostStorage]]:
+def from_copy_span[rank: Int, origin: Origin[mut=False]](source: Span[mut=False, Float32, origin], shape: TensorShape[rank]) -> TensorResult[Tensor[rank, HostStorage]]:
     return Tensor[rank, HostStorage].from_copy_span_checked(source, shape)
 
 
@@ -127,5 +127,5 @@ def unsafe_adopt_external_fp32_tensor[rank: Int, D: ExternalFp32Deleter](
 ) -> TensorResult[Tensor[rank, ExternalOwnedStorage[D]]]:
     # Tensor itself is the authoritative external ownership entry point.
     return Tensor[rank, ExternalOwnedStorage[D]].unsafe_adopt_external_checked[D](
-        address, allocation_elements, alignment, deleter, layout
+        address, allocation_elements, alignment, deleter^, layout
     )

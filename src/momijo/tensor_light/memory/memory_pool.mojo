@@ -237,7 +237,7 @@ struct HostPool(Movable):
             acquired.initialized_elements = -1
             if count == 0:
                 acquired.initialized_elements = 0
-            return TensorResult[HostAllocation](acquired)
+            return TensorResult[HostAllocation](acquired^)
         if selected == 1:
             var acquired = self.spare_second.take()
             self.cached_elements -= acquired.physical_count
@@ -246,7 +246,7 @@ struct HostPool(Movable):
             acquired.initialized_elements = -1
             if count == 0:
                 acquired.initialized_elements = 0
-            return TensorResult[HostAllocation](acquired)
+            return TensorResult[HostAllocation](acquired^)
         if selected == 2:
             var acquired = self.spare_third.take()
             self.cached_elements -= acquired.physical_count
@@ -255,7 +255,7 @@ struct HostPool(Movable):
             acquired.initialized_elements = -1
             if count == 0:
                 acquired.initialized_elements = 0
-            return TensorResult[HostAllocation](acquired)
+            return TensorResult[HostAllocation](acquired^)
         return _allocate_host_fp32_uninitialized(count)
 
     def acquire(mut self, count: Int) -> TensorResult[HostAllocation]:
@@ -341,11 +341,11 @@ struct HostPool(Movable):
                     return TensorStatus.INVALID_LAYOUT
         self.cached_elements += size
         if not self.spare:
-            self.spare = Optional[HostAllocation](owned)
+            self.spare = Optional[HostAllocation](owned^)
         elif not self.spare_second:
-            self.spare_second = Optional[HostAllocation](owned)
+            self.spare_second = Optional[HostAllocation](owned^)
         else:
-            self.spare_third = Optional[HostAllocation](owned)
+            self.spare_third = Optional[HostAllocation](owned^)
         return TensorStatus.OK
 
     def cached_bytes(self) -> Int:
@@ -395,4 +395,4 @@ struct HostPool(Movable):
         var done = owned._mark_complete_overwrite()
         if done != TensorStatus.OK:
             return TensorResult[HostAllocation](done)
-        return TensorResult[HostAllocation](owned)
+        return TensorResult[HostAllocation](owned^)

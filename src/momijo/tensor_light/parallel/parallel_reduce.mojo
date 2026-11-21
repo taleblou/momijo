@@ -91,7 +91,7 @@
 from std.collections import Span
 from ..internal.status import TensorResult, TensorStatus
 
-def pairwise_sum_fp32[origin: Origin](values: Span[False, Float32, origin]) -> Float32:
+def pairwise_sum_fp32[origin: Origin[mut=False]](values: Span[mut=False, Float32, origin]) -> Float32:
     # Actual balanced pairwise FP32 reduction, not a left-to-right scalar
     # fold. Binary-carry partials cover contiguous, power-of-two-sized runs
     # with a deterministic tree and no heap allocation or nested function.

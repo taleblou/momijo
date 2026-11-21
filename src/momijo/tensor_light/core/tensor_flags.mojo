@@ -134,17 +134,17 @@ struct TensorFlag(Copyable, Equatable):
 
 
 def has_flag(flags: TensorFlags, flag: TensorFlag) -> Bool:
-    if flag == TensorFlag.EMPTY:
+    if flag == materialize[TensorFlag.EMPTY]():
         return flags.empty
-    if flag == TensorFlag.SCALAR:
+    if flag == materialize[TensorFlag.SCALAR]():
         return flags.scalar
-    if flag == TensorFlag.C_CONTIGUOUS:
+    if flag == materialize[TensorFlag.C_CONTIGUOUS]():
         return flags.c_contiguous
-    if flag == TensorFlag.F_CONTIGUOUS:
+    if flag == materialize[TensorFlag.F_CONTIGUOUS]():
         return flags.f_contiguous
-    if flag == TensorFlag.PROVEN_UNIQUE:
+    if flag == materialize[TensorFlag.PROVEN_UNIQUE]():
         return flags.proven_unique
-    if flag == TensorFlag.EXHAUSTIVE:
+    if flag == materialize[TensorFlag.EXHAUSTIVE]():
         return flags.exhaustive
     return False
 
@@ -155,16 +155,16 @@ def with_flag(flags: TensorFlags, flag: TensorFlag, value: Bool) -> TensorFlags:
         flags.empty, flags.scalar, flags.c_contiguous,
         flags.f_contiguous, flags.proven_unique, flags.exhaustive
     )
-    if flag == TensorFlag.EMPTY:
+    if flag == materialize[TensorFlag.EMPTY]():
         result.empty = value
-    elif flag == TensorFlag.SCALAR:
+    elif flag == materialize[TensorFlag.SCALAR]():
         result.scalar = value
-    elif flag == TensorFlag.C_CONTIGUOUS:
+    elif flag == materialize[TensorFlag.C_CONTIGUOUS]():
         result.c_contiguous = value
-    elif flag == TensorFlag.F_CONTIGUOUS:
+    elif flag == materialize[TensorFlag.F_CONTIGUOUS]():
         result.f_contiguous = value
-    elif flag == TensorFlag.PROVEN_UNIQUE:
+    elif flag == materialize[TensorFlag.PROVEN_UNIQUE]():
         result.proven_unique = value
-    elif flag == TensorFlag.EXHAUSTIVE:
+    elif flag == materialize[TensorFlag.EXHAUSTIVE]():
         result.exhaustive = value
     return result.copy()

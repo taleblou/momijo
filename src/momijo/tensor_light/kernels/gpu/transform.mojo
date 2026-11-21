@@ -92,9 +92,12 @@
 # Tiled transpose can specialize later; this one-writer baseline is correct
 # for distinct contiguous output and input buffers with explicit dimensions.
 from max.gpu import global_idx
-from layout import TileTensor
+from layout import TileTensor, TensorLayout as MaxTensorLayout
 
-def gpu_transpose_2d_fp32[LO: AnyType, LI: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], inp: TileTensor[DType.float32, LI, MutAnyOrigin], rows_abi: Int32, cols_abi: Int32):
+def gpu_transpose_2d_fp32[LO: MaxTensorLayout, LI: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], inp: TileTensor[DType.float32, LI, MutAnyOrigin], rows_abi: Int32, cols_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
     var cols = Int(cols_abi)
@@ -102,4 +105,4 @@ def gpu_transpose_2d_fp32[LO: AnyType, LI: AnyType](out: TileTensor[DType.float3
     if index < rows * cols:
         var row = index // cols
         var col = index % cols
-        out[col * rows + row] = inp[index]
+        output[col * rows + row] = inp[index]

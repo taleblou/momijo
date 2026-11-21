@@ -94,7 +94,7 @@
 from ..device.capabilities import GpuCapabilities
 from ..internal.status import TensorStatus, TensorResult
 @fieldwise_init
-struct Fp32MathMode(Copyable, Equatable):
+struct Fp32MathMode(ImplicitlyCopyable, Equatable):
     var code: Int
     comptime STRICT_FP32 = Self(0)
     comptime FMA_FP32 = Self(1)
@@ -162,5 +162,5 @@ def checked_fp32_math_mode(
 # association is required. Tensor payload stays Float32 in both cases.
 def reduction_mode_for(deterministic: Bool) -> ReductionAccuracyMode:
     if deterministic:
-        return ReductionAccuracyMode.DETERMINISTIC_PAIRWISE
-    return ReductionAccuracyMode.FAST_TREE
+        return materialize[ReductionAccuracyMode.DETERMINISTIC_PAIRWISE]()
+    return materialize[ReductionAccuracyMode.FAST_TREE]()

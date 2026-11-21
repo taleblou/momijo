@@ -107,7 +107,7 @@ from ..dtype.fp32 import fp32_minimum, fp32_maximum, fp32_argmin_prefers, fp32_a
 def sum_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Float32]:
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Float32](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input.sum_all()
     # The contiguous SIMD shortcut relies on the FULL physical span proof.
     var verified = input._checked_current_layout()
@@ -127,7 +127,7 @@ def sum_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult
 def mean_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Float32]:
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Float32](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input.mean_all()
     var count = input.checked_numel()
     if not count.is_ok():
@@ -136,7 +136,7 @@ def mean_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResul
         return TensorResult[Float32](TensorStatus.SIZE_MISMATCH)
     var result = sum_all(input)
     if not result.is_ok():
-        return result
+        return result^
     return TensorResult[Float32](result.payload.value() / Float32(count.payload.value()))
 
 
@@ -145,7 +145,7 @@ def prod_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResul
     # The HostStorage facade performs its own single owner-bound proof and
     # selects a contiguous AOT FP32 leaf. Do not first build a second checked
     # layout/cursor here: it would be entirely discarded by this delegate.
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input.prod_all()
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Float32](TensorStatus.BACKEND_UNAVAILABLE)
@@ -167,7 +167,7 @@ def prod_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResul
 def min_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Float32]:
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Float32](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input.min_all()
     var proof = input._checked_current_layout()
     if not proof.is_ok():
@@ -178,7 +178,7 @@ def min_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult
     var cursor = NDIndexIterator[rank](trusted.shape)
     var first = input.impl.storage.read_host(trusted.physical_offset_unchecked(cursor.coordinates))
     if not first.is_ok():
-        return first
+        return first^
     var best = first.payload.value()
     if best != best:
         return TensorResult[Float32](best)
@@ -186,7 +186,7 @@ def min_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult
     while not cursor.done():
         var entry = input.impl.storage.read_host(trusted.physical_offset_unchecked(cursor.coordinates))
         if not entry.is_ok():
-            return entry
+            return entry^
         var value = entry.payload.value()
         if value != value:
             return TensorResult[Float32](value)
@@ -198,7 +198,7 @@ def min_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult
 def max_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Float32]:
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Float32](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input.max_all()
     var proof = input._checked_current_layout()
     if not proof.is_ok():
@@ -209,7 +209,7 @@ def max_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult
     var cursor = NDIndexIterator[rank](trusted.shape)
     var first = input.impl.storage.read_host(trusted.physical_offset_unchecked(cursor.coordinates))
     if not first.is_ok():
-        return first
+        return first^
     var best = first.payload.value()
     if best != best:
         return TensorResult[Float32](best)
@@ -217,7 +217,7 @@ def max_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult
     while not cursor.done():
         var entry = input.impl.storage.read_host(trusted.physical_offset_unchecked(cursor.coordinates))
         if not entry.is_ok():
-            return entry
+            return entry^
         var value = entry.payload.value()
         if value != value:
             return TensorResult[Float32](value)
@@ -229,7 +229,7 @@ def max_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult
 def argmin_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Int]:
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Int](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input.argmin_all()
     var proof = input._checked_current_layout()
     if not proof.is_ok():
@@ -265,7 +265,7 @@ def argmin_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorRes
 def argmax_all[rank: Int, S: TensorStorage](input: Tensor[rank, S]) -> TensorResult[Int]:
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Int](TensorStatus.BACKEND_UNAVAILABLE)
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input.argmax_all()
     var proof = input._checked_current_layout()
     if not proof.is_ok():
@@ -307,7 +307,7 @@ def _reduce_axis_keepdims[operation: Int, rank: Int, S: TensorStorage](
     input: Tensor[rank, S], axis: Int
 ) -> TensorResult[Tensor[rank, HostStorage]]:
     comptime assert operation >= 0 and operation <= 4, "invalid FP32 reduction opcode"
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return input._reduce_axis_keepdims_host[operation](axis)
     if not input.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
@@ -351,10 +351,10 @@ def _reduce_axis_keepdims[operation: Int, rank: Int, S: TensorStorage](
         for index in range(reduce_extent):
             var physical = source_origin + index * reduced_pitch
             var v = Float32(0.0)
-            comptime if identical(S, HostStorage):
+            comptime if S == HostStorage:
                 # A borrowed Span is a lightweight view; no allocation and no
                 # scalar TensorResult construction in the reduction hot loop.
-                v = input.impl.storage.borrow_span()[physical]
+                v = rebind[HostStorage](input.impl.storage).borrow_span()[physical]
             else:
                 var loaded = input.impl.storage.read_host(physical)
                 if not loaded.is_ok():
@@ -378,7 +378,7 @@ def _reduce_axis_keepdims[operation: Int, rank: Int, S: TensorStorage](
         output[output_index] = accumulator
         output_index += 1
         coordinates.advance()
-    return result._finish_complete_overwrite()
+    return (result^)._finish_complete_overwrite()
 
 
 def sum_axis_keepdims[rank: Int, S: TensorStorage](input: Tensor[rank, S], axis: Int) -> TensorResult[Tensor[rank, HostStorage]]:
@@ -638,8 +638,8 @@ def _extreme_axis_indices[minimum: Bool, rank: Int, S: TensorStorage](
             base += cursor.coordinates.get(j) * source.strides.get(j)
         var first = Float32(0.0)
         if reduction_length > 0:
-            comptime if identical(S, HostStorage):
-                first = input.impl.storage.borrow_span()[base]
+            comptime if S == HostStorage:
+                first = rebind[HostStorage](input.impl.storage).borrow_span()[base]
             else:
                 var initial = input.impl.storage.read_host(base)
                 if not initial.is_ok():
@@ -651,8 +651,8 @@ def _extreme_axis_indices[minimum: Bool, rank: Int, S: TensorStorage](
             for k in range(1, reduction_length):
                 var at = base + k * step
                 var candidate = Float32(0.0)
-                comptime if identical(S, HostStorage):
-                    candidate = input.impl.storage.borrow_span()[at]
+                comptime if S == HostStorage:
+                    candidate = rebind[HostStorage](input.impl.storage).borrow_span()[at]
                 else:
                     var item = input.impl.storage.read_host(at)
                     if not item.is_ok():
@@ -671,7 +671,7 @@ def _extreme_axis_indices[minimum: Bool, rank: Int, S: TensorStorage](
                         best = candidate
         output.append(best_at)
         cursor.advance()
-    return IndexTensor[rank].from_values_checked(output_shape.payload.value(), output)
+    return IndexTensor[rank].from_values_checked(output_shape.payload.value(), output^)
 
 
 def argmin_axis_keepdims[rank: Int, S: TensorStorage](
@@ -704,7 +704,9 @@ def _drop_index_axis[rank: Int](
         return TensorResult[IndexTensor[rank - 1]](output_shape.status)
     # The keepdims owner remains valid for the single metadata copy. Move its
     # index vector without changing order or touching the Float32 source.
-    return IndexTensor[rank - 1].from_values_checked(output_shape.payload.value(), indices._values)
+    var values = indices._values^
+    indices._values = List[Int]()
+    return IndexTensor[rank - 1].from_values_checked(output_shape.payload.value(), values^)
 
 
 def argmin_axis[rank: Int, S: TensorStorage](

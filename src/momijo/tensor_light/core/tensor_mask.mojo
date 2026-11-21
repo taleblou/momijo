@@ -96,7 +96,7 @@ struct TensorMask[rank: Int](Movable):
 
     def __init__(out self, shape: TensorShape[Self.rank], var buffer: List[UInt8]):
         self.shape = shape
-        self.bytes = buffer
+        self.bytes = buffer^
 
     @staticmethod
     def zeros_checked(shape: TensorShape[Self.rank]) -> TensorResult[Self]:
@@ -107,7 +107,7 @@ struct TensorMask[rank: Int](Movable):
         if canonical.payload.value().numel() != shape.numel():
             return TensorResult[Self](TensorStatus.INVALID_SHAPE)
         var bytes = List[UInt8](length=shape.numel(), fill=0)
-        return TensorResult[Self](Self(canonical.payload.value(), bytes))
+        return TensorResult[Self](Self(canonical.payload.value(), bytes^))
 
     @staticmethod
     def from_buffer_checked(shape: TensorShape[Self.rank], var buffer: List[UInt8]) -> TensorResult[Self]:
@@ -119,7 +119,7 @@ struct TensorMask[rank: Int](Movable):
         for i in range(len(buffer)):
             if buffer[i] != 0 and buffer[i] != 1:
                 return TensorResult[Self](TensorStatus.INVALID_LAYOUT)
-        return TensorResult[Self](Self(canonical.payload.value(), buffer))
+        return TensorResult[Self](Self(canonical.payload.value(), buffer^))
 
     def metadata_status(self) -> TensorStatus:
         # Cheap structural proof for operations that also traverse and check

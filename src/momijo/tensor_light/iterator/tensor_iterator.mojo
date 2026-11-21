@@ -98,9 +98,9 @@ struct TensorIterator2[rank: Int, left_origin: Origin, right_origin: Origin]:
     var cursor: BroadcastCursor[Self.rank]
 
     def __init__(out self, lhs: TensorView[Self.rank, Self.left_origin], rhs: TensorView[Self.rank, Self.right_origin], cursor: BroadcastCursor[Self.rank]):
-        self.lhs = lhs
-        self.rhs = rhs
-        self.cursor = cursor
+        self.lhs = lhs.copy()
+        self.rhs = rhs.copy()
+        self.cursor = cursor.copy()
 
     @staticmethod
     def checked(lhs: TensorView[Self.rank, Self.left_origin], rhs: TensorView[Self.rank, Self.right_origin]) -> TensorResult[Self]:

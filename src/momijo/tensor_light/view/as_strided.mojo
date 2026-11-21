@@ -116,7 +116,7 @@ def slice_axis[rank: Int](base: TensorLayout[rank], axis: Int, spec: SliceSpec, 
     var normalized = normalize_slice(spec, trusted.shape.dims.get(a))
     if not normalized.is_ok():
         return TensorResult[TensorLayout[rank]](normalized.status)
-    var selected = normalized.payload.value()
+    var selected = normalized.payload.value().copy()
     var dims = trusted.shape.dims.copy()
     dims.set(a, selected.length)
     var new_shape = TensorShape[rank].checked(dims)

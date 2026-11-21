@@ -105,8 +105,8 @@ def validate_dispatch_target(plan: ExecutionPlan, gpu_backend_available: Bool) -
     var proof = plan.checked_snapshot()
     if not proof.is_ok():
         return proof.status
-    var selected = proof.payload.value()
-    if selected.placement == ExecutionPlacement.CPU_ONLY:
+    var selected = proof.payload.value().copy()
+    if selected.placement == materialize[ExecutionPlacement.CPU_ONLY]():
         return TensorStatus.OK
     if not gpu_backend_available:
         return TensorStatus.BACKEND_UNAVAILABLE
@@ -147,7 +147,7 @@ def bind_finite_aot_strategy[capacity: Int](
         return TensorResult[ExecutionPlan](selected.status)
     if selected.payload.value().abi_version != expected_abi_version:
         return TensorResult[ExecutionPlan](TensorStatus.UNSUPPORTED)
-    var prior = prepared.payload.value()
+    var prior = prepared.payload.value().copy()
     return ExecutionPlan.checked(
         prior.placement, prior.total_items,
         prior.cpu_begin, prior.cpu_end, prior.gpu_begin, prior.gpu_end,
@@ -186,7 +186,7 @@ def validate_finite_aot_dataflow_key[nodes: Int, slots: Int](
     var checked_graph = graph.checked_snapshot()
     if not checked_graph.is_ok():
         return checked_graph.status
-    var request = checked_key.payload.value()
+    var request = checked_key.payload.value().copy()
     var sealed = checked_graph.payload.take()
     var saw_compute = False
     var saw_gpu = False
@@ -241,13 +241,13 @@ def bind_finite_aot_dataflow_strategy[
         plan, key, catalog, expected_abi_version,
     )
     if not selected.is_ok():
-        return selected
+        return selected^
     var status = validate_dataflow_dispatch_target(
         graph, selected.payload.value(), gpu_backend_available,
     )
     if status != TensorStatus.OK:
         return TensorResult[ExecutionPlan](status)
-    return selected
+    return selected^
 
 
 # One immutable-by-contract AOT identity selection for EACH compute node of
@@ -295,7 +295,7 @@ def _bind_finite_per_node_aot_catalog_any_abi[
         return TensorResult[DataflowPerNodeAOTSelection[nodes]](
             plan_proof.status
         )
-    var selected_plan = plan_proof.payload.value()
+    var selected_plan = plan_proof.payload.value().copy()
     var placement_status = validate_dispatch_target(
         selected_plan, gpu_backend_available
     )
@@ -339,7 +339,7 @@ def _bind_finite_per_node_aot_catalog_any_abi[
             return TensorResult[DataflowPerNodeAOTSelection[nodes]](
                 key_proof.status
             )
-        var key = key_proof.payload.value()
+        var key = key_proof.payload.value().copy()
         if key.operation != node.primitive * 16 + node.opcode:
             return TensorResult[DataflowPerNodeAOTSelection[nodes]](
                 TensorStatus.UNSUPPORTED
@@ -363,7 +363,7 @@ def _bind_finite_per_node_aot_catalog_any_abi[
             return TensorResult[DataflowPerNodeAOTSelection[nodes]](
                 selected.status
             )
-        var entry = selected.payload.value()
+        var entry = selected.payload.value().copy()
         # ABI version zero is INTERNAL to the heterogeneous per-node binder.
         # Each node's actual catalog ABI is still checked against the signed
         # release table (for GPU) and an explicit expected-node ABI array.
@@ -403,7 +403,7 @@ def _bind_finite_per_node_aot_catalog_any_abi[
         )
     return TensorResult[DataflowPerNodeAOTSelection[nodes]](
         DataflowPerNodeAOTSelection[nodes](
-            bound_keys, compute_mask, variants, abi_versions,
+            bound_keys^, compute_mask^, variants^, abi_versions^,
             compute_count, gpu_count,
         )
     )
@@ -452,7 +452,7 @@ def _validate_per_node_aot_selection_against_catalog_any_abi[
     )
     if not fresh.is_ok():
         return fresh.status
-    var authoritative = fresh.payload.value()
+    var authoritative = fresh.payload.value().copy()
     if candidate.selected_compute_nodes != authoritative.selected_compute_nodes:
         return TensorStatus.INVALID_LAYOUT
     if candidate.selected_gpu_nodes != authoritative.selected_gpu_nodes:
@@ -518,8 +518,8 @@ def bind_finite_per_node_aot_catalog_mixed[
         graph, plan, node_keys, catalog, 0, gpu_backend_available,
     )
     if not selected.is_ok():
-        return selected
-    var binding = selected.payload.value()
+        return selected^
+    var binding = selected.payload.value().copy()
     for i in range(nodes):
         if binding.is_compute[i]:
             if (expected_node_abi[i] <= 0
@@ -532,7 +532,7 @@ def bind_finite_per_node_aot_catalog_mixed[
             return TensorResult[DataflowPerNodeAOTSelection[nodes]](
                 TensorStatus.INVALID_LAYOUT
             )
-    return selected
+    return selected^
 
 
 def validate_per_node_aot_selection_against_catalog_mixed[

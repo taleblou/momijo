@@ -178,28 +178,28 @@ def choose_verified_fp32_candidate(
         return TensorResult[Fp32OfflineWinner](TensorStatus.NOT_REPRESENTABLE)
     var fallback = Fp32OfflineWinner(incumbent.variant, False, False)
     if challenger.validate() != TensorStatus.OK:
-        return TensorResult[Fp32OfflineWinner](fallback)
+        return TensorResult[Fp32OfflineWinner](fallback^)
     # The variant is the executable candidate identity in this selector.
     # A repeated observation of the SAME ID is not a new deployable kernel,
     # even if the supplied timing numbers appear better. Treat this as
     # inconclusive instead of emitting a fictitious challenger promotion.
     if challenger.variant == incumbent.variant:
-        return TensorResult[Fp32OfflineWinner](fallback)
+        return TensorResult[Fp32OfflineWinner](fallback^)
     if (challenger.workload_id != incumbent.workload_id
         or challenger.target_environment_id != incumbent.target_environment_id
         or challenger.input_fixture_id != incumbent.input_fixture_id
         or challenger.output_residency != incumbent.output_residency
         or challenger.math_mode_code != incumbent.math_mode_code
         or challenger.rank != incumbent.rank):
-        return TensorResult[Fp32OfflineWinner](fallback)
+        return TensorResult[Fp32OfflineWinner](fallback^)
     if (not challenger.correctness_verified
         or not challenger.independent_holdout_verified
         or not challenger.artifact_verified):
-        return TensorResult[Fp32OfflineWinner](fallback)
+        return TensorResult[Fp32OfflineWinner](fallback^)
     if (challenger.device_peak_bytes > max_device_bytes
         or challenger.host_pinned_peak_bytes > max_pinned_host_bytes
         or challenger.p99_ns > max_p99_ns):
-        return TensorResult[Fp32OfflineWinner](fallback)
+        return TensorResult[Fp32OfflineWinner](fallback^)
     # Uncertainty-aware conservative threshold: challenger's UPPER p95 CI
     # must beat the incumbent's LOWER CI by a user-specified practical margin.
     # A faster mean, warm-up sample or isolated kernel cannot win this gate.
@@ -208,7 +208,7 @@ def choose_verified_fp32_candidate(
         return TensorResult[Fp32OfflineWinner](Fp32OfflineWinner(
             challenger.variant, True, True,
         ))
-    return TensorResult[Fp32OfflineWinner](fallback)
+    return TensorResult[Fp32OfflineWinner](fallback^)
 
 
 def choose_verified_fp32_candidate_with_ram_caps(
@@ -237,7 +237,7 @@ def choose_verified_fp32_candidate_with_ram_caps(
         max_p99_ns, required_gain_bp,
     )
     if not base.is_ok():
-        return base
+        return base^
     if incumbent_peak_ram_bytes > max_ram_bytes:
         return TensorResult[Fp32OfflineWinner](TensorStatus.NOT_REPRESENTABLE)
     if (challenger_peak_ram_bytes < challenger.host_pinned_peak_bytes
@@ -245,4 +245,4 @@ def choose_verified_fp32_candidate_with_ram_caps(
         return TensorResult[Fp32OfflineWinner](
             Fp32OfflineWinner(incumbent.variant, False, False)
         )
-    return base
+    return base^

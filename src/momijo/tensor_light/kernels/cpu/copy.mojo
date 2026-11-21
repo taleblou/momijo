@@ -106,8 +106,8 @@ from ...storage.host_storage import HostStorage, _fill_fp32_contiguous
 from ...parallel.parallel_for import CpuWorkPolicy, recommend_worker_count, execute_parallel_shards
 
 
-def _cpu_copy_noalias_unchecked[o: Origin[mut=True], s: Origin](
-    dest: Span[True, Float32, o], src: Span[False, Float32, s],
+def _cpu_copy_noalias_unchecked[o: Origin[mut=True], s: Origin[mut=False]](
+    dest: Span[mut=True, Float32, o], src: Span[mut=False, Float32, s],
 ):
     # INTERNAL: caller has already proved equal length, representable byte
     # count and disjoint, live host regions. One native bulk copy only.
@@ -116,8 +116,8 @@ def _cpu_copy_noalias_unchecked[o: Origin[mut=True], s: Origin](
 
 
 def _cpu_copy_noalias_selected_after_proof[
-    o: Origin[mut=True], s: Origin,
-](dest: Span[True, Float32, o], src: Span[False, Float32, s]) -> TensorStatus:
+    o: Origin[mut=True], s: Origin[mut=False],
+](dest: Span[mut=True, Float32, o], src: Span[mut=False, Float32, s]) -> TensorStatus:
     # The checked caller establishes valid equal-size, live, DISJOINT FP32
     # ranges before entering this function. A single tuned native memcpy
     # remains the default; only a very large AOT candidate uses CPU shards.
@@ -148,8 +148,8 @@ def _cpu_copy_noalias_selected_after_proof[
     return execute_parallel_shards(copy_disjoint_shard, count, policy)
 
 
-def cpu_copy_noalias[o: Origin[mut=True], s: Origin](
-    dest: Span[True, Float32, o], src: Span[False, Float32, s],
+def cpu_copy_noalias[o: Origin[mut=True], s: Origin[mut=False]](
+    dest: Span[mut=True, Float32, o], src: Span[mut=False, Float32, s],
 ) -> TensorStatus:
     # A public name containing `noalias` is not an aliasing proof. Reject a
     # mismatched length, an unrepresentable byte range, or a shifted/exact
@@ -169,8 +169,8 @@ def cpu_copy_noalias[o: Origin[mut=True], s: Origin](
     return _cpu_copy_noalias_selected_after_proof(dest, src)
 
 
-def cpu_copy_contiguous[o: Origin[mut=True], s: Origin](
-    mut dest: Span[True, Float32, o], src: Span[False, Float32, s]
+def cpu_copy_contiguous[o: Origin[mut=True], s: Origin[mut=False]](
+    mut dest: Span[mut=True, Float32, o], src: Span[mut=False, Float32, s]
 ) -> TensorStatus:
     # A memcpy-like primitive must never corrupt shifted aliases. A real
     # address disjointness proof selects memcpy, otherwise memmove preserves
@@ -338,7 +338,7 @@ def cpu_copy_strided[
 
 
 def cpu_fill[o: Origin[mut=True]](
-    mut dst: Span[True, Float32, o], value: Float32,
+    mut dst: Span[mut=True, Float32, o], value: Float32,
 ) -> TensorStatus:
     if len(dst) < 0:
         return TensorStatus.INVALID_LAYOUT
@@ -419,7 +419,7 @@ def cpu_fill_strided[rank: Int, o: Origin[mut=True]](
 # Zero is a specialized FP32 SIMD fill. Reusing the canonical contiguous
 # writer avoids a separate scalar loop or an unchecked memset byte policy.
 def cpu_zero[o: Origin[mut=True]](
-    mut dst: Span[True, Float32, o],
+    mut dst: Span[mut=True, Float32, o],
 ) -> TensorStatus:
     return cpu_fill(dst, Float32(0.0))
 
@@ -437,10 +437,10 @@ def cpu_zero_strided[rank: Int, o: Origin[mut=True]](
 # platform's tuned copy implementation instead of creating tiny memcpy chunks.
 # Locality is a compile-time specialization, so no per-line runtime branch.
 def cpu_prefetch_copy[
-    locality: Int, dst_origin: Origin[mut=True], src_origin: Origin,
+    locality: Int, dst_origin: Origin[mut=True], src_origin: Origin[mut=False],
 ](
-    mut destination: Span[True, Float32, dst_origin],
-    source: Span[False, Float32, src_origin],
+    mut destination: Span[mut=True, Float32, dst_origin],
+    source: Span[mut=False, Float32, src_origin],
     min_prefetch_items: Int,
     max_prefetch_lines: Int,
 ) -> TensorStatus:
@@ -468,19 +468,19 @@ def cpu_prefetch_copy[
         for i in range(lines):
             var at = i * 16
             comptime if locality == 0:
-                prefetch[DType.float32, PrefetchOptions().no_locality()](
+                prefetch[params=PrefetchOptions().no_locality()](
                     source_ptr.unsafe_offset(at)
                 )
             elif locality == 1:
-                prefetch[DType.float32, PrefetchOptions().low_locality()](
+                prefetch[params=PrefetchOptions().low_locality()](
                     source_ptr.unsafe_offset(at)
                 )
             elif locality == 2:
-                prefetch[DType.float32, PrefetchOptions().medium_locality()](
+                prefetch[params=PrefetchOptions().medium_locality()](
                     source_ptr.unsafe_offset(at)
                 )
             else:
-                prefetch[DType.float32, PrefetchOptions().high_locality()](
+                prefetch[params=PrefetchOptions().high_locality()](
                     source_ptr.unsafe_offset(at)
                 )
     return cpu_copy_contiguous(destination, source)

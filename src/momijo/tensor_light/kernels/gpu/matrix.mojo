@@ -101,7 +101,7 @@ from max.gpu.sync import barrier
 from max.gpu.memory import AddressSpace
 from max.gpu.primitives import warp
 from layout import Layout, LayoutTensor
-from layout import TileTensor
+from layout import TileTensor, TensorLayout as MaxTensorLayout
 from linalg.matmul import matmul as _gpu_linalg_matmul
 from max.gpu.host import DeviceContext, DeviceEvent
 from ...internal.status import TensorResult, TensorStatus
@@ -109,11 +109,15 @@ from ...device.capabilities import GpuCapabilities
 from ...dtype.math_mode import Fp32MathMode
 from ...dispatch.target_traits import NvidiaInstructionFamily, checked_nvidia_fp32_feature
 
-def gpu_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
-    out: TileTensor[DType.float32, LC, MutAnyOrigin],
+def gpu_mm_strict_fp32[LC: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
+    output: TileTensor[DType.float32, LC, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     m_abi: Int32, k_abi: Int32, n_abi: Int32,
+) where (
+    TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var m = Int(m_abi)
@@ -130,7 +134,7 @@ def gpu_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
         var a_row = row * k
         for p in range(k):
             value += a[a_row + p] * b[p * n + col]
-        out[index] = value
+        output[index] = value
 
 
 # AOT candidate for wide row-major output: each lane computes four adjacent
@@ -138,11 +142,15 @@ def gpu_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
 # This is true strict-FP32 SIMT arithmetic, not TF32/MMA and not a claim of
 # measured superiority. Offsets and products are proven by the host launcher.
 # It is safe for an incomplete last four-column tile and k == 0.
-def gpu_mm_simt_col4_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
-    out: TileTensor[DType.float32, LC, MutAnyOrigin],
+def gpu_mm_simt_col4_fp32[LC: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
+    output: TileTensor[DType.float32, LC, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     m_abi: Int32, k_abi: Int32, n_abi: Int32, tiles_per_row_abi: Int32,
+) where (
+    TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var m = Int(m_abi)
@@ -178,13 +186,13 @@ def gpu_mm_simt_col4_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
                 if col + 2 < n:
                     acc2 += av * b[bp + 2]
         var cp = row * n + col
-        out[cp] = acc0
+        output[cp] = acc0
         if col + 1 < n:
-            out[cp + 1] = acc1
+            output[cp + 1] = acc1
         if col + 2 < n:
-            out[cp + 2] = acc2
+            output[cp + 2] = acc2
         if col + 3 < n:
-            out[cp + 3] = acc3
+            output[cp + 3] = acc3
 
 
 # Baseline native SIMT GEMV: one independent FP32 output per row.
@@ -192,11 +200,15 @@ def gpu_mm_simt_col4_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
 # All three TileTensor layouts are independently specialized, flat C-order.
 # HOST PROOF: 0 <= rows*cols <= MAX/4, 0 <= row < rows, and disjoint
 # destination storage; a and x may alias one another (both read only).
-def gpu_gemv_row_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
-    out: TileTensor[DType.float32, LY, MutAnyOrigin],
+def gpu_gemv_row_fp32[LY: MaxTensorLayout, LA: MaxTensorLayout, LX: MaxTensorLayout](
+    output: TileTensor[DType.float32, LY, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     x: TileTensor[DType.float32, LX, MutAnyOrigin],
     rows_abi: Int32, cols_abi: Int32,
+) where (
+    TileTensor[DType.float32, LY, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LX, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
@@ -207,7 +219,7 @@ def gpu_gemv_row_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
         var total = Float32(0.0)
         for col in range(cols):
             total += a[base + col] * x[col]
-        out[row] = total
+        output[row] = total
 
 
 # Rank-2 Float32 Tensor-Core-capable AOT lowering candidate. The upstream
@@ -225,19 +237,23 @@ def gpu_gemv_row_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
 # TF32 is COMPUTE precision only; all input/output payloads remain Float32.
 
 
-def gpu_gemm_tf32_mma[LC: AnyType, LA: AnyType, LB: AnyType](
-    out: TileTensor[DType.float32, LC, MutAnyOrigin],
+def gpu_gemm_tf32_mma[LC: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
+    output: TileTensor[DType.float32, LC, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     ctx: DeviceContext, capabilities: GpuCapabilities,
     math_mode: Fp32MathMode,
     development_allow_runtime_compilation: Bool = False,
-) -> TensorResult[DeviceEvent]:
+) -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 2
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 2
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 2
+):
     # The feature gate is mandatory even for an expert kernel candidate.
     # It is a SOURCE-level ISA policy: the native loader still authenticates
     # the device and selected precompiled image before enabling this adapter.
     var gate = checked_nvidia_fp32_feature(
-        capabilities, NvidiaInstructionFamily.TF32_MMA, math_mode.code,
+        capabilities, materialize[NvidiaInstructionFamily.TF32_MMA](), math_mode.code,
     )
     if not gate.is_ok():
         return TensorResult[DeviceEvent](gate.status)
@@ -255,7 +271,7 @@ def gpu_gemm_tf32_mma[LC: AnyType, LA: AnyType, LB: AnyType](
     if not development_allow_runtime_compilation:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     try:
-        _gpu_linalg_matmul[use_tf32=True, target="gpu"](out, a, b, ctx)
+        _gpu_linalg_matmul[use_tf32=True, target="gpu"](output, a, b, ctx)
         var completed = ctx.create_event()
         ctx.stream().record_event(completed)
         return TensorResult[DeviceEvent](completed)
@@ -278,11 +294,15 @@ def gpu_gemm_tf32_mma[LC: AnyType, LA: AnyType, LB: AnyType](
 # Every CTA uses 16x16 Float32 tiles. All 256 threads execute BOTH barriers
 # for every K block, including CTA edge lanes; zero padding handles M/N/K
 # tails and K=0 writes fully initialized zeros. No TF32/MMA is used.
-def gpu_mm_shared16_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
-    out: TileTensor[DType.float32, LC, MutAnyOrigin],
+def gpu_mm_shared16_strict_fp32[LC: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
+    output: TileTensor[DType.float32, LC, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     m_abi: Int32, k_abi: Int32, n_abi: Int32,
+) where (
+    TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var m = Int(m_abi)
@@ -321,13 +341,13 @@ def gpu_mm_shared16_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
         # and preserves the logical reduction sequence (including signed zero).
         if base + tile_size <= k:
             comptime for inner in range(tile_size):
-                accumulator += atile[local_row, inner] * btile[inner, local_col]
+                accumulator += atile[local_row, inner][0] * btile[inner, local_col][0]
         else:
             for inner in range(k - base):
-                accumulator += atile[local_row, inner] * btile[inner, local_col]
+                accumulator += atile[local_row, inner][0] * btile[inner, local_col][0]
         barrier()
     if row < m and col < n:
-        out[row * n + col] = accumulator
+        output[row * n + col] = accumulator
 
 
 # AOT-only strict-FP32 register-tiled SGEMM for wide C-order matrices.
@@ -338,11 +358,15 @@ def gpu_mm_shared16_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
 # Native release ABI must independently verify SM89, flat FP32 layouts,
 # source/destination extents and launch grid=(ceil(N/64),ceil(M/16)), CTA=256.
 # This is an unbound SOURCE candidate, not an executable AOT release.
-def gpu_mm_shared16_col4_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
-    out: TileTensor[DType.float32, LC, MutAnyOrigin],
+def gpu_mm_shared16_col4_strict_fp32[LC: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
+    output: TileTensor[DType.float32, LC, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     m_abi: Int32, k_abi: Int32, n_abi: Int32,
+) where (
+    TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var m = Int(m_abi)
@@ -383,40 +407,44 @@ def gpu_mm_shared16_col4_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
         barrier()
         if base + tile_k <= k:
             comptime for depth in range(tile_k):
-                var av = shared_a[local_row, depth]
-                acc0 += av * shared_b[depth, local_group * 4]
-                acc1 += av * shared_b[depth, local_group * 4 + 1]
-                acc2 += av * shared_b[depth, local_group * 4 + 2]
-                acc3 += av * shared_b[depth, local_group * 4 + 3]
+                var av = shared_a[local_row, depth][0]
+                acc0 += av * shared_b[depth, local_group * 4][0]
+                acc1 += av * shared_b[depth, local_group * 4 + 1][0]
+                acc2 += av * shared_b[depth, local_group * 4 + 2][0]
+                acc3 += av * shared_b[depth, local_group * 4 + 3][0]
         else:
             # Avoid padding arithmetic on the incomplete reduction tile.
             for depth in range(k - base):
-                var av = shared_a[local_row, depth]
-                acc0 += av * shared_b[depth, local_group * 4]
-                acc1 += av * shared_b[depth, local_group * 4 + 1]
-                acc2 += av * shared_b[depth, local_group * 4 + 2]
-                acc3 += av * shared_b[depth, local_group * 4 + 3]
+                var av = shared_a[local_row, depth][0]
+                acc0 += av * shared_b[depth, local_group * 4][0]
+                acc1 += av * shared_b[depth, local_group * 4 + 1][0]
+                acc2 += av * shared_b[depth, local_group * 4 + 2][0]
+                acc3 += av * shared_b[depth, local_group * 4 + 3][0]
         barrier()
     if row < m:
         if col < n:
-            out[row * n + col] = acc0
+            output[row * n + col] = acc0
         if col + 1 < n:
-            out[row * n + col + 1] = acc1
+            output[row * n + col + 1] = acc1
         if col + 2 < n:
-            out[row * n + col + 2] = acc2
+            output[row * n + col + 2] = acc2
         if col + 3 < n:
-            out[row * n + col + 3] = acc3
+            output[row * n + col + 3] = acc3
 
 
 # AOT-only cooperative GEMV: one full NVIDIA warp owns one row, with
 # coalesced accesses and an FP32 lane-group sum. The tree reassociates
 # addition, so ONLY explicit FAST_TREE policy may select this variant.
 # No branch makes some lanes skip a warp collective (including final row).
-def gpu_gemv_warp32_fast_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
-    out: TileTensor[DType.float32, LY, MutAnyOrigin],
+def gpu_gemv_warp32_fast_fp32[LY: MaxTensorLayout, LA: MaxTensorLayout, LX: MaxTensorLayout](
+    output: TileTensor[DType.float32, LY, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     x: TileTensor[DType.float32, LX, MutAnyOrigin],
     rows_abi: Int32, cols_abi: Int32,
+) where (
+    TileTensor[DType.float32, LY, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LX, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var rows = Int(rows_abi)
@@ -432,4 +460,4 @@ def gpu_gemv_warp32_fast_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
             partial += a[row * cols + col] * x[col]
     var result = warp.sum(partial)
     if row < rows and lane == 0:
-        out[row] = result
+        output[row] = result

@@ -136,7 +136,7 @@ struct BoundAOTDataflowPlan[
         gpu_available: Bool,
         expected_node_abi: Array[Int, Self.nodes],
     ):
-        self._graph = graph
+        self._graph = graph^
         self._placement = placement.copy()
         self._keys = keys.copy()
         self._catalog = catalog.copy()
@@ -184,7 +184,7 @@ struct BoundAOTDataflowPlan[
             if checked_binding.is_compute[i]:
                 expected[i] = abi_version
         return TensorResult[Self](Self(
-            native_graph, native_plan, native_keys, native_catalog,
+            native_graph^, native_plan, native_keys, native_catalog,
             checked_binding, abi_version, gpu_available, expected,
         ))
 
@@ -220,7 +220,7 @@ struct BoundAOTDataflowPlan[
         if not selected.is_ok():
             return TensorResult[Self](selected.status)
         return TensorResult[Self](Self(
-            native_graph, native_plan, native_keys, native_catalog,
+            native_graph^, native_plan, native_keys, native_catalog,
             selected.payload.take(), 0, gpu_available, expected,
         ))
 
@@ -291,7 +291,7 @@ struct BoundAOTDataflowPlan[
                     return TensorResult[SealedStaticDataflowPlan[Self.nodes, Self.slots]](
                         TensorStatus.UNSUPPORTED
                     )
-        return TensorResult[SealedStaticDataflowPlan[Self.nodes, Self.slots]](sealed)
+        return TensorResult[SealedStaticDataflowPlan[Self.nodes, Self.slots]](sealed^)
 
     def checked_placement(self) -> TensorResult[ExecutionPlan]:
         var status = self.validate_against_owned_catalog()

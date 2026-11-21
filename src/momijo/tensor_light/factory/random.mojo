@@ -141,7 +141,7 @@ def random_uniform[rank: Int](
     for index in range(shape.numel()):
         state = _next_state_pm_v1(state)
         dst[index] = _unit_float_pm_v1(state)
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 def random_normal[rank: Int](
@@ -171,4 +171,4 @@ def random_normal[rank: Int](
         if index + 1 < shape.numel():
             dst[index + 1] = radius * math_sin(angle)
         index += 2
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()

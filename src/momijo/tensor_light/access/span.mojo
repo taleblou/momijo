@@ -111,25 +111,25 @@ from ..storage.host_storage import HostStorage
 
 def as_c_span[rank: Int, origin: Origin](
     view: TensorView[rank, origin],
-) -> TensorResult[Span[False, Float32, origin]]:
+) -> TensorResult[Span[mut=False, Float32, origin]]:
     return _checked_c_span(view)
 
 
 def as_f_span[rank: Int, origin: Origin](
     view: TensorView[rank, origin],
-) -> TensorResult[Span[False, Float32, origin]]:
+) -> TensorResult[Span[mut=False, Float32, origin]]:
     return _checked_f_span(view)
 
 
 def as_mut_c_span[rank: Int, origin: Origin[mut=True]](
     mut view: TensorMutView[rank, origin],
-) -> TensorResult[Span[True, Float32, origin]]:
+) -> TensorResult[Span[mut=True, Float32, origin]]:
     return _checked_mut_c_span(view)
 
 
 def as_mut_f_span[rank: Int, origin: Origin[mut=True]](
     mut view: TensorMutView[rank, origin],
-) -> TensorResult[Span[True, Float32, origin]]:
+) -> TensorResult[Span[mut=True, Float32, origin]]:
     return _checked_mut_f_span(view)
 
 
@@ -138,26 +138,26 @@ def as_mut_f_span[rank: Int, origin: Origin[mut=True]](
 
 def as_span[rank: Int, origin: Origin](
     view: TensorView[rank, origin], order: ContiguousOrder,
-) -> TensorResult[Span[False, Float32, origin]]:
+) -> TensorResult[Span[mut=False, Float32, origin]]:
     if order == ContiguousOrder.C:
         return as_c_span(view)
     if order == ContiguousOrder.F:
         return as_f_span(view)
-    return TensorResult[Span[False, Float32, origin]](TensorStatus.INVALID_LAYOUT)
+    return TensorResult[Span[mut=False, Float32, origin]](TensorStatus.INVALID_LAYOUT)
 
 
 def as_mut_span[rank: Int, origin: Origin[mut=True]](
     mut view: TensorMutView[rank, origin], order: ContiguousOrder,
-) -> TensorResult[Span[True, Float32, origin]]:
+) -> TensorResult[Span[mut=True, Float32, origin]]:
     if order == ContiguousOrder.C:
         return as_mut_c_span(view)
     if order == ContiguousOrder.F:
         return as_mut_f_span(view)
-    return TensorResult[Span[True, Float32, origin]](TensorStatus.INVALID_LAYOUT)
+    return TensorResult[Span[mut=True, Float32, origin]](TensorStatus.INVALID_LAYOUT)
 
 
-def span_matches_shape[rank: Int, origin: Origin](
-    span: Span[False, Float32, origin], shape: TensorShape[rank],
+def span_matches_shape[rank: Int, origin: Origin[mut=False]](
+    span: Span[mut=False, Float32, origin], shape: TensorShape[rank],
 ) -> Bool:
     var canonical = TensorShape[rank].checked(shape.dims)
     return (canonical.is_ok()
@@ -174,7 +174,7 @@ def span_matches_shape[rank: Int, origin: Origin](
 
 def copy_to_span[rank: Int, src_origin: Origin, dst_origin: Origin[mut=True]](
     source: TensorView[rank, src_origin],
-    mut destination: Span[True, Float32, dst_origin],
+    mut destination: Span[mut=True, Float32, dst_origin],
 ) -> TensorStatus:
     var verified = source._checked_current_layout()
     if not verified.is_ok():
@@ -251,9 +251,9 @@ def copy_to_span[rank: Int, src_origin: Origin, dst_origin: Origin[mut=True]](
     return TensorStatus.OK
 
 
-def copy_from_span[rank: Int, dst_origin: Origin[mut=True], src_origin: Origin](
+def copy_from_span[rank: Int, dst_origin: Origin[mut=True], src_origin: Origin[mut=False]](
     mut destination: TensorMutView[rank, dst_origin],
-    source: Span[False, Float32, src_origin],
+    source: Span[mut=False, Float32, src_origin],
 ) -> TensorStatus:
     var verified = destination._checked_current_layout()
     if not verified.is_ok():

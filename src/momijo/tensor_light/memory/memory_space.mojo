@@ -130,11 +130,11 @@ struct AllocationDomain(Copyable):
             return False
         if self.size_class < 0:
             return False
-        if self.space == MemorySpace.HOST_PAGEABLE:
+        if self.space == materialize[MemorySpace.HOST_PAGEABLE]():
             return self.device_ordinal == -1
-        if (self.space == MemorySpace.HOST_PINNED
-            or self.space == MemorySpace.DEVICE_LOCAL
-            or self.space == MemorySpace.SHARED_MAPPED):
+        if (self.space == materialize[MemorySpace.HOST_PINNED]()
+            or self.space == materialize[MemorySpace.DEVICE_LOCAL]()
+            or self.space == materialize[MemorySpace.SHARED_MAPPED]()):
             return self.device_ordinal >= 0
         return False
 
@@ -146,7 +146,7 @@ def host_pageable_domain(alignment: Int, size_class: Int) -> TensorResult[Alloca
     if alignment < 4 or (alignment & (alignment - 1)) != 0 or size_class < 0:
         return TensorResult[AllocationDomain](TensorStatus.INVALID_LAYOUT)
     return TensorResult[AllocationDomain](
-        AllocationDomain(MemorySpace.HOST_PAGEABLE, -1, alignment, size_class)
+        AllocationDomain(materialize[MemorySpace.HOST_PAGEABLE](), -1, alignment, size_class)
     )
 
 
@@ -154,7 +154,7 @@ def device_local_domain(ordinal: Int, alignment: Int, size_class: Int) -> Tensor
     if ordinal < 0 or alignment < 4 or (alignment & (alignment - 1)) != 0 or size_class < 0:
         return TensorResult[AllocationDomain](TensorStatus.INVALID_LAYOUT)
     return TensorResult[AllocationDomain](
-        AllocationDomain(MemorySpace.DEVICE_LOCAL, ordinal, alignment, size_class)
+        AllocationDomain(materialize[MemorySpace.DEVICE_LOCAL](), ordinal, alignment, size_class)
     )
 
 
@@ -164,10 +164,10 @@ def host_pinned_domain(
     # This is a declarative pool key, NOT a pin/registration operation.
     # A native DeviceContext HostBuffer owner and a completed transfer event
     # must be bound separately before DMA or cache reuse can occur.
-    var domain = AllocationDomain(MemorySpace.HOST_PINNED, ordinal, alignment, size_class)
+    var domain = AllocationDomain(materialize[MemorySpace.HOST_PINNED](), ordinal, alignment, size_class)
     if not domain.is_valid():
         return TensorResult[AllocationDomain](TensorStatus.INVALID_LAYOUT)
-    return TensorResult[AllocationDomain](domain)
+    return TensorResult[AllocationDomain](domain^)
 
 
 def shared_host_device_domain(
@@ -176,10 +176,10 @@ def shared_host_device_domain(
     # A mapped/managed-memory key alone does not prove pointer mapping or
     # that an accelerator can dereference the host allocation. A checked
     # owner/backend capability gate remains mandatory before any access.
-    var domain = AllocationDomain(MemorySpace.SHARED_MAPPED, ordinal, alignment, size_class)
+    var domain = AllocationDomain(materialize[MemorySpace.SHARED_MAPPED](), ordinal, alignment, size_class)
     if not domain.is_valid():
         return TensorResult[AllocationDomain](TensorStatus.INVALID_LAYOUT)
-    return TensorResult[AllocationDomain](domain)
+    return TensorResult[AllocationDomain](domain^)
 
 
 def checked_same_pool_domain(
@@ -191,11 +191,11 @@ def checked_same_pool_domain(
 
 
 def is_host_visible(space: MemorySpace) -> Bool:
-    return space == MemorySpace.HOST_PAGEABLE or space == MemorySpace.HOST_PINNED or space == MemorySpace.SHARED_MAPPED
+    return space == materialize[MemorySpace.HOST_PAGEABLE]() or space == materialize[MemorySpace.HOST_PINNED]() or space == materialize[MemorySpace.SHARED_MAPPED]()
 
 
 def is_device_local(space: MemorySpace) -> Bool:
-    return space == MemorySpace.DEVICE_LOCAL
+    return space == materialize[MemorySpace.DEVICE_LOCAL]()
 
 
 def is_transfer_compatible(src: MemorySpace, dst: MemorySpace) -> Bool:

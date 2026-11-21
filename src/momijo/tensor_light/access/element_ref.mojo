@@ -92,10 +92,10 @@ from std.collections import Span
 from ..internal.status import TensorResult, TensorStatus
 
 struct TensorElementRef[origin: Origin](Copyable):
-    var span: Span[False, Float32, Self.origin]
+    var span: Span[mut=False, Float32, Self.origin]
     var at: Int
 
-    def __init__(out self, span: Span[False, Float32, Self.origin], at: Int):
+    def __init__(out self, span: Span[mut=False, Float32, Self.origin], at: Int):
         self.span = span
         self.at = at
 
@@ -109,10 +109,10 @@ struct TensorElementRef[origin: Origin](Copyable):
         return TensorResult[Float32](self.span[self.at])
 
 struct TensorElementMutRef[origin: Origin[mut=True]](Movable):
-    var span: Span[True, Float32, Self.origin]
+    var span: Span[mut=True, Float32, Self.origin]
     var at: Int
 
-    def __init__(out self, span: Span[True, Float32, Self.origin], at: Int):
+    def __init__(out self, span: Span[mut=True, Float32, Self.origin], at: Int):
         self.span = span
         self.at = at
 

@@ -94,9 +94,13 @@
 # Indexed reads are race free. Scatter with potentially duplicate destinations
 # is deliberately not exposed as an unchecked kernel.
 from max.gpu import global_idx
-from layout import TileTensor
+from layout import TileTensor, TensorLayout as MaxTensorLayout
 
-def gpu_gather_fp32_unchecked[LO: AnyType, LI: AnyType, IL: AnyType](out: TileTensor[DType.float32, LO, MutAnyOrigin], inp: TileTensor[DType.float32, LI, MutAnyOrigin], positions: TileTensor[DType.int32, IL, MutAnyOrigin], count_abi: Int32, source_count_abi: Int32):
+def gpu_gather_fp32_unchecked[LO: MaxTensorLayout, LI: MaxTensorLayout, IL: MaxTensorLayout](output: TileTensor[DType.float32, LO, MutAnyOrigin], inp: TileTensor[DType.float32, LI, MutAnyOrigin], positions: TileTensor[DType.int32, IL, MutAnyOrigin], count_abi: Int32, source_count_abi: Int32) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.int32, IL, MutAnyOrigin].flat_rank == 1
+):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var source_count = Int(source_count_abi)
@@ -105,21 +109,25 @@ def gpu_gather_fp32_unchecked[LO: AnyType, LI: AnyType, IL: AnyType](out: TileTe
         var src = Int(positions[idx])
         # All device-side indices MUST be checked by the boundary planner.
         # A malformed source index is outside this unchecked kernel contract.
-        out[idx] = inp[src]
+        output[idx] = inp[src]
 
 # Race-free scatter fast path for a PROVEN one-to-one index mapping. This
 # deliberately does not implement duplicate-index/last-writer semantics.
 # The checked boundary must certify: (1) every position is in [0, dest_count),
 # (2) positions are unique, (3) sources and destination are disjoint and
 # (4) all arguments are live for the full asynchronous launch.
-def gpu_scatter_unique_fp32_unchecked[LO: AnyType, LI: AnyType, IL: AnyType](
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+def gpu_scatter_unique_fp32_unchecked[LO: MaxTensorLayout, LI: MaxTensorLayout, IL: MaxTensorLayout](
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     inp: TileTensor[DType.float32, LI, MutAnyOrigin],
     positions: TileTensor[DType.int32, IL, MutAnyOrigin],
     count_abi: Int32,
+) where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.int32, IL, MutAnyOrigin].flat_rank == 1
 ):
     # Fixed-width, DevicePassable source-kernel ABI; convert once outside hot loops.
     var count = Int(count_abi)
     var idx = global_idx.x
     if idx < count:
-        out[Int(positions[idx])] = inp[idx]
+        output[Int(positions[idx])] = inp[idx]

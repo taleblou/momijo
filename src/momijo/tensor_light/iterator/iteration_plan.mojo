@@ -138,7 +138,7 @@ def make_iteration_plan_checked(
         if total_items != analysis.contiguous_run:
             return TensorResult[IterationPlan](TensorStatus.INVALID_LAYOUT)
     var built = make_iteration_plan(analysis, total_items, simd_width, grain)
-    return TensorResult[IterationPlan](built)
+    return TensorResult[IterationPlan](built^)
 
 def make_iteration_plan_for_layout_checked[rank: Int](
     layout: TensorLayout[rank], storage_capacity: Int,
@@ -236,7 +236,7 @@ def validate_iteration_plan_against_layout[rank: Int](
     )
     if not canonical.is_ok():
         return canonical.status
-    var expected = canonical.payload.value()
+    var expected = canonical.payload.value().copy()
     if (plan.total_items != expected.total_items
         or plan.vector_axis != expected.vector_axis
         or plan.contiguous_run != expected.contiguous_run

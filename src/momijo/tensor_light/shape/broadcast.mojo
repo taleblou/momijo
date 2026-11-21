@@ -166,12 +166,12 @@ def broadcast_many_shapes[rank: Int, count: Int](shapes: Array[TensorShape[rank]
     comptime assert rank >= 0 and rank <= 8 and count >= 1, "invalid shape collection"
     var accumulated = TensorShape[rank].checked(shapes[0].dims)
     if not accumulated.is_ok():
-        return accumulated
+        return accumulated^
     if accumulated.payload.value().numel() != shapes[0].numel():
         return TensorResult[TensorShape[rank]](TensorStatus.INVALID_SHAPE)
     for i in range(1, count):
         var next = broadcast_shape[rank, rank, rank](accumulated.payload.value(), shapes[i])
         if not next.is_ok():
-            return next
-        accumulated = next
-    return accumulated
+            return next^
+        accumulated = next^
+    return accumulated^

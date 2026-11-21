@@ -124,7 +124,7 @@ def basic_index_layout[src_rank: Int, out_rank: Int, count: Int](
     var inspected_terms = _summarize_basic_index_pack(terms)
     if not inspected_terms.is_ok():
         return TensorResult[TensorLayout[out_rank]](inspected_terms.status)
-    var summary = inspected_terms.payload.value()
+    var summary = inspected_terms.payload.value().copy()
     var consumed = summary.consumed_source_axes
     var produced = summary.produced_output_axes
     if consumed > src_rank:
@@ -151,18 +151,18 @@ def basic_index_layout[src_rank: Int, out_rank: Int, count: Int](
 
     comptime for i in range(count):
         ref term = terms[i]
-        if term.kind == BasicIndexKind.ELLIPSIS:
+        if term.kind == materialize[BasicIndexKind.ELLIPSIS]():
             saw_ellipsis = True
             for j in range(implicit_slices):
                 output_dims.set(write_axis, trusted.shape.dims.get(read_axis))
                 output_strides.set(write_axis, trusted.strides.get(read_axis))
                 write_axis += 1
                 read_axis += 1
-        elif term.kind == BasicIndexKind.NEW_AXIS:
+        elif term.kind == materialize[BasicIndexKind.NEW_AXIS]():
             output_dims.set(write_axis, 1)
             output_strides.set(write_axis, 0)
             write_axis += 1
-        elif term.kind == BasicIndexKind.INTEGER:
+        elif term.kind == materialize[BasicIndexKind.INTEGER]():
             var idx = normalize_index(term.integer_value, trusted.shape.dims.get(read_axis))
             if not idx.is_ok():
                 return TensorResult[TensorLayout[out_rank]](idx.status)
@@ -186,7 +186,7 @@ def basic_index_layout[src_rank: Int, out_rank: Int, count: Int](
             var selected = normalize_slice(term.slice_value, trusted.shape.dims.get(read_axis))
             if not selected.is_ok():
                 return TensorResult[TensorLayout[out_rank]](selected.status)
-            var sliced = selected.payload.value()
+            var sliced = selected.payload.value().copy()
             output_dims.set(write_axis, sliced.length)
             # A zero- or singleton-length axis never varies its offset. A
             # zero stride is canonical and avoids a spurious Int overflow for

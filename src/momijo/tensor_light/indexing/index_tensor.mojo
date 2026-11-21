@@ -123,7 +123,7 @@ struct IndexTensor[rank: Int](Movable):
 
     def __init__(out self, var shape: TensorShape[Self.rank], var values: List[Int]):
         self._shape = shape
-        self._values = values
+        self._values = values^
 
     @staticmethod
     def from_values_checked(
@@ -134,7 +134,7 @@ struct IndexTensor[rank: Int](Movable):
             return TensorResult[Self](bytes.status)
         if len(values) != shape.numel():
             return TensorResult[Self](TensorStatus.SIZE_MISMATCH)
-        return TensorResult[Self](Self(shape, values))
+        return TensorResult[Self](Self(shape, values^))
 
     def shape(self) -> TensorShape[Self.rank]:
         return self._shape.copy()
@@ -142,15 +142,15 @@ struct IndexTensor[rank: Int](Movable):
     def checked_numel(self) -> TensorResult[Int]:
         var n = self._shape.checked_numel()
         if not n.is_ok():
-            return n
+            return n^
         if len(self._values) != n.payload.value():
             return TensorResult[Int](TensorStatus.INVALID_SHAPE)
-        return n
+        return n^
 
     def get(self, indices: StaticRankArray[Self.rank]) -> TensorResult[Int]:
         var count = self.checked_numel()
         if not count.is_ok():
-            return count
+            return count^
         var linear = 0
         comptime for axis in range(Self.rank):
             var coordinate = indices.get(axis)

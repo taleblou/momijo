@@ -123,8 +123,8 @@ def cpu_unary_scalar_fp32[operation: Int](value: Float32) -> Float32:
 
 
 def cpu_unary_contiguous_fp32[
-    operation: Int, width: Int, so: Origin, do: Origin[mut=True]
-](input: Span[False, Float32, so], mut output: Span[True, Float32, do]) -> TensorStatus:
+    operation: Int, width: Int, so: Origin[mut=False], do: Origin[mut=True]
+](input: Span[mut=False, Float32, so], mut output: Span[mut=True, Float32, do]) -> TensorStatus:
     comptime assert operation >= 0 and operation <= 8, "invalid FP32 unary opcode"
     comptime assert width > 0, "Float32 SIMD width must be positive"
     # Direct callers may not have the primary Tensor owner's preflight.

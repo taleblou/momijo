@@ -97,7 +97,7 @@ from .device import Device
 struct DeviceGuard(Copyable):
     var selected: Device
     def __init__(out self, selected: Device):
-        self.selected = selected
+        self.selected = selected.copy()
 
     def validate_device(self, actual: Device) -> TensorStatus:
         if self.selected.kind == actual.kind and self.selected.ordinal == actual.ordinal:

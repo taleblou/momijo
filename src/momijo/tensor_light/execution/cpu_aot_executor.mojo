@@ -135,7 +135,7 @@ def _cpu_binary_simd_fp32[operation: Int, width: Int](
 
 @inline(.always)
 def _cpu_dataflow_binary[operation: Int, origin: Origin[mut=True]](
-    mut arena: Span[True, Float32, origin], source_a: Int, source_b: Int,
+    mut arena: Span[mut=True, Float32, origin], source_a: Int, source_b: Int,
     dest: Int, count: Int, scalar_a: Bool, scalar_b: Bool,
 ):
     # AOT-specialized arithmetic opcode. The per-node scalar broadcast flags
@@ -189,7 +189,7 @@ def _cpu_dataflow_binary[operation: Int, origin: Origin[mut=True]](
 
 @inline(.always)
 def _cpu_dataflow_unary[operation: Int, origin: Origin[mut=True]](
-    mut arena: Span[True, Float32, origin], source: Int, dest: Int, count: Int,
+    mut arena: Span[mut=True, Float32, origin], source: Int, dest: Int, count: Int,
 ):
     # The sealed graph and owner-backed arena prove disjoint input/output
     # regions. Vectorize only operations with an established FP32 SIMD
@@ -220,7 +220,7 @@ def _cpu_dataflow_unary[operation: Int, origin: Origin[mut=True]](
 
 @inline(.always)
 def _cpu_dataflow_reduce[operation: Int, origin: Origin[mut=True]](
-    mut arena: Span[True, Float32, origin], source: Int, dest: Int,
+    mut arena: Span[mut=True, Float32, origin], source: Int, dest: Int,
     output_count: Int, extent: Int,
 ):
     # The sealed DAG proves extent > 0 and input_count=output_count*extent.
@@ -256,7 +256,7 @@ def _cpu_dataflow_reduce[operation: Int, origin: Origin[mut=True]](
 
 @inline(.always)
 def _cpu_dataflow_scan[operation: Int, origin: Origin[mut=True]](
-    mut arena: Span[True, Float32, origin], source: Int, dest: Int,
+    mut arena: Span[mut=True, Float32, origin], source: Int, dest: Int,
     count: Int, row_length: Int,
 ):
     for row in range(count // row_length):
@@ -279,7 +279,7 @@ def _cpu_dataflow_scan[operation: Int, origin: Origin[mut=True]](
 
 @inline(.always)
 def _cpu_dataflow_gemm[use_fma: Bool, origin: Origin[mut=True]](
-    mut arena: Span[True, Float32, origin], left_begin: Int,
+    mut arena: Span[mut=True, Float32, origin], left_begin: Int,
     right_begin: Int, dest: Int, m: Int, k: Int, n: Int,
 ):
     # Bounded dense row-major lowering for rank-2 FP32 GEMM. Four adjacent
@@ -381,7 +381,7 @@ def _cpu_dataflow_gemm[use_fma: Bool, origin: Origin[mut=True]](
 
 
 def _cpu_dataflow_single_node[origin: Origin[mut=True], slots: Int](
-    mut arena: Span[True, Float32, origin], node: DataflowNode,
+    mut arena: Span[mut=True, Float32, origin], node: DataflowNode,
     offsets: Array[Int, slots],
 ) -> TensorStatus:
     # No fallible operations or metadata validation are placed in these
@@ -547,7 +547,7 @@ def _run_cpu_static_dataflow_in_arena[
     nodes: Int, slots: Int, origin: Origin[mut=True],
 ](
     plan: SealedStaticDataflowPlan[nodes, slots],
-    mut arena: Span[True, Float32, origin],
+    mut arena: Span[mut=True, Float32, origin],
     offsets: Array[Int, slots],
 ) -> CpuDataflowRunOutcome:
     # Recheck BEFORE the first write; the mutable source-level plan is not

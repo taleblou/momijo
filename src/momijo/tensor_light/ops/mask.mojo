@@ -116,7 +116,7 @@ def mask_and[rank: Int](a: TensorMask[rank], b: TensorMask[rank]) -> TensorResul
             return TensorResult[TensorMask[rank]](TensorStatus.INVALID_LAYOUT)
         if left != 0 and right != 0:
             out.bytes[i] = 1
-    return TensorResult[TensorMask[rank]](out)
+    return TensorResult[TensorMask[rank]](out^)
 
 def mask_or[rank: Int](a: TensorMask[rank], b: TensorMask[rank]) -> TensorResult[TensorMask[rank]]:
     var av = a.metadata_status()
@@ -138,7 +138,7 @@ def mask_or[rank: Int](a: TensorMask[rank], b: TensorMask[rank]) -> TensorResult
             return TensorResult[TensorMask[rank]](TensorStatus.INVALID_LAYOUT)
         if left != 0 or right != 0:
             out.bytes[i] = 1
-    return TensorResult[TensorMask[rank]](out)
+    return TensorResult[TensorMask[rank]](out^)
 
 def mask_xor[rank: Int](a: TensorMask[rank], b: TensorMask[rank]) -> TensorResult[TensorMask[rank]]:
     var av = a.metadata_status()
@@ -160,7 +160,7 @@ def mask_xor[rank: Int](a: TensorMask[rank], b: TensorMask[rank]) -> TensorResul
             return TensorResult[TensorMask[rank]](TensorStatus.INVALID_LAYOUT)
         if (left != 0) != (right != 0):
             out.bytes[i] = 1
-    return TensorResult[TensorMask[rank]](out)
+    return TensorResult[TensorMask[rank]](out^)
 
 def mask_not[rank: Int](a: TensorMask[rank]) -> TensorResult[TensorMask[rank]]:
     var status = a.metadata_status()
@@ -176,7 +176,7 @@ def mask_not[rank: Int](a: TensorMask[rank]) -> TensorResult[TensorMask[rank]]:
             return TensorResult[TensorMask[rank]](TensorStatus.INVALID_LAYOUT)
         if predicate == 0:
             out.bytes[i] = 1
-    return TensorResult[TensorMask[rank]](out)
+    return TensorResult[TensorMask[rank]](out^)
 
 
 def mask_any[rank: Int](mask: TensorMask[rank]) -> TensorResult[Bool]:

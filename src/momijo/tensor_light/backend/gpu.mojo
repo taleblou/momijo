@@ -102,8 +102,9 @@
 # Prefer run_* methods, which join the event before returning a borrowed owner.
 # An unbound DeviceExternalFunction is UNSAFE even on a synchronous path:
 # its code, operation, architecture, and ABI are not authenticated here.
-from max.gpu.host import DeviceContext, DeviceExternalFunction, DeviceBuffer, DeviceEvent
-from layout import TileTensor
+from max.gpu.host import DeviceContext, DeviceBuffer, DeviceEvent
+from max.gpu.host.device_context import DeviceExternalFunction
+from layout import TileTensor, TensorLayout as MaxTensorLayout
 from ..internal.status import TensorStatus, TensorResult
 from ..execution.execution_plan import ExecutionPlan, ExecutionPlacement
 from ..kernels.gpu.elementwise import gpu_add_fp32, gpu_mul_fp32, gpu_sub_fp32, gpu_div_fp32
@@ -147,11 +148,15 @@ def _checked_source_binary_variant(plan: ExecutionPlan) -> TensorStatus:
 # A direct device-buffer lowering produces a device-resident tensor only.
 # A host-resident result requires a separately lowered, event-ordered D2H.
 # DeviceEvent proves completion, NOT the lifetime of independently-owned buffers.
-def unsafe_enqueue_add_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceContext, plan: ExecutionPlan, out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent]:
+def unsafe_enqueue_add_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](ctx: DeviceContext, plan: ExecutionPlan, output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     if _checked_source_binary_variant(checked_plan) != TensorStatus.OK:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     var count = checked_plan.total_items
@@ -173,16 +178,20 @@ def unsafe_enqueue_add_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceCo
     if not geometry.is_ok():
         return TensorResult[DeviceEvent](geometry.status)
     var blocks = geometry.payload.value().grid_blocks
-    ctx.enqueue_function[gpu_add_fp32[LO, LA, LB]](out, a, b, Int32(count), grid_dim=blocks, block_dim=threads)
+    ctx.enqueue_function[gpu_add_fp32[LO, LA, LB]](output, a, b, Int32(count), grid_dim=blocks, block_dim=threads)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
 
-def unsafe_enqueue_mul_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceContext, plan: ExecutionPlan, out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent]:
+def unsafe_enqueue_mul_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](ctx: DeviceContext, plan: ExecutionPlan, output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     if _checked_source_binary_variant(checked_plan) != TensorStatus.OK:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     var count = checked_plan.total_items
@@ -203,18 +212,22 @@ def unsafe_enqueue_mul_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceCo
     if not geometry.is_ok():
         return TensorResult[DeviceEvent](geometry.status)
     var blocks = geometry.payload.value().grid_blocks
-    ctx.enqueue_function[gpu_mul_fp32[LO, LA, LB]](out, a, b, Int32(count), grid_dim=blocks, block_dim=256)
+    ctx.enqueue_function[gpu_mul_fp32[LO, LA, LB]](output, a, b, Int32(count), grid_dim=blocks, block_dim=256)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
 
 # These intrinsic GPU kernels bind the FP32 opcode in the source/AOT symbol.
 # They do not accept an unchecked external DeviceExternalFunction pointer.
-def unsafe_enqueue_sub_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceContext, plan: ExecutionPlan, out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent]:
+def unsafe_enqueue_sub_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](ctx: DeviceContext, plan: ExecutionPlan, output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     if _checked_source_binary_variant(checked_plan) != TensorStatus.OK:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     var count = checked_plan.total_items
@@ -232,17 +245,21 @@ def unsafe_enqueue_sub_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceCo
     if not geometry.is_ok():
         return TensorResult[DeviceEvent](geometry.status)
     var blocks = geometry.payload.value().grid_blocks
-    ctx.enqueue_function[gpu_sub_fp32[LO, LA, LB]](out, a, b, Int32(count), grid_dim=blocks, block_dim=256)
+    ctx.enqueue_function[gpu_sub_fp32[LO, LA, LB]](output, a, b, Int32(count), grid_dim=blocks, block_dim=256)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
 
 
-def unsafe_enqueue_div_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceContext, plan: ExecutionPlan, out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent]:
+def unsafe_enqueue_div_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](ctx: DeviceContext, plan: ExecutionPlan, output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     if _checked_source_binary_variant(checked_plan) != TensorStatus.OK:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     var count = checked_plan.total_items
@@ -260,7 +277,7 @@ def unsafe_enqueue_div_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceCo
     if not geometry.is_ok():
         return TensorResult[DeviceEvent](geometry.status)
     var blocks = geometry.payload.value().grid_blocks
-    ctx.enqueue_function[gpu_div_fp32[LO, LA, LB]](out, a, b, Int32(count), grid_dim=blocks, block_dim=256)
+    ctx.enqueue_function[gpu_div_fp32[LO, LA, LB]](output, a, b, Int32(count), grid_dim=blocks, block_dim=256)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
@@ -268,11 +285,15 @@ def unsafe_enqueue_div_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceCo
 
 # Separate statically instantiated FP32 extrema kernels; no runtime
 # operation switch or Float32-to-boolean tensor dtype conversion.
-def unsafe_enqueue_maximum_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceContext, plan: ExecutionPlan, out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent]:
+def unsafe_enqueue_maximum_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](ctx: DeviceContext, plan: ExecutionPlan, output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     if _checked_source_binary_variant(checked_plan) != TensorStatus.OK:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     var count = checked_plan.total_items
@@ -290,17 +311,21 @@ def unsafe_enqueue_maximum_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: Devi
     if not geometry.is_ok():
         return TensorResult[DeviceEvent](geometry.status)
     var blocks = geometry.payload.value().grid_blocks
-    ctx.enqueue_function[gpu_maximum_fp32[LO, LA, LB]](out, a, b, Int32(count), grid_dim=blocks, block_dim=256)
+    ctx.enqueue_function[gpu_maximum_fp32[LO, LA, LB]](output, a, b, Int32(count), grid_dim=blocks, block_dim=256)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
 
 
-def unsafe_enqueue_minimum_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: DeviceContext, plan: ExecutionPlan, out: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent]:
+def unsafe_enqueue_minimum_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](ctx: DeviceContext, plan: ExecutionPlan, output: TileTensor[DType.float32, LO, MutAnyOrigin], a: TileTensor[DType.float32, LA, MutAnyOrigin], b: TileTensor[DType.float32, LB, MutAnyOrigin], development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     if _checked_source_binary_variant(checked_plan) != TensorStatus.OK:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     var count = checked_plan.total_items
@@ -318,17 +343,19 @@ def unsafe_enqueue_minimum_fp32[LO: AnyType, LA: AnyType, LB: AnyType](ctx: Devi
     if not geometry.is_ok():
         return TensorResult[DeviceEvent](geometry.status)
     var blocks = geometry.payload.value().grid_blocks
-    ctx.enqueue_function[gpu_minimum_fp32[LO, LA, LB]](out, a, b, Int32(count), grid_dim=blocks, block_dim=256)
+    ctx.enqueue_function[gpu_minimum_fp32[LO, LA, LB]](output, a, b, Int32(count), grid_dim=blocks, block_dim=256)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
 
 
-def unsafe_enqueue_fill_fp32[L: AnyType](ctx: DeviceContext, plan: ExecutionPlan, out: TileTensor[DType.float32, L, MutAnyOrigin], value: Float32, development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent]:
+def unsafe_enqueue_fill_fp32[L: MaxTensorLayout](ctx: DeviceContext, plan: ExecutionPlan, output: TileTensor[DType.float32, L, MutAnyOrigin], value: Float32, development_allow_runtime_compilation: Bool = False) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, L, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     var count = checked_plan.total_items
     # Source kernels use 32-bit device indices; refuse truncation before enqueue.
     if count > 2147483647:
@@ -347,7 +374,7 @@ def unsafe_enqueue_fill_fp32[L: AnyType](ctx: DeviceContext, plan: ExecutionPlan
     if not geometry.is_ok():
         return TensorResult[DeviceEvent](geometry.status)
     var blocks = geometry.payload.value().grid_blocks
-    ctx.enqueue_function[gpu_fill_fp32[L]](out, value, Int32(count), grid_dim=blocks, block_dim=256)
+    ctx.enqueue_function[gpu_fill_fp32[L]](output, value, Int32(count), grid_dim=blocks, block_dim=256)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
@@ -357,26 +384,30 @@ def unsafe_enqueue_fill_fp32[L: AnyType](ctx: DeviceContext, plan: ExecutionPlan
 # differently named external binary kernel through this entry point.
 # This is NOT a replacement for the separately loaded offline AOT artifact
 # registry used by host-result GPU/HYBRID lowerings.
-def unsafe_enqueue_binary_fp32[operation: Int, LO: AnyType, LA: AnyType, LB: AnyType](
+def unsafe_enqueue_binary_fp32[operation: Int, LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) raises -> TensorResult[DeviceEvent]:
+) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     comptime assert operation >= 0 and operation <= 5, "FP32 binary opcode must be 0..5"
     comptime if operation == 0:
-        return unsafe_enqueue_add_fp32[LO, LA, LB](ctx, plan, out, a, b, development_allow_runtime_compilation)
+        return unsafe_enqueue_add_fp32[LO, LA, LB](ctx, plan, output, a, b, development_allow_runtime_compilation)
     elif operation == 1:
-        return unsafe_enqueue_sub_fp32[LO, LA, LB](ctx, plan, out, a, b, development_allow_runtime_compilation)
+        return unsafe_enqueue_sub_fp32[LO, LA, LB](ctx, plan, output, a, b, development_allow_runtime_compilation)
     elif operation == 2:
-        return unsafe_enqueue_mul_fp32[LO, LA, LB](ctx, plan, out, a, b, development_allow_runtime_compilation)
+        return unsafe_enqueue_mul_fp32[LO, LA, LB](ctx, plan, output, a, b, development_allow_runtime_compilation)
     elif operation == 3:
-        return unsafe_enqueue_div_fp32[LO, LA, LB](ctx, plan, out, a, b, development_allow_runtime_compilation)
+        return unsafe_enqueue_div_fp32[LO, LA, LB](ctx, plan, output, a, b, development_allow_runtime_compilation)
     elif operation == 4:
-        return unsafe_enqueue_maximum_fp32[LO, LA, LB](ctx, plan, out, a, b, development_allow_runtime_compilation)
+        return unsafe_enqueue_maximum_fp32[LO, LA, LB](ctx, plan, output, a, b, development_allow_runtime_compilation)
     else:
-        return unsafe_enqueue_minimum_fp32[LO, LA, LB](ctx, plan, out, a, b, development_allow_runtime_compilation)
+        return unsafe_enqueue_minimum_fp32[LO, LA, LB](ctx, plan, output, a, b, development_allow_runtime_compilation)
 
 
 # A borrowed-owner public call must join the completion token before it
@@ -399,13 +430,17 @@ def _join_checked_device_event(
         return TensorStatus.NATIVE_LAUNCH_FAILED
 
 
-def run_binary_fp32[operation: Int, LO: AnyType, LA: AnyType, LB: AnyType](
+def run_binary_fp32[operation: Int, LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # The validated empty GPU_ONLY plan has no native work, dependency, or
     # transfer. The synchronous owner-scoped API must not create a redundant
     # event or synchronize a stream for this call. Raw enqueue_* APIs still
@@ -413,12 +448,12 @@ def run_binary_fp32[operation: Int, LO: AnyType, LA: AnyType, LB: AnyType](
     var proven = _checked_native_device_plan(plan)
     if not proven.is_ok():
         return proven.status
-    var safe_plan = proven.payload.value()
+    var safe_plan = proven.payload.value().copy()
     if safe_plan.total_items == 0:
         return TensorStatus.OK
     try:
-        var queued = unsafe_enqueue_binary_fp32[operation, LO, LA, LB](ctx, safe_plan, out, a, b, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_binary_fp32[operation, LO, LA, LB](ctx, safe_plan, output, a, b, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -436,7 +471,7 @@ def unsafe_enqueue_unbound_aot_binary_fp32(
     ctx: DeviceContext,
     artifact: DeviceExternalFunction,
     plan: ExecutionPlan,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     a: DeviceBuffer[DType.float32],
     b: DeviceBuffer[DType.float32],
 ) raises -> TensorResult[DeviceEvent]:
@@ -446,23 +481,23 @@ def unsafe_enqueue_unbound_aot_binary_fp32(
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     var count = checked_plan.total_items
-    if count < 0 or len(out) < count or len(a) < count or len(b) < count:
+    if count < 0 or len(output) < count or len(a) < count or len(b) < count:
         return TensorResult[DeviceEvent](TensorStatus.SIZE_MISMATCH)
     if count > 0:
         # An out-of-place AOT binary kernel cannot use overlapping output
         # and input ranges. Validate physical spans before enqueue; the
         # presence of distinct DeviceBuffer handles is not an alias proof.
-        if not device_fp32_regions_disjoint(out, count, a, count):
+        if not device_fp32_regions_disjoint(output, count, a, count):
             return TensorResult[DeviceEvent](TensorStatus.ALIAS_UNKNOWN)
-        if not device_fp32_regions_disjoint(out, count, b, count):
+        if not device_fp32_regions_disjoint(output, count, b, count):
             return TensorResult[DeviceEvent](TensorStatus.ALIAS_UNKNOWN)
         var geometry = gpu_grid_1d(count, 256)
         if not geometry.is_ok():
             return TensorResult[DeviceEvent](geometry.status)
         var blocks = geometry.payload.value().grid_blocks
-        ctx.enqueue_function(artifact, out, a, b, count, grid_dim=blocks, block_dim=256)
+        ctx.enqueue_function(artifact, output, a, b, count, grid_dim=blocks, block_dim=256)
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
@@ -476,13 +511,13 @@ def unsafe_run_unbound_aot_binary_fp32(
     ctx: DeviceContext,
     artifact: DeviceExternalFunction,
     plan: ExecutionPlan,
-    out: DeviceBuffer[DType.float32],
+    output: DeviceBuffer[DType.float32],
     a: DeviceBuffer[DType.float32],
     b: DeviceBuffer[DType.float32],
 ) -> TensorStatus:
     try:
-        var queued = unsafe_enqueue_unbound_aot_binary_fp32(ctx, artifact, plan, out, a, b)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_unbound_aot_binary_fp32(ctx, artifact, plan, output, a, b)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -491,13 +526,17 @@ def unsafe_run_unbound_aot_binary_fp32(
         return TensorStatus.NATIVE_LAUNCH_FAILED
 
 
-def run_add_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
+def run_add_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # The validated empty GPU_ONLY plan has no native work, dependency, or
     # transfer. The synchronous owner-scoped API must not create a redundant
     # event or synchronize a stream for this call. Raw enqueue_* APIs still
@@ -505,12 +544,12 @@ def run_add_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
     var proven = _checked_native_device_plan(plan)
     if not proven.is_ok():
         return proven.status
-    var safe_plan = proven.payload.value()
+    var safe_plan = proven.payload.value().copy()
     if safe_plan.total_items == 0:
         return TensorStatus.OK
     try:
-        var queued = unsafe_enqueue_add_fp32(ctx, safe_plan, out, a, b, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_add_fp32(ctx, safe_plan, output, a, b, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -519,13 +558,17 @@ def run_add_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
         return TensorStatus.NATIVE_LAUNCH_FAILED
 
 
-def run_mul_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
+def run_mul_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # The validated empty GPU_ONLY plan has no native work, dependency, or
     # transfer. The synchronous owner-scoped API must not create a redundant
     # event or synchronize a stream for this call. Raw enqueue_* APIs still
@@ -533,12 +576,12 @@ def run_mul_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
     var proven = _checked_native_device_plan(plan)
     if not proven.is_ok():
         return proven.status
-    var safe_plan = proven.payload.value()
+    var safe_plan = proven.payload.value().copy()
     if safe_plan.total_items == 0:
         return TensorStatus.OK
     try:
-        var queued = unsafe_enqueue_mul_fp32(ctx, safe_plan, out, a, b, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_mul_fp32(ctx, safe_plan, output, a, b, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -547,13 +590,17 @@ def run_mul_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
         return TensorStatus.NATIVE_LAUNCH_FAILED
 
 
-def run_sub_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
+def run_sub_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # The validated empty GPU_ONLY plan has no native work, dependency, or
     # transfer. The synchronous owner-scoped API must not create a redundant
     # event or synchronize a stream for this call. Raw enqueue_* APIs still
@@ -561,12 +608,12 @@ def run_sub_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
     var proven = _checked_native_device_plan(plan)
     if not proven.is_ok():
         return proven.status
-    var safe_plan = proven.payload.value()
+    var safe_plan = proven.payload.value().copy()
     if safe_plan.total_items == 0:
         return TensorStatus.OK
     try:
-        var queued = unsafe_enqueue_sub_fp32(ctx, safe_plan, out, a, b, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_sub_fp32(ctx, safe_plan, output, a, b, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -575,13 +622,17 @@ def run_sub_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
         return TensorStatus.NATIVE_LAUNCH_FAILED
 
 
-def run_div_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
+def run_div_fp32[LO: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     # The validated empty GPU_ONLY plan has no native work, dependency, or
     # transfer. The synchronous owner-scoped API must not create a redundant
     # event or synchronize a stream for this call. Raw enqueue_* APIs still
@@ -589,12 +640,12 @@ def run_div_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
     var proven = _checked_native_device_plan(plan)
     if not proven.is_ok():
         return proven.status
-    var safe_plan = proven.payload.value()
+    var safe_plan = proven.payload.value().copy()
     if safe_plan.total_items == 0:
         return TensorStatus.OK
     try:
-        var queued = unsafe_enqueue_div_fp32(ctx, safe_plan, out, a, b, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_div_fp32(ctx, safe_plan, output, a, b, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -603,11 +654,13 @@ def run_div_fp32[LO: AnyType, LA: AnyType, LB: AnyType](
         return TensorStatus.NATIVE_LAUNCH_FAILED
 
 
-def run_fill_fp32[L: AnyType](
+def run_fill_fp32[L: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, L, MutAnyOrigin], value: Float32,
+    output: TileTensor[DType.float32, L, MutAnyOrigin], value: Float32,
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, L, MutAnyOrigin].flat_rank == 1
+):
     # The validated empty GPU_ONLY plan has no native work, dependency, or
     # transfer. The synchronous owner-scoped API must not create a redundant
     # event or synchronize a stream for this call. Raw enqueue_* APIs still
@@ -615,12 +668,12 @@ def run_fill_fp32[L: AnyType](
     var proven = _checked_native_device_plan(plan)
     if not proven.is_ok():
         return proven.status
-    var safe_plan = proven.payload.value()
+    var safe_plan = proven.payload.value().copy()
     if safe_plan.total_items == 0:
         return TensorStatus.OK
     try:
-        var queued = unsafe_enqueue_fill_fp32(ctx, safe_plan, out, value, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_fill_fp32(ctx, safe_plan, output, value, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -637,7 +690,7 @@ def run_fill_fp32[L: AnyType](
 def unsafe_enqueue_bound_aot_binary_fp32[operation: Int](
     ctx: DeviceContext, artifact: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, out: DeviceBuffer[DType.float32],
+    plan: ExecutionPlan, output: DeviceBuffer[DType.float32],
     a: DeviceBuffer[DType.float32], b: DeviceBuffer[DType.float32],
 ) raises -> TensorResult[DeviceEvent]:
     comptime assert operation >= 0 and operation <= 5, "FP32 opcode must be 0..5"
@@ -646,11 +699,11 @@ def unsafe_enqueue_bound_aot_binary_fp32[operation: Int](
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     var binding = identity.validate_for(operation, checked_plan.aot_variant, target_arch)
     if binding != TensorStatus.OK:
         return TensorResult[DeviceEvent](binding)
-    if checked_plan.placement != ExecutionPlacement.GPU_ONLY or checked_plan.output_device != 1:
+    if checked_plan.placement != materialize[ExecutionPlacement.GPU_ONLY]() or checked_plan.output_device != 1:
         return TensorResult[DeviceEvent](TensorStatus.DEVICE_MISMATCH)
     # This native FP32 ABI was compiled for exactly 256 threads. The generic
     # metadata validator accepts other legal block sizes for future ABIs,
@@ -658,22 +711,22 @@ def unsafe_enqueue_bound_aot_binary_fp32[operation: Int](
     if identity.threads_per_block != 256:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     var count = checked_plan.total_items
-    if count < 0 or len(out) < count or len(a) < count or len(b) < count:
+    if count < 0 or len(output) < count or len(a) < count or len(b) < count:
         return TensorResult[DeviceEvent](TensorStatus.SIZE_MISMATCH)
     if count > 0:
         # An out-of-place AOT binary kernel cannot use overlapping output
         # and input ranges. Validate physical spans before enqueue; the
         # presence of distinct DeviceBuffer handles is not an alias proof.
-        if not device_fp32_regions_disjoint(out, count, a, count):
+        if not device_fp32_regions_disjoint(output, count, a, count):
             return TensorResult[DeviceEvent](TensorStatus.ALIAS_UNKNOWN)
-        if not device_fp32_regions_disjoint(out, count, b, count):
+        if not device_fp32_regions_disjoint(output, count, b, count):
             return TensorResult[DeviceEvent](TensorStatus.ALIAS_UNKNOWN)
         var geometry = gpu_grid_1d(count, identity.threads_per_block)
         if not geometry.is_ok():
             return TensorResult[DeviceEvent](geometry.status)
         var blocks = geometry.payload.value().grid_blocks
         ctx.enqueue_function(
-            artifact, out, a, b, count,
+            artifact, output, a, b, count,
             grid_dim=blocks, block_dim=identity.threads_per_block,
         )
     var completion = ctx.create_event()
@@ -684,14 +737,14 @@ def unsafe_enqueue_bound_aot_binary_fp32[operation: Int](
 def run_bound_aot_binary_fp32[operation: Int](
     ctx: DeviceContext, artifact: DeviceExternalFunction,
     identity: BinaryAOTArtifactIdentity, target_arch: Int,
-    plan: ExecutionPlan, out: DeviceBuffer[DType.float32],
+    plan: ExecutionPlan, output: DeviceBuffer[DType.float32],
     a: DeviceBuffer[DType.float32], b: DeviceBuffer[DType.float32],
 ) -> TensorStatus:
     try:
         var queued = unsafe_enqueue_bound_aot_binary_fp32[operation](
-            ctx, artifact, identity, target_arch, plan, out, a, b,
+            ctx, artifact, identity, target_arch, plan, output, a, b,
         )
-        return _join_checked_device_event(ctx, queued)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -704,18 +757,22 @@ def run_bound_aot_binary_fp32[operation: Int](
 # Matrices must be row-major with exact logical shapes (m,k), (k,n), (m,n).
 # This is not a Tensor Core or TF32 kernel. It cannot silently use a
 # different floating-point precision mode or generic strides.
-def unsafe_enqueue_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
+def unsafe_enqueue_mm_strict_fp32[LC: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LC, MutAnyOrigin],
+    output: TileTensor[DType.float32, LC, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     m: Int, k: Int, n: Int,
     development_allow_runtime_compilation: Bool = False,
-) raises -> TensorResult[DeviceEvent]:
+) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     # The intrinsic strict-SIMT launcher implements variants 10 and 11 only.
     # Reject external (14) and future TF32 (12) plans rather than silently
     # executing the wrong AOT strategy under their identity.
@@ -760,7 +817,7 @@ def unsafe_enqueue_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
                 return TensorResult[DeviceEvent](geometry.status)
             var blocks = geometry.payload.value().grid_blocks
             ctx.enqueue_function[gpu_mm_simt_col4_fp32[LC, LA, LB]](
-                out, a, b, Int32(m), Int32(k), Int32(n), Int32(tiles_per_row),
+                output, a, b, Int32(m), Int32(k), Int32(n), Int32(tiles_per_row),
                 grid_dim=blocks, block_dim=256,
             )
         else:
@@ -769,7 +826,7 @@ def unsafe_enqueue_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
                 return TensorResult[DeviceEvent](geometry.status)
             var blocks = geometry.payload.value().grid_blocks
             ctx.enqueue_function[gpu_mm_strict_fp32[LC, LA, LB]](
-                out, a, b, Int32(m), Int32(k), Int32(n), grid_dim=blocks, block_dim=256,
+                output, a, b, Int32(m), Int32(k), Int32(n), grid_dim=blocks, block_dim=256,
             )
     # For k == 0, the kernel writes zeros to every nonempty output element.
     # For m == 0 or n == 0 there is no output access at all.
@@ -778,17 +835,21 @@ def unsafe_enqueue_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
     return TensorResult[DeviceEvent](completion)
 
 
-def run_mm_strict_fp32[LC: AnyType, LA: AnyType, LB: AnyType](
+def run_mm_strict_fp32[LC: MaxTensorLayout, LA: MaxTensorLayout, LB: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LC, MutAnyOrigin],
+    output: TileTensor[DType.float32, LC, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     b: TileTensor[DType.float32, LB, MutAnyOrigin],
     m: Int, k: Int, n: Int,
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, LC, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LB, MutAnyOrigin].flat_rank == 1
+):
     try:
-        var queued = unsafe_enqueue_mm_strict_fp32[LC, LA, LB](ctx, plan, out, a, b, m, k, n, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_mm_strict_fp32[LC, LA, LB](ctx, plan, output, a, b, m, k, n, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -810,7 +871,7 @@ def run_device_tensor_binary_fp32[rank: Int, operation: Int](
     identity: BinaryAOTArtifactIdentity,
     target_arch: Int,
     plan: ExecutionPlan,
-    mut out: Tensor[rank, DeviceStorage],
+    mut output: Tensor[rank, DeviceStorage],
     left: Tensor[rank, DeviceStorage],
     right: Tensor[rank, DeviceStorage],
 ) -> TensorStatus:
@@ -819,25 +880,28 @@ def run_device_tensor_binary_fp32[rank: Int, operation: Int](
     # Single canonical public facade; no duplicated descriptor verification or
     # launch loops between backend and owning Tensor methods.
     return left.device_binary_into[operation](
-        ctx, artifact, identity, target_arch, plan, right, out,
+        ctx, artifact, identity, target_arch, plan, right, output,
     )
 
 
 # AOT-specialized GPU unary lowering. The caller must supply the exact
 # zero-copy layout, validated element count, and owner-lifetime contract.
 # This is deliberately not an implicit Tensor.to_device() operation.
-def unsafe_enqueue_unary_fp32[operation: Int, LO: AnyType, LI: AnyType](
+def unsafe_enqueue_unary_fp32[operation: Int, LO: MaxTensorLayout, LI: MaxTensorLayout](
     ctx: DeviceContext,
     plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     source: TileTensor[DType.float32, LI, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) raises -> TensorResult[DeviceEvent]:
+) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
+):
     comptime assert operation >= 0 and operation <= 8, "invalid GPU unary FP32 opcode"
     var plan_proof = _checked_native_device_plan(plan)
     if not plan_proof.is_ok():
         return TensorResult[DeviceEvent](plan_proof.status)
-    var checked_plan = plan_proof.payload.value()
+    var checked_plan = plan_proof.payload.value().copy()
     # The source kernel has a fixed operation specialization. External AOT
     # unary opcodes 20..28 have a different ABI binding and must use their
     # identity-validated launcher rather than this source entry point.
@@ -855,20 +919,23 @@ def unsafe_enqueue_unary_fp32[operation: Int, LO: AnyType, LI: AnyType](
             return TensorResult[DeviceEvent](geometry.status)
         var blocks = geometry.payload.value().grid_blocks
         ctx.enqueue_function[gpu_unary_fp32[operation, LO, LI]](
-            out, source, Int32(count), grid_dim=blocks, block_dim=256
+            output, source, Int32(count), grid_dim=blocks, block_dim=256
         )
     var completion = ctx.create_event()
     ctx.stream().record_event(completion)
     return TensorResult[DeviceEvent](completion)
 
 
-def run_unary_fp32[operation: Int, LO: AnyType, LI: AnyType](
+def run_unary_fp32[operation: Int, LO: MaxTensorLayout, LI: MaxTensorLayout](
     ctx: DeviceContext,
     plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     source: TileTensor[DType.float32, LI, MutAnyOrigin],
     development_allow_runtime_compilation: Bool = False,
-) -> TensorStatus:
+) -> TensorStatus where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
+):
     # The validated empty GPU_ONLY plan has no native work, dependency, or
     # transfer. The synchronous owner-scoped API must not create a redundant
     # event or synchronize a stream for this call. Raw enqueue_* APIs still
@@ -876,12 +943,12 @@ def run_unary_fp32[operation: Int, LO: AnyType, LI: AnyType](
     var proven = _checked_native_device_plan(plan)
     if not proven.is_ok():
         return proven.status
-    var safe_plan = proven.payload.value()
+    var safe_plan = proven.payload.value().copy()
     if safe_plan.total_items == 0:
         return TensorStatus.OK
     try:
-        var queued = unsafe_enqueue_unary_fp32[operation, LO, LI](ctx, safe_plan, out, source, development_allow_runtime_compilation)
-        return _join_checked_device_event(ctx, queued)
+        var queued = unsafe_enqueue_unary_fp32[operation, LO, LI](ctx, safe_plan, output, source, development_allow_runtime_compilation)
+        return _join_checked_device_event(ctx, queued^)
     except:
         try:
             ctx.stream().synchronize()
@@ -895,18 +962,22 @@ def run_unary_fp32[operation: Int, LO: AnyType, LI: AnyType](
 # matrix has `rows * cols`, x has `cols`. The caller is responsible for exact
 # flat C-order layout representability, nonaliasing output, owner lifetime and
 # device-context identity. Nothing moves automatically between host/device.
-def unsafe_enqueue_gemv_row_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
+def unsafe_enqueue_gemv_row_fp32[LY: MaxTensorLayout, LA: MaxTensorLayout, LX: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LY, MutAnyOrigin],
+    output: TileTensor[DType.float32, LY, MutAnyOrigin],
     a: TileTensor[DType.float32, LA, MutAnyOrigin],
     x: TileTensor[DType.float32, LX, MutAnyOrigin],
     rows: Int, cols: Int,
     development_allow_runtime_compilation: Bool = False,
-) raises -> TensorResult[DeviceEvent]:
+) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LY, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LA, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LX, MutAnyOrigin].flat_rank == 1
+):
     var verified = _checked_native_device_plan(plan)
     if not verified.is_ok():
         return TensorResult[DeviceEvent](verified.status)
-    var selected = verified.payload.value()
+    var selected = verified.payload.value().copy()
     if selected.aot_variant != 0:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     if rows < 0 or cols < 0 or selected.total_items != rows:
@@ -927,7 +998,7 @@ def unsafe_enqueue_gemv_row_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
         if not geometry.is_ok():
             return TensorResult[DeviceEvent](geometry.status)
         ctx.enqueue_function[gpu_gemv_row_fp32[LY, LA, LX]](
-            out, a, x, Int32(rows), Int32(cols),
+            output, a, x, Int32(rows), Int32(cols),
             grid_dim=geometry.payload.value().grid_blocks, block_dim=256,
         )
     var event = ctx.create_event()
@@ -938,18 +1009,21 @@ def unsafe_enqueue_gemv_row_fp32[LY: AnyType, LA: AnyType, LX: AnyType](
 # Output rank is one below the original rank; only the flattened last-axis
 # native reduction is implemented. Ops outside 0..4 or without a validated
 # physical out/in buffer remain unsupported at this low-level entry point.
-def unsafe_enqueue_reduce_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType](
+def unsafe_enqueue_reduce_rows_op_fp32[operation: Int, LO: MaxTensorLayout, LI: MaxTensorLayout](
     ctx: DeviceContext, plan: ExecutionPlan,
-    out: TileTensor[DType.float32, LO, MutAnyOrigin],
+    output: TileTensor[DType.float32, LO, MutAnyOrigin],
     source: TileTensor[DType.float32, LI, MutAnyOrigin],
     rows: Int, cols: Int,
     development_allow_runtime_compilation: Bool = False,
-) raises -> TensorResult[DeviceEvent]:
+) raises -> TensorResult[DeviceEvent] where (
+    TileTensor[DType.float32, LO, MutAnyOrigin].flat_rank == 1
+    and TileTensor[DType.float32, LI, MutAnyOrigin].flat_rank == 1
+):
     comptime assert operation >= 0 and operation <= 4, "FP32 reduction operation"
     var verified = _checked_native_device_plan(plan)
     if not verified.is_ok():
         return TensorResult[DeviceEvent](verified.status)
-    var selected = verified.payload.value()
+    var selected = verified.payload.value().copy()
     if selected.aot_variant != 0:
         return TensorResult[DeviceEvent](TensorStatus.UNSUPPORTED)
     if rows < 0 or cols < 0 or selected.total_items != rows:
@@ -973,7 +1047,7 @@ def unsafe_enqueue_reduce_rows_op_fp32[operation: Int, LO: AnyType, LI: AnyType]
         if not geometry.is_ok():
             return TensorResult[DeviceEvent](geometry.status)
         ctx.enqueue_function[gpu_reduce_rows_op_fp32[operation, LO, LI]](
-            out, source, Int32(rows), Int32(cols),
+            output, source, Int32(rows), Int32(cols),
             grid_dim=geometry.payload.value().grid_blocks, block_dim=256,
         )
     var event = ctx.create_event()

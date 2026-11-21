@@ -121,8 +121,8 @@ def _compare_fp32_fixed[relation: Int](lhs: Float32, rhs: Float32) -> Bool:
 
 
 def _compare_fixed[relation: Int, rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB]) -> TensorResult[TensorMask[rank]]:
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a._compare_host[relation](b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a._compare_host[relation](rebind[Tensor[rank, HostStorage]](b))
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[TensorMask[rank]](TensorStatus.BACKEND_UNAVAILABLE)
     var checked_a = a._checked_current_layout()
@@ -186,7 +186,7 @@ def _compare_fixed[relation: Int, rank: Int, SA: TensorStorage, SB: TensorStorag
             mask.bytes[linear] = 0
         linear += 1
         cursor.advance()
-    return TensorResult[TensorMask[rank]](mask)
+    return TensorResult[TensorMask[rank]](mask^)
 
 # Public runtime relation API chooses among six linked AOT variants once.
 def compare[rank: Int, SA: TensorStorage, SB: TensorStorage](
@@ -229,7 +229,7 @@ def ge[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: 
 # Unary FP32 predicates use a separate mask representation, never an FP32-as-bool Tensor.
 # std.utils.numerics supplies IEEE-754 checks instead of algebraic approximations.
 def _fp32_predicate[kind: Int, rank: Int, S: TensorStorage](a: Tensor[rank, S]) -> TensorResult[TensorMask[rank]]:
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return a._predicate_host[kind]()
     comptime assert kind >= 0 and kind <= 2, "invalid FP32 predicate"
     if not a.impl.storage.is_host_accessible():
@@ -264,7 +264,7 @@ def _fp32_predicate[kind: Int, rank: Int, S: TensorStorage](a: Tensor[rank, S]) 
             mask.bytes[linear] = 0
         linear += 1
         cursor.advance()
-    return TensorResult[TensorMask[rank]](mask)
+    return TensorResult[TensorMask[rank]](mask^)
 
 
 def isnan[rank: Int, S: TensorStorage](a: Tensor[rank, S]) -> TensorResult[TensorMask[rank]]:
@@ -289,10 +289,12 @@ def _compare_nd_fixed[relation: Int, ra: Int, rb: Int, out_rank: Int, SA: Tensor
         return TensorResult[TensorMask[out_rank]](TensorStatus.BACKEND_UNAVAILABLE)
     comptime assert ra >= 0 and ra <= 8 and rb >= 0 and rb <= 8, "rank must be 0..8"
     comptime assert out_rank == max(ra, rb) and out_rank <= 8, "invalid broadcast output rank"
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a._compare_nd_host[relation, rb, out_rank](b)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a._compare_nd_host[relation, rb, out_rank](rebind[Tensor[rb, HostStorage]](b))
     comptime if ra == rb and ra == out_rank:
-        return _compare_fixed[relation](a, b)
+        return rebind_var[TensorResult[TensorMask[out_rank]]](
+            _compare_fixed[relation](a, rebind[Tensor[ra, SB]](b))
+        )
     var valid_a = a._checked_current_layout()
     if not valid_a.is_ok():
         return TensorResult[TensorMask[out_rank]](valid_a.status)
@@ -361,7 +363,7 @@ def _compare_nd_fixed[relation: Int, ra: Int, rb: Int, out_rank: Int, SA: Tensor
             mask.bytes[linear] = 0
         linear += 1
         cursor.advance()
-    return TensorResult[TensorMask[out_rank]](mask)
+    return TensorResult[TensorMask[out_rank]](mask^)
 
 
 # Mixed-rank entry point selects a fixed relation outside the N-D loop.
@@ -369,15 +371,15 @@ def compare_nd[ra: Int, rb: Int, out_rank: Int, SA: TensorStorage, SB: TensorSto
     a: Tensor[ra, SA], b: Tensor[rb, SB], relation: Int
 ) -> TensorResult[TensorMask[out_rank]]:
     if relation == 0:
-        return _compare_nd_fixed[0](a, b)
+        return _compare_nd_fixed[0, ra, rb, out_rank](a, b)
     if relation == 1:
-        return _compare_nd_fixed[1](a, b)
+        return _compare_nd_fixed[1, ra, rb, out_rank](a, b)
     if relation == 2:
-        return _compare_nd_fixed[2](a, b)
+        return _compare_nd_fixed[2, ra, rb, out_rank](a, b)
     if relation == 3:
-        return _compare_nd_fixed[3](a, b)
+        return _compare_nd_fixed[3, ra, rb, out_rank](a, b)
     if relation == 4:
-        return _compare_nd_fixed[4](a, b)
+        return _compare_nd_fixed[4, ra, rb, out_rank](a, b)
     if relation == 5:
-        return _compare_nd_fixed[5](a, b)
+        return _compare_nd_fixed[5, ra, rb, out_rank](a, b)
     return TensorResult[TensorMask[out_rank]](TensorStatus.UNSUPPORTED)

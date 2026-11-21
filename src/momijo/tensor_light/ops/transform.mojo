@@ -106,8 +106,9 @@ from std.memory import unsafe_memcpy
 
 
 def concatenate2[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank, SA], b: Tensor[rank, SB], axis: Int) -> TensorResult[Tensor[rank, HostStorage]]:
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.concatenate(b, axis)
+    comptime if SA == HostStorage and SB == HostStorage:
+        comptime if rank >= 1:
+            return a.concatenate(rebind[Tensor[rank, HostStorage]](b), axis)
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
     var checked_a = a._checked_current_layout()
@@ -137,11 +138,11 @@ def concatenate2[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank
     var out = result.payload.take()
     # Fast path: concatenation along axis 0 of two dense C-order owners
     # consists of two disjoint FP32 runs in the newly allocated output.
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
+    comptime if SA == HostStorage and SB == HostStorage:
         if ax == 0 and checked_a.payload.value().is_c_contiguous() and checked_b.payload.value().is_c_contiguous():
             if checked_a.payload.value().is_exhaustive() and checked_b.payload.value().is_exhaustive():
-                var src_a = a.impl.storage.borrow_span()
-                var src_b = b.impl.storage.borrow_span()
+                var src_a = rebind[HostStorage](a.impl.storage).borrow_span()
+                var src_b = rebind[HostStorage](b.impl.storage).borrow_span()
                 var dst = out.impl.storage.borrow_mut_span()
                 var start_a = checked_a.payload.value().span_lo
                 var start_b = checked_b.payload.value().span_lo
@@ -158,7 +159,7 @@ def concatenate2[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank
                     var right_run = src_b[start_b:start_b + count_b]
                     var right_dst = dst[count_a:count_a + count_b]
                     unsafe_memcpy(dest=right_dst.unsafe_ptr(), src=right_run.unsafe_ptr(), count=count_b)
-                return out._finish_complete_overwrite()
+                return (out^)._finish_complete_overwrite()
     var la = checked_a.payload.value()
     var lb = checked_b.payload.value()
     var destination = out.impl.storage.borrow_mut_span()
@@ -183,11 +184,11 @@ def concatenate2[rank: Int, SA: TensorStorage, SB: TensorStorage](a: Tensor[rank
         target.set(ax, target.get(ax) + la.shape.dims.get(ax))
         destination[result_layout.physical_offset_unchecked(target)] = value.payload.value()
         cursor_b.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 def repeat_axis[rank: Int, S: TensorStorage](src: Tensor[rank, S], axis: Int, copies: Int) -> TensorResult[Tensor[rank, HostStorage]]:
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return src.repeat_axis(axis, copies)
     if not src.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
@@ -230,11 +231,11 @@ def repeat_axis[rank: Int, S: TensorStorage](src: Tensor[rank, S], axis: Int, co
         dst[linear] = read.payload.value()
         linear += 1
         cursor.advance()
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 def tile_axis[rank: Int, S: TensorStorage](src: Tensor[rank, S], axis: Int, copies: Int) -> TensorResult[Tensor[rank, HostStorage]]:
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return src.tile_axis(axis, copies)
     if not src.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
@@ -276,7 +277,7 @@ def tile_axis[rank: Int, S: TensorStorage](src: Tensor[rank, S], axis: Int, copi
         dst[linear] = read.payload.value()
         linear += 1
         cursor.advance()
-    return out._finish_complete_overwrite()
+    return (out^)._finish_complete_overwrite()
 
 
 # Public, explicitly materializing two-input stack. The inserted axis has
@@ -285,8 +286,8 @@ def tile_axis[rank: Int, S: TensorStorage](src: Tensor[rank, S], axis: Int, copi
 def stack2[rank: Int, SA: TensorStorage, SB: TensorStorage](
     a: Tensor[rank, SA], b: Tensor[rank, SB], axis: Int
 ) -> TensorResult[Tensor[rank + 1, HostStorage]] where rank >= 0 and rank < 8:
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
-        return a.stack(b, axis)
+    comptime if SA == HostStorage and SB == HostStorage:
+        return a.stack(rebind[Tensor[rank, HostStorage]](b), axis)
     if not a.impl.storage.is_host_accessible() or not b.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank + 1, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
     var a_layout = a._checked_current_layout()
@@ -318,11 +319,11 @@ def stack2[rank: Int, SA: TensorStorage, SB: TensorStorage](
     var output = allocated.payload.take()
     # Axis-0 stacking of C-contiguous inputs is a pair of sequential
     # physical copies. This also handles rank-0 scalars and empty arrays.
-    comptime if identical(SA, HostStorage) and identical(SB, HostStorage):
+    comptime if SA == HostStorage and SB == HostStorage:
         if chosen_axis == 0 and a_layout.payload.value().is_c_contiguous() and b_layout.payload.value().is_c_contiguous():
             if a_layout.payload.value().is_exhaustive() and b_layout.payload.value().is_exhaustive():
-                var src_a = a.impl.storage.borrow_span()
-                var src_b = b.impl.storage.borrow_span()
+                var src_a = rebind[HostStorage](a.impl.storage).borrow_span()
+                var src_b = rebind[HostStorage](b.impl.storage).borrow_span()
                 var dst = output.impl.storage.borrow_mut_span()
                 var base_a = a_layout.payload.value().span_lo
                 var base_b = b_layout.payload.value().span_lo
@@ -336,7 +337,7 @@ def stack2[rank: Int, SA: TensorStorage, SB: TensorStorage](
                     var right_dst = dst[elements:2 * elements]
                     unsafe_memcpy(dest=left_dst.unsafe_ptr(), src=left_run.unsafe_ptr(), count=elements)
                     unsafe_memcpy(dest=right_dst.unsafe_ptr(), src=right_run.unsafe_ptr(), count=elements)
-                return output._finish_complete_overwrite()
+                return (output^)._finish_complete_overwrite()
     var la = a_layout.payload.value()
     var lb = b_layout.payload.value()
     var dst_layout = output.impl.layout
@@ -360,14 +361,14 @@ def stack2[rank: Int, SA: TensorStorage, SB: TensorStorage](
         output_coord.set(chosen_axis, 1)
         dst[dst_layout.physical_offset_unchecked(output_coord)] = right.payload.value()
         cursor.advance()
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 # Rank-static N-D tile convenience. The owning Tensor carries the only
 # specialized HostStorage copy loop; generic host-visible storage is read
 # conservatively with a checked per-element backend capability.
 def tile[rank: Int, S: TensorStorage](src: Tensor[rank, S], reps: StaticRankArray[rank]) -> TensorResult[Tensor[rank, HostStorage]]:
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return src.tile(reps)
     if not src.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
@@ -401,7 +402,7 @@ def tile[rank: Int, S: TensorStorage](src: Tensor[rank, S], reps: StaticRankArra
             return TensorResult[Tensor[rank, HostStorage]](read.status)
         dst[cursor.produced] = read.payload.value()
         cursor.advance()
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 # Rank-static borrowed split/chunk interfaces. User code normally calls the
 # owning Tensor methods; free functions are exact thin delegates. Every

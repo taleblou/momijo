@@ -141,7 +141,7 @@ def choose_avx2_elementwise(key: DispatchKey) -> TensorResult[SpecializationDeci
     var proof = key.checked_snapshot()
     if not proof.is_ok():
         return TensorResult[SpecializationDecision](proof.status)
-    var selected = proof.payload.value()
+    var selected = proof.payload.value().copy()
     if selected.target_arch != 0:
         return TensorResult[SpecializationDecision](TensorStatus.DEVICE_MISMATCH)
     if selected.layout_class != 0:
@@ -160,7 +160,7 @@ def choose_sm89_gemm(key: DispatchKey) -> TensorResult[SpecializationDecision]:
     var proof = key.checked_snapshot()
     if not proof.is_ok():
         return TensorResult[SpecializationDecision](proof.status)
-    var selected = proof.payload.value()
+    var selected = proof.payload.value().copy()
     if selected.target_arch != 89:
         return TensorResult[SpecializationDecision](TensorStatus.DEVICE_MISMATCH)
     # Only strict-FP32 SIMT candidates exist here. TF32 Tensor-Core code
@@ -184,7 +184,7 @@ def choose_avx2_elementwise_for_capabilities(
     var verified = key.checked_snapshot()
     if not verified.is_ok():
         return TensorResult[SpecializationDecision](verified.status)
-    var selected = verified.payload.value()
+    var selected = verified.payload.value().copy()
     if selected.target_arch != 0:
         return TensorResult[SpecializationDecision](TensorStatus.DEVICE_MISMATCH)
     if selected.layout_class != 0:
@@ -199,12 +199,12 @@ def choose_avx2_elementwise_for_capabilities(
 # proof, so selecting a smaller ISA cannot silently change tensor semantics.
 # An empty output never dereferences the (possibly dangling) empty Span ptr.
 def choose_checked_scalar_elementwise_for_spans[
-    out_origin: Origin[mut=True], left_origin: Origin, right_origin: Origin,
+    out_origin: Origin[mut=True], left_origin: Origin[mut=False], right_origin: Origin[mut=False],
 ](
     key: DispatchKey, capabilities: CpuCapabilities,
-    result: Span[True, Float32, out_origin],
-    left: Span[False, Float32, left_origin],
-    right: Span[False, Float32, right_origin],
+    result: Span[mut=True, Float32, out_origin],
+    left: Span[mut=False, Float32, left_origin],
+    right: Span[mut=False, Float32, right_origin],
 ) -> TensorResult[SpecializationDecision]:
     var cpu = capabilities.validate()
     if cpu != TensorStatus.OK:
@@ -212,7 +212,7 @@ def choose_checked_scalar_elementwise_for_spans[
     var verified = key.checked_snapshot()
     if not verified.is_ok():
         return TensorResult[SpecializationDecision](verified.status)
-    var requested = verified.payload.value()
+    var requested = verified.payload.value().copy()
     # A borrowed host Span is a C-order flat region. A numeric GPU arch or
     # noncontiguous layout key cannot authorize its scalar native ABI.
     if requested.target_arch != 0:
@@ -245,18 +245,18 @@ def choose_checked_scalar_elementwise_for_spans[
 # enough: either second operand or the result may have a different alignment.
 # This is a checked OWNER-BORROW boundary, not ISA autodetection or a JIT.
 def choose_avx2_elementwise_for_spans[
-    out_origin: Origin[mut=True], left_origin: Origin, right_origin: Origin,
+    out_origin: Origin[mut=True], left_origin: Origin[mut=False], right_origin: Origin[mut=False],
 ](
     key: DispatchKey, capabilities: CpuCapabilities,
-    result: Span[True, Float32, out_origin],
-    left: Span[False, Float32, left_origin],
-    right: Span[False, Float32, right_origin],
+    result: Span[mut=True, Float32, out_origin],
+    left: Span[mut=False, Float32, left_origin],
+    right: Span[mut=False, Float32, right_origin],
 ) -> TensorResult[SpecializationDecision]:
     var scalar = choose_checked_scalar_elementwise_for_spans(
         key, capabilities, result, left, right,
     )
     if not scalar.is_ok():
-        return scalar
+        return scalar^
     var count = len(result)
     var verified = key.checked_snapshot()
     if not verified.is_ok():
@@ -264,7 +264,7 @@ def choose_avx2_elementwise_for_spans[
     # Both scalar and SIMD use the SAME proved alias contract, including
     # empty/small inputs. No fake AVX2 requirement for scalar work.
     if count < 8 or verified.payload.value().shape_bucket <= 1:
-        return scalar
+        return scalar^
     if not capabilities.has_avx2 or not capabilities.has_fma:
         return TensorResult[SpecializationDecision](TensorStatus.UNSUPPORTED)
     # The checked scalar gate above proved count>0 and all input/output
@@ -612,7 +612,7 @@ struct FiniteAOTVariant(Copyable):
         # A declared GPU strategy must not be bound to an architecture-zero
         # key; the actual vendor/hardware identity remains a loader proof.
         return TensorResult[Self](Self(
-            key_proof.payload.value(), decision_proof.payload.value(),
+            key_proof.payload.value().copy(), decision_proof.payload.value().copy(),
             self.abi_version,
         ))
 
@@ -666,9 +666,9 @@ struct FiniteAOTStrategyCatalog[capacity: Int](Copyable):
         var catalog = self.checked_snapshot()
         if not catalog.is_ok():
             return TensorResult[FiniteAOTVariant](catalog.status)
-        var safe = catalog.payload.value()
+        var safe = catalog.payload.value().copy()
         for i in range(safe._count):
-            var candidate = safe._entries[i]
+            ref candidate = safe._entries[i]
             if dispatch_key_matches(candidate.key, key_proof.payload.value()):
                 return candidate.checked_snapshot()
         # A miss is a hard error. No JIT and no arbitrary runtime variant.

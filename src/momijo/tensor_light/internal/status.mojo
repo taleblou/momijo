@@ -93,7 +93,7 @@
 from std.collections import Optional
 
 @fieldwise_init
-struct TensorStatus(Copyable, Equatable):
+struct TensorStatus(ImplicitlyCopyable, Equatable):
     var code: Int
 
     comptime OK = Self(0)
@@ -139,13 +139,13 @@ struct TensorStatus(Copyable, Equatable):
 # Spec-compatible alias for the same status vocabulary; no duplicate enum.
 comptime TensorStatusCode = TensorStatus
 
-struct TensorResult[T: Movable](Movable):
+struct TensorResult[T: Movable & Deinitable](Movable):
     var status: TensorStatus
     var payload: Optional[Self.T]
 
     def __init__(out self, var value: Self.T):
         self.status = TensorStatus.OK
-        self.payload = Optional[Self.T](value)
+        self.payload = Optional[Self.T](value^)
 
     def __init__(out self, error: TensorStatus):
         if error == TensorStatus.OK:
@@ -174,23 +174,23 @@ struct TensorResult[T: Movable](Movable):
         return Optional[Self.T](self.payload.value().copy())
 
 
-def ok_result[T: Movable](var value: T) -> TensorResult[T]:
-    return TensorResult[T](value)
+def ok_result[T: Movable & Deinitable](var value: T) -> TensorResult[T]:
+    return TensorResult[T](value^)
 
 
-def error_result[T: Movable](error: TensorStatus) -> TensorResult[T]:
+def error_result[T: Movable & Deinitable](error: TensorStatus) -> TensorResult[T]:
     return TensorResult[T](error)
 
 
-def is_ok[T: Movable](result: TensorResult[T]) -> Bool:
+def is_ok[T: Movable & Deinitable](result: TensorResult[T]) -> Bool:
     return result.is_ok()
 
 
-def status_code[T: Movable](result: TensorResult[T]) -> TensorStatus:
+def status_code[T: Movable & Deinitable](result: TensorResult[T]) -> TensorStatus:
     return result.status
 
 
-def take_value[T: Movable](mut result: TensorResult[T]) -> Optional[T]:
+def take_value[T: Movable & Deinitable](mut result: TensorResult[T]) -> Optional[T]:
     # Caller must check Optional; errors never force an unwrap or abort.
     return result.take_checked()
 

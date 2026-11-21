@@ -117,10 +117,10 @@ def basic_setitem[rank: Int, S: MutableTensorStorage](mut tensor: Tensor[rank, S
 # Gather always materializes; all bounds are checked before writing output.
 
 
-def gather[rank: Int, S: TensorStorage, origin: Origin](
-    source: Tensor[rank, S], axis: Int, indices: Span[False, Int, origin]
+def gather[rank: Int, S: TensorStorage, origin: Origin[mut=False]](
+    source: Tensor[rank, S], axis: Int, indices: Span[mut=False, Int, origin]
 ) -> TensorResult[Tensor[rank, HostStorage]]:
-    comptime if identical(S, HostStorage):
+    comptime if S == HostStorage:
         return source.gather(axis, indices)
     if not source.impl.storage.is_host_accessible():
         return TensorResult[Tensor[rank, HostStorage]](TensorStatus.BACKEND_UNAVAILABLE)
@@ -170,7 +170,7 @@ def gather[rank: Int, S: TensorStorage, origin: Origin](
         destination[linear] = element.payload.value()
         linear += 1
         cursor.advance()
-    return output._finish_complete_overwrite()
+    return (output^)._finish_complete_overwrite()
 
 
 # Sequential last-write semantics are well-defined for repeated index values;
@@ -184,10 +184,10 @@ struct ScatterConflictPolicy(Copyable, Equatable):
         return self.code == other.code
 
 
-def scatter[rank: Int, origin: Origin](
+def scatter[rank: Int, origin: Origin[mut=False]](
     mut destination: Tensor[rank, HostStorage],
     axis: Int,
-    indices: Span[False, Int, origin],
+    indices: Span[mut=False, Int, origin],
     source: Tensor[rank, HostStorage],
     policy: ScatterConflictPolicy,
 ) -> TensorStatus:

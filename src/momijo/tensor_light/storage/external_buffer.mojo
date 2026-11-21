@@ -107,13 +107,13 @@ from .storage import MutableTensorStorage, HostSpanStorage
 
 
 def borrow_external_fp32[rank: Int, origin: Origin](
-    data: Span[False, Float32, origin], layout: TensorLayout[rank]
+    data: Span[Float32, origin], layout: TensorLayout[rank]
 ) -> TensorResult[TensorView[rank, origin]]:
     return TensorView[rank, origin].from_span_checked(data, layout)
 
 
 def borrow_mut_external_fp32[rank: Int, origin: Origin[mut=True]](
-    data: Span[True, Float32, origin], layout: TensorLayout[rank]
+    data: Span[Float32, origin], layout: TensorLayout[rank]
 ) -> TensorResult[TensorMutView[rank, origin]]:
     return TensorMutView[rank, origin].from_span_checked(data, layout)
 
@@ -122,7 +122,7 @@ def borrow_mut_external_fp32[rank: Int, origin: Origin[mut=True]](
 # trait. No closure, dynamic virtual table, mutable global allocator or
 # common-free assumption is introduced. Implementations MUST be non-raising.
 # The exact original allocation size, alignment and allocator belong to D.
-trait ExternalFp32Deleter(Movable):
+trait ExternalFp32Deleter(Movable, Deinitable):
     def release(mut self, address: Int, allocation_elements: Int, alignment: Int): ...
 
 
@@ -148,7 +148,7 @@ struct ExternalOwnedStorage[D: ExternalFp32Deleter](Movable, HostSpanStorage):
         self._address = address
         self._elements = allocation_elements
         self._alignment = alignment
-        self._deleter = deleter
+        self._deleter = deleter^
         # Fail closed on direct construction. Adoption and readable-state
         # publication occur together only in unsafe_adopt_checked below.
         self._initialized = False
@@ -196,10 +196,10 @@ struct ExternalOwnedStorage[D: ExternalFp32Deleter](Movable, HostSpanStorage):
         # This cannot establish that the foreign pointer is mapped or that
         # a caller-selected deleter is correct; the explicit unsafe contract
         # remains mandatory. It DOES block the ordinary constructor bypass.
-        var adopted = Self(address, allocation_elements, alignment, deleter)
+        var adopted = Self(address, allocation_elements, alignment, deleter^)
         adopted._adopted = True
         adopted._initialized = True
-        return TensorResult[Self](adopted)
+        return TensorResult[Self](adopted^)
 
     def capacity(self) -> Int:
         # Recheck mutable metadata at every checked boundary. This is NOT a
@@ -266,51 +266,51 @@ struct ExternalOwnedStorage[D: ExternalFp32Deleter](Movable, HostSpanStorage):
     # Checked entry points for consumers that have not already proven an
     # owning Tensor descriptor. In contrast, the HostSpanStorage trait's
     # borrow_span() primitives are explicitly unchecked after owner proof.
-    def try_borrow_span(
-        ref self,
-    ) -> TensorResult[Span[False, Float32, origin_of(self)]]:
+    def try_borrow_span[origin: Origin[mut=False]](
+        ref[origin] self,
+    ) -> TensorResult[Span[mut=False, Float32, origin]]:
         if self.capacity() < 0:
-            return TensorResult[Span[False, Float32, origin_of(self)]](
+            return TensorResult[Span[mut=False, Float32, origin]](
                 TensorStatus.INVALID_LAYOUT
             )
         if not self._initialized:
-            return TensorResult[Span[False, Float32, origin_of(self)]](
+            return TensorResult[Span[mut=False, Float32, origin]](
                 TensorStatus.UNINITIALIZED
             )
-        return TensorResult[Span[False, Float32, origin_of(self)]](
+        return TensorResult[Span[mut=False, Float32, origin]](
             self.borrow_span()
         )
 
     def try_borrow_mut_span(
         mut self,
-    ) -> TensorResult[Span[True, Float32, origin_of(self)]]:
+    ) -> TensorResult[Span[Float32, origin_of(self)]]:
         if self.capacity() < 0:
-            return TensorResult[Span[True, Float32, origin_of(self)]](
+            return TensorResult[Span[Float32, origin_of(self)]](
                 TensorStatus.INVALID_LAYOUT
             )
         # A mutable owner may be deliberately uninitialized immediately
         # before a complete overwrite. This method proves only the storage
         # lifetime and bounds, never that its previous payload was readable.
-        return TensorResult[Span[True, Float32, origin_of(self)]](
+        return TensorResult[Span[Float32, origin_of(self)]](
             self.borrow_mut_span()
         )
 
-    def borrow_span(ref self) -> Span[False, Float32, origin_of(self)]:
+    def borrow_span[origin: Origin[mut=False]](ref[origin] self) -> Span[Float32, origin]:
         # INTERNAL ONLY: caller has checked capacity() and full initialization
         # while holding the owner borrow. The foreign-memory contract must
         # remain valid until the borrow ends; no ownership transfer occurs.
-        var ptr = Pointer[Float32, origin_of(self)](
+        var ptr = Pointer[Float32, origin](
             unsafe_from_address=self._address
         )
-        return Span[False, Float32, origin_of(self)](
+        return Span[Float32, origin](
             unsafe_ptr=ptr, length=self._elements
         )
 
-    def borrow_mut_span(mut self) -> Span[True, Float32, origin_of(self)]:
+    def borrow_mut_span[origin: Origin[mut=True]](ref[origin] self) -> Span[Float32, origin]:
         # INTERNAL ONLY: checked, unique, writable owner borrow required.
-        var ptr = Pointer[Float32, origin_of(self)](
+        var ptr = Pointer[Float32, origin](
             unsafe_from_address=self._address
         )
-        return Span[True, Float32, origin_of(self)](
+        return Span[Float32, origin](
             unsafe_ptr=ptr, length=self._elements
         )
