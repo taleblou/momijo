@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Morteza Taleblou
 # SPDX-FileCopyrightText: 2026 Mitra Daneshmand
 # SPDX-License-Identifier: MIT
+# Source: src/momijo/tensor/__init__.mojo
+# Module: momijo.tensor
 
 """General CPU tensors with runtime rank and owned, row-major storage."""
 

@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Morteza Taleblou
 # SPDX-FileCopyrightText: 2026 Mitra Daneshmand
 # SPDX-License-Identifier: MIT
+# Source: src/momijo/tensor/validation.mojo
+# Module: momijo.tensor.validation
 
 from std.collections import Optional
 

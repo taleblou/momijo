@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Morteza Taleblou
 # SPDX-FileCopyrightText: 2026 Mitra Daneshmand
 # SPDX-License-Identifier: MIT
+# Source: src/momijo/tensor/factory/creation.mojo
+# Module: momijo.tensor.factory.creation
 
 from ..shape.shape import RuntimeTensorShape
 from ..storage import TensorF32

@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Morteza Taleblou
 # SPDX-FileCopyrightText: 2026 Mitra Daneshmand
 # SPDX-License-Identifier: MIT
+# Source: src/momijo/tensor/storage.mojo
+# Module: momijo.tensor.storage
 
 from std.collections import List
 from std.sys import size_of

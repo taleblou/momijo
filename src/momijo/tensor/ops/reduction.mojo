@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Morteza Taleblou
 # SPDX-FileCopyrightText: 2026 Mitra Daneshmand
 # SPDX-License-Identifier: MIT
+# Source: src/momijo/tensor/ops/reduction.mojo
+# Module: momijo.tensor.ops.reduction
 
 from ..storage import TensorF32
 from ..validation import TensorResult, TensorStatusCode
