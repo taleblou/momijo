@@ -20,7 +20,7 @@ struct TensorStatusCode(Equatable, ImplicitlyCopyable):
         3
     )  # An element count or byte size exceeds Int.MAX.
     comptime OUT_OF_BOUNDS = Self(4)  # A coordinate is outside its axis.
-    comptime SIZE_MISMATCH = Self(7)  # A reduction needs at least one element.
+    comptime SIZE_MISMATCH = Self(7)  # An operation's element count requirement failed.
     comptime UNINITIALIZED = Self(27)  # The result's value has been taken.
 
     def __eq__(self, other: Self) -> Bool:

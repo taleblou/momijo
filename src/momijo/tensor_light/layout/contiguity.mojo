@@ -195,8 +195,9 @@ def internal_overlap_kind[rank: Int](shape: TensorShape[rank], strides: StaticRa
                             if (delta_a <= shape.dims.get(a) - 1
                                 and delta_b <= shape.dims.get(b) - 1):
                                 return InternalOverlapKind.DEFINITE
-    # Positive or negative non-overlapping permuted dense layouts may be
-    # proven with a sorted absolute-stride sufficient condition.
+    # With at most two active axes the pairwise test is exhaustive. With
+    # more axes, require disjoint sorted-stride spans to prove uniqueness.
+    # In both cases retain the representability check on the total span.
     var ordered = Array[Int, 8](fill=0)
     var used = Array[Bool, 8](fill=False)
     var active = 0
@@ -226,7 +227,7 @@ def internal_overlap_kind[rank: Int](shape: TensorShape[rank], strides: StaticRa
         var stride = strides.get(i)
         if stride < 0:
             stride = -stride
-        if stride < occupied_span:
+        if active > 2 and stride < occupied_span:
             return InternalOverlapKind.UNKNOWN
         # Reject overflow before updating the sufficient-condition span.
         # A conservative UNKNOWN is always safer than a false no-alias proof.

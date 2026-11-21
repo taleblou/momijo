@@ -39,6 +39,24 @@ struct TensorF32(Movable):
     def numel(self) -> Int:
         return len(self._elements)
 
+    def rank(self) -> Int:
+        return self._shape.rank()
+
+    def reshape_in_place(mut self, dims: List[Int]) -> TensorStatusCode:
+        """Replaces the shape while retaining the owned row-major elements.
+
+        The target must have the same element count. A failed reshape leaves
+        the tensor's shape and elements unchanged.
+        """
+        var requested = RuntimeTensorShape.try_from_dims(dims)
+        if not requested.is_ok():
+            return requested.status()
+        var shape = requested.take_value()
+        if shape.numel() != self.numel():
+            return TensorStatusCode.SIZE_MISMATCH
+        self._shape = shape^
+        return TensorStatusCode.OK
+
     def _elements_in_logical_order(
         self,
     ) -> Span[Float32, origin_of(self._elements)]:
