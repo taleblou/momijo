@@ -14,6 +14,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check required Mojo modules and reserved domains
         run: |
+          set -e
+          momijo_scan_roots=(src/momijo tests)
+          for momijo_optional in examples benchmarks; do
+            if [ -L "$momijo_optional" ] || { [ -e "$momijo_optional" ] && [ ! -d "$momijo_optional" ]; }; then
+              echo "::error::Invalid optional scan directory: $momijo_optional" >&2
+              exit 1
+            fi
+            if [ -d "$momijo_optional" ]; then
+              momijo_scan_roots+=("$momijo_optional")
+            fi
+          done
+          momijo_scan_roots+=(docs)
           set -eu
           test -f src/momijo/__init__.mojo
           test -s tests/tensor/smoke_cpu.mojo
@@ -25,7 +37,7 @@ jobs:
             test -f "src/momijo/$domain/__init__.mojo"
           done
           for domain in dataframe learn vision visual; do
-            forbidden=$(find src/momijo tests examples benchmarks docs -name "${domain}_light*" -print)
+            forbidden=$(find "${momijo_scan_roots[@]}" -name "${domain}_light*" -print)
             if [ -n "$forbidden" ]; then
               echo "Forbidden light variant of $domain" >&2
               exit 1
